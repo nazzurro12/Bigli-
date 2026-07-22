@@ -1,0 +1,2030 @@
+[
+    {
+        "id": "BASIC_1PARTBODY",
+        "parts": [
+            "UB"
+        ]
+    },
+    {
+        "id": "BASIC_1PARTBODY_THOUGHT",
+        "parts": [
+            "UB"
+        ]
+    },
+    {
+        "id": "BASIC_1PARTBODY_FLYING_HEAD_FLAG_THOUGHT",
+        "parts": [
+            "UB"
+        ]
+    },
+    {
+        "id": "BASIC_2PARTBODY",
+        "parts": [
+            "UB",
+            "LB"
+        ]
+    },
+    {
+        "id": "BASIC_3PARTARMS",
+        "parts": [
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH"
+        ]
+    },
+    {
+        "id": "BASIC_3PARTLEGS",
+        "parts": [
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "BASIC_FRONTLEGS",
+        "parts": [
+            "RA",
+            "LA",
+            "RH",
+            "LH"
+        ]
+    },
+    {
+        "id": "BASIC_REARLEGS",
+        "parts": [
+            "RL",
+            "LL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "ARMS_STANCE",
+        "parts": [
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH"
+        ]
+    },
+    {
+        "id": "7HEADNECKS",
+        "parts": [
+            "NK1",
+            "NK2",
+            "NK3",
+            "NK4",
+            "NK5",
+            "NK6",
+            "NK7",
+            "HD1",
+            "HD2",
+            "HD3",
+            "HD4",
+            "HD5",
+            "HD6",
+            "HD7"
+        ]
+    },
+    {
+        "id": "BASIC_HEAD",
+        "parts": [
+            "HD"
+        ]
+    },
+    {
+        "id": "BASIC_HEAD_NECK",
+        "parts": [
+            "NK",
+            "HD"
+        ]
+    },
+    {
+        "id": "BODY_HEAD",
+        "parts": [
+            "HD"
+        ]
+    },
+    {
+        "id": "BODY_WITH_HEAD_FLAG",
+        "parts": [
+            "HD"
+        ]
+    },
+    {
+        "id": "HUMANOID",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_HOOF",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_NECK",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_NECK_HOOF",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_LEGLESS_NECK",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH"
+        ]
+    },
+    {
+        "id": "HUMANOID_FLIER",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_NECK_FLIER",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "2WINGS",
+        "parts": [
+            "RWING",
+            "LWING"
+        ]
+    },
+    {
+        "id": "HUMANOID_ARMLESS",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_LEGLESS",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH"
+        ]
+    },
+    {
+        "id": "HUMANOID_4ARMS",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RUA1",
+            "LUA1",
+            "RLA1",
+            "LLA1",
+            "RH1",
+            "LH1",
+            "RUA2",
+            "LUA2",
+            "RLA2",
+            "LLA2",
+            "RH2",
+            "LH2",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_6ARMS",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RUA1",
+            "LUA1",
+            "RLA1",
+            "LLA1",
+            "RH1",
+            "LH1",
+            "RUA2",
+            "LUA2",
+            "RLA2",
+            "LLA2",
+            "RH2",
+            "LH2",
+            "RUA3",
+            "LUA3",
+            "RLA3",
+            "LLA3",
+            "RH3",
+            "LH3",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_LEGLESS_4ARMS",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RUA1",
+            "LUA1",
+            "RLA1",
+            "LLA1",
+            "RH1",
+            "LH1",
+            "RUA2",
+            "LUA2",
+            "RLA2",
+            "LLA2",
+            "RH2",
+            "LH2"
+        ]
+    },
+    {
+        "id": "HUMANOID_LEGLESS_6ARMS",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RUA1",
+            "LUA1",
+            "RLA1",
+            "LLA1",
+            "RH1",
+            "LH1",
+            "RUA2",
+            "LUA2",
+            "RLA2",
+            "LLA2",
+            "RH2",
+            "LH2",
+            "RUA3",
+            "LUA3",
+            "RLA3",
+            "LLA3",
+            "RH3",
+            "LH3"
+        ]
+    },
+    {
+        "id": "HUMANOID_NECK_4ARMS",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RUA1",
+            "LUA1",
+            "RLA1",
+            "LLA1",
+            "RH1",
+            "LH1",
+            "RUA2",
+            "LUA2",
+            "RLA2",
+            "LLA2",
+            "RH2",
+            "LH2",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "4ARMS_STANCE",
+        "parts": [
+            "RUA1",
+            "LUA1",
+            "RLA1",
+            "LLA1",
+            "RH1",
+            "LH1",
+            "RUA2",
+            "LUA2",
+            "RLA2",
+            "LLA2",
+            "RH2",
+            "LH2"
+        ]
+    },
+    {
+        "id": "HUMANOID_2HEAD",
+        "parts": [
+            "UB",
+            "LB",
+            "RHD",
+            "LHD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_NECK_2HEAD",
+        "parts": [
+            "UB",
+            "LB",
+            "RNK",
+            "LNK",
+            "RHD",
+            "LHD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "HUMANOID_SIMPLE",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RA",
+            "LA",
+            "RH",
+            "LH",
+            "RL",
+            "LL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "QUADRUPED",
+        "parts": [
+            "UB",
+            "LB",
+            "HD",
+            "RA",
+            "LA",
+            "RH",
+            "LH",
+            "RL",
+            "LL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "QUADRUPED_NECK_FRONT_GRASP",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RA",
+            "LA",
+            "RH",
+            "LH",
+            "RL",
+            "LL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "QUADRUPED_NECK",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RA",
+            "LA",
+            "RH",
+            "LH",
+            "RL",
+            "LL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "QUADRUPED_NECK_HOOF",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RA",
+            "LA",
+            "RH",
+            "LH",
+            "RL",
+            "LL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "INSECT",
+        "parts": [
+            "UB",
+            "HD",
+            "LB",
+            "RA1",
+            "LA1",
+            "RF1",
+            "LF1",
+            "RA2",
+            "LA2",
+            "RF2",
+            "LF2",
+            "RA3",
+            "LA3",
+            "RF3",
+            "LF3"
+        ]
+    },
+    {
+        "id": "INSECT_4LEGS_2ARMS",
+        "parts": [
+            "UB",
+            "HD",
+            "LB",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RF1",
+            "LF1",
+            "RA2",
+            "LA2",
+            "RF2",
+            "LF2",
+            "RA3",
+            "LA3",
+            "RF3",
+            "LF3"
+        ]
+    },
+    {
+        "id": "SPIDER",
+        "parts": [
+            "UB",
+            "LB",
+            "RA1",
+            "LA1",
+            "RF1",
+            "LF1",
+            "RA2",
+            "LA2",
+            "RF2",
+            "LF2",
+            "RA3",
+            "LA3",
+            "RF3",
+            "LF3",
+            "RA4",
+            "LA4",
+            "RF4",
+            "LF4"
+        ]
+    },
+    {
+        "id": "CRAB_BODY",
+        "parts": [
+            "UB",
+            "RA1",
+            "LA1",
+            "RF1",
+            "LF1",
+            "RA2",
+            "LA2",
+            "RF2",
+            "LF2",
+            "RA3",
+            "LA3",
+            "RF3",
+            "LF3",
+            "RA4",
+            "LA4",
+            "RF4",
+            "LF4"
+        ]
+    },
+    {
+        "id": "TWO_NO_CLAW_TENTACLES",
+        "parts": [
+            "RUT",
+            "LUT"
+        ]
+    },
+    {
+        "id": "TENTACLE_MOUTH",
+        "parts": [
+            "MOUTH"
+        ]
+    },
+    {
+        "id": "TENTACLE_TEETH",
+        "parts": [
+            "TOOTH"
+        ]
+    },
+    {
+        "id": "8_SIMPLE_HEAD_ARMS",
+        "parts": [
+            "ARM1",
+            "ARM2",
+            "ARM3",
+            "ARM4",
+            "ARM5",
+            "ARM6",
+            "ARM7",
+            "ARM8"
+        ]
+    },
+    {
+        "id": "2_HEAD_CLUBBED_TENTACLES",
+        "parts": [
+            "RT",
+            "LT",
+            "RTC",
+            "LTC"
+        ]
+    },
+    {
+        "id": "FOUR_TENTACLES",
+        "parts": [
+            "RUT",
+            "LUT",
+            "RUTC",
+            "LUTC",
+            "RLT",
+            "LLT",
+            "RLTC",
+            "LLTC"
+        ]
+    },
+    {
+        "id": "SIX_TENTACLES",
+        "parts": [
+            "RUT",
+            "LUT",
+            "RUTC",
+            "LUTC",
+            "RMT",
+            "LMT",
+            "RMTC",
+            "LMTC",
+            "RLT",
+            "LLT",
+            "RLTC",
+            "LLTC"
+        ]
+    },
+    {
+        "id": "WAGON",
+        "parts": [
+            "FRONT",
+            "BACK",
+            "RFW",
+            "LFW",
+            "RRW",
+            "LRW"
+        ]
+    },
+    {
+        "id": "TAIL",
+        "parts": [
+            "TAIL"
+        ]
+    },
+    {
+        "id": "SHELL",
+        "parts": [
+            "SHELL"
+        ]
+    },
+    {
+        "id": "TAIL_STANCE",
+        "parts": [
+            "TAIL"
+        ]
+    },
+    {
+        "id": "TAIL_STINGER",
+        "parts": [
+            "TAIL_STINGER"
+        ]
+    },
+    {
+        "id": "UPPERBODY_PINCERS",
+        "parts": [
+            "R_UB_PINCER",
+            "L_UB_PINCER"
+        ]
+    },
+    {
+        "id": "2EYES",
+        "parts": [
+            "REYE",
+            "LEYE"
+        ]
+    },
+    {
+        "id": "3EYES",
+        "parts": [
+            "REYE",
+            "LEYE",
+            "EYE"
+        ]
+    },
+    {
+        "id": "4EYES",
+        "parts": [
+            "EYE1",
+            "EYE2",
+            "EYE3",
+            "EYE4"
+        ]
+    },
+    {
+        "id": "2EYESTALKS",
+        "parts": [
+            "REYE",
+            "LEYE"
+        ]
+    },
+    {
+        "id": "2TUSKS",
+        "parts": [
+            "RTUSK",
+            "LTUSK"
+        ]
+    },
+    {
+        "id": "NOSE",
+        "parts": [
+            "NOSE"
+        ]
+    },
+    {
+        "id": "SNOUT_NOSMELL",
+        "parts": [
+            "SNOUT"
+        ]
+    },
+    {
+        "id": "TRUNK",
+        "parts": [
+            "TRUNK"
+        ]
+    },
+    {
+        "id": "2EARS",
+        "parts": [
+            "R_EAR",
+            "L_EAR"
+        ]
+    },
+    {
+        "id": "2LUNGS",
+        "parts": [
+            "RLUNG",
+            "LLUNG"
+        ]
+    },
+    {
+        "id": "MOUTH",
+        "parts": [
+            "MOUTH"
+        ]
+    },
+    {
+        "id": "PROBOSCIS",
+        "parts": [
+            "PROBOSCIS"
+        ]
+    },
+    {
+        "id": "BEAK",
+        "parts": [
+            "BEAK"
+        ]
+    },
+    {
+        "id": "HEART",
+        "parts": [
+            "HEART"
+        ]
+    },
+    {
+        "id": "GUTS",
+        "parts": [
+            "GUTS"
+        ]
+    },
+    {
+        "id": "GIZZARD",
+        "parts": [
+            "GIZZARD"
+        ]
+    },
+    {
+        "id": "ORGANS",
+        "parts": [
+            "LIVER",
+            "STOMACH",
+            "PANCREAS",
+            "SPLEEN",
+            "RKIDNEY",
+            "LKIDNEY"
+        ]
+    },
+    {
+        "id": "HUMANOID_JOINTS",
+        "parts": [
+            "RUA_J",
+            "LUA_J",
+            "RLA_J",
+            "LLA_J",
+            "RH_J",
+            "LH_J",
+            "RUL_J",
+            "LUL_J",
+            "RLL_J",
+            "LLL_J",
+            "RF_J",
+            "LF_J"
+        ]
+    },
+    {
+        "id": "THROAT",
+        "parts": [
+            "THROAT"
+        ]
+    },
+    {
+        "id": "NECK",
+        "parts": [
+            "NECK"
+        ]
+    },
+    {
+        "id": "SPINE",
+        "parts": [
+            "UPPERSPINE",
+            "LOWERSPINE"
+        ]
+    },
+    {
+        "id": "BRAIN",
+        "parts": [
+            "BRAIN"
+        ]
+    },
+    {
+        "id": "SKULL",
+        "parts": [
+            "SKULL"
+        ]
+    },
+    {
+        "id": "CASQUE",
+        "parts": [
+            "CASQUE"
+        ]
+    },
+    {
+        "id": "HEAD_HORN",
+        "parts": [
+            "HEAD_HORN"
+        ]
+    },
+    {
+        "id": "2HEAD_HORN",
+        "parts": [
+            "RHORN",
+            "LHORN"
+        ]
+    },
+    {
+        "id": "2HEAD_HORN_NUMBERED",
+        "parts": [
+            "RHORN",
+            "LHORN"
+        ]
+    },
+    {
+        "id": "2HEAD_ANTLER",
+        "parts": [
+            "RHORN",
+            "LHORN"
+        ]
+    },
+    {
+        "id": "1EYE",
+        "parts": [
+            "EYE"
+        ]
+    },
+    {
+        "id": "BODY_EYE",
+        "parts": [
+            "EYE"
+        ]
+    },
+    {
+        "id": "BODY_EYELID",
+        "parts": [
+            "EYELID"
+        ]
+    },
+    {
+        "id": "5FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2",
+            "FINGER3",
+            "FINGER4",
+            "FINGER5"
+        ]
+    },
+    {
+        "id": "4FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2",
+            "FINGER3",
+            "FINGER4"
+        ]
+    },
+    {
+        "id": "3FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2",
+            "FINGER3"
+        ]
+    },
+    {
+        "id": "2FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2"
+        ]
+    },
+    {
+        "id": "5TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3",
+            "TOE4",
+            "TOE5"
+        ]
+    },
+    {
+        "id": "4TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3",
+            "TOE4"
+        ]
+    },
+    {
+        "id": "3TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3"
+        ]
+    },
+    {
+        "id": "2TOES",
+        "parts": [
+            "TOE1",
+            "TOE2"
+        ]
+    },
+    {
+        "id": "5TOES_FQ_REG",
+        "parts": [
+            "RFTOE1",
+            "RFTOE2",
+            "RFTOE3",
+            "RFTOE4",
+            "RFTOE5",
+            "LFTOE1",
+            "LFTOE2",
+            "LFTOE3",
+            "LFTOE4",
+            "LFTOE5"
+        ]
+    },
+    {
+        "id": "4TOES_FQ_REG",
+        "parts": [
+            "RFTOE1",
+            "RFTOE2",
+            "RFTOE3",
+            "RFTOE4",
+            "LFTOE1",
+            "LFTOE2",
+            "LFTOE3",
+            "LFTOE4"
+        ]
+    },
+    {
+        "id": "3TOES_FQ_REG",
+        "parts": [
+            "RFTOE1",
+            "RFTOE2",
+            "RFTOE3",
+            "LFTOE1",
+            "LFTOE2",
+            "LFTOE3"
+        ]
+    },
+    {
+        "id": "5TOES_RQ_REG",
+        "parts": [
+            "RRTOE1",
+            "RRTOE2",
+            "RRTOE3",
+            "RRTOE4",
+            "RRTOE5",
+            "LRTOE1",
+            "LRTOE2",
+            "LRTOE3",
+            "LRTOE4",
+            "LRTOE5"
+        ]
+    },
+    {
+        "id": "4TOES_RQ_REG",
+        "parts": [
+            "RRTOE1",
+            "RRTOE2",
+            "RRTOE3",
+            "RRTOE4",
+            "LRTOE1",
+            "LRTOE2",
+            "LRTOE3",
+            "LRTOE4"
+        ]
+    },
+    {
+        "id": "3TOES_RQ_REG",
+        "parts": [
+            "RRTOE1",
+            "RRTOE2",
+            "RRTOE3",
+            "LRTOE1",
+            "LRTOE2",
+            "LRTOE3"
+        ]
+    },
+    {
+        "id": "5TOES_RQ_ANON",
+        "parts": [
+            "RRTOE1",
+            "RRTOE2",
+            "RRTOE3",
+            "RRTOE4",
+            "RRTOE5",
+            "LRTOE1",
+            "LRTOE2",
+            "LRTOE3",
+            "LRTOE4",
+            "LRTOE5"
+        ]
+    },
+    {
+        "id": "5TOES_FQ_FINGERS",
+        "parts": [
+            "RFTOE1",
+            "RFTOE2",
+            "RFTOE3",
+            "RFTOE4",
+            "RFTOE5",
+            "LFTOE1",
+            "LFTOE2",
+            "LFTOE3",
+            "LFTOE4",
+            "LFTOE5"
+        ]
+    },
+    {
+        "id": "4TOES_FQ_FINGERS",
+        "parts": [
+            "RFTOE1",
+            "RFTOE2",
+            "RFTOE3",
+            "RFTOE4",
+            "LFTOE1",
+            "LFTOE2",
+            "LFTOE3",
+            "LFTOE4"
+        ]
+    },
+    {
+        "id": "SIDE_FINS",
+        "parts": [
+            "R_FIN",
+            "L_FIN"
+        ]
+    },
+    {
+        "id": "DORSAL_FIN",
+        "parts": [
+            "DORSAL_FIN"
+        ]
+    },
+    {
+        "id": "SIDE_FLIPPERS",
+        "parts": [
+            "R_FLIP",
+            "L_FLIP"
+        ]
+    },
+    {
+        "id": "FRONT_BODY_FLIPPERS",
+        "parts": [
+            "RFFLIP",
+            "LFFLIP"
+        ]
+    },
+    {
+        "id": "REAR_BODY_FLIPPERS",
+        "parts": [
+            "RRFLIP",
+            "LRFLIP"
+        ]
+    },
+    {
+        "id": "1HUMP",
+        "parts": [
+            "HUMP1"
+        ]
+    },
+    {
+        "id": "2HUMPS",
+        "parts": [
+            "HUMP1",
+            "HUMP2"
+        ]
+    },
+    {
+        "id": "CHEEKS",
+        "parts": [
+            "L_CHEEK",
+            "R_CHEEK"
+        ]
+    },
+    {
+        "id": "EYELIDS",
+        "parts": [
+            "L_EYELID",
+            "R_EYELID"
+        ]
+    },
+    {
+        "id": "TONGUE",
+        "parts": [
+            "TONGUE"
+        ]
+    },
+    {
+        "id": "FORKED_TONGUE",
+        "parts": [
+            "TONGUE"
+        ]
+    },
+    {
+        "id": "LIPS",
+        "parts": [
+            "L_LIP",
+            "U_LIP"
+        ]
+    },
+    {
+        "id": "FACIAL_FEATURES",
+        "parts": [
+            "L_CHEEK",
+            "R_CHEEK",
+            "L_EYELID",
+            "R_EYELID",
+            "L_LIP",
+            "U_LIP"
+        ]
+    },
+    {
+        "id": "ONE_EYELID",
+        "parts": [
+            "EYELID"
+        ]
+    },
+    {
+        "id": "RIBCAGE",
+        "parts": [
+            "L_TRUE_RIB",
+            "R_TRUE_RIB",
+            "L_FALSE_RIB",
+            "R_FALSE_RIB",
+            "L_FLOATING_RIB",
+            "R_FLOATING_RIB"
+        ]
+    },
+    {
+        "id": "GENERIC_TEETH_WITH_LARGE_EYE_TEETH",
+        "parts": [
+            "TOOTH",
+            "R_EYE_TOOTH",
+            "L_EYE_TOOTH"
+        ]
+    },
+    {
+        "id": "GENERIC_TEETH_WITH_FANGS",
+        "parts": [
+            "TOOTH",
+            "R_FANG",
+            "L_FANG"
+        ]
+    },
+    {
+        "id": "RODENT_TEETH",
+        "parts": [
+            "TOOTH",
+            "RU_INCISOR",
+            "LU_INCISOR",
+            "RL_INCISOR",
+            "LL_INCISOR"
+        ]
+    },
+    {
+        "id": "GENERIC_TEETH",
+        "parts": [
+            "TOOTH"
+        ]
+    },
+    {
+        "id": "TEETH",
+        "parts": [
+            "U_F_TOOTH",
+            "L_F_TOOTH",
+            "U_R_B_TOOTH",
+            "L_R_B_TOOTH",
+            "U_L_B_TOOTH",
+            "L_L_B_TOOTH"
+        ]
+    },
+    {
+        "id": "HAND_FOOT_CENTAUR_NECK",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH",
+            "RA",
+            "LA",
+            "RFF",
+            "LFF",
+            "RL",
+            "LL",
+            "RRF",
+            "LRF"
+        ]
+    },
+    {
+        "id": "LARGE_MANDIBLES",
+        "parts": [
+            "R_MAND",
+            "L_MAND"
+        ]
+    },
+    {
+        "id": "BILL",
+        "parts": [
+            "BILL"
+        ]
+    },
+    {
+        "id": "HUMANOID_ARMLESS_NECK",
+        "parts": [
+            "UB",
+            "LB",
+            "NK",
+            "HD",
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "TUSK",
+        "parts": [
+            "TUSK"
+        ]
+    },
+    {
+        "id": "RCP_BASIC_BODY",
+        "parts": [
+            "UB"
+        ]
+    },
+    {
+        "id": "RCP_BASIC_BODY_STANCE",
+        "parts": [
+            "UB"
+        ]
+    },
+    {
+        "id": "RCP_BASIC_BODY_STANCE_WITH_HEAD_FLAG",
+        "parts": [
+            "UB"
+        ]
+    },
+    {
+        "id": "RCP_UPPER_BODY",
+        "parts": [
+            "UB"
+        ]
+    },
+    {
+        "id": "RCP_LOWER_BODY",
+        "parts": [
+            "LB"
+        ]
+    },
+    {
+        "id": "RCP_THORAX",
+        "parts": [
+            "UB"
+        ]
+    },
+    {
+        "id": "RCP_ABDOMEN",
+        "parts": [
+            "LB"
+        ]
+    },
+    {
+        "id": "RCP_CEPHALOTHORAX",
+        "parts": [
+            "UB"
+        ]
+    },
+    {
+        "id": "RCP_HEAD",
+        "parts": [
+            "HD"
+        ]
+    },
+    {
+        "id": "RCP_TWO_PART_ARMS",
+        "parts": [
+            "RUA",
+            "LUA",
+            "RLA",
+            "LLA",
+            "RH",
+            "LH"
+        ]
+    },
+    {
+        "id": "RCP_PINCERS",
+        "parts": [
+            "R_UB_PINCER",
+            "L_UB_PINCER"
+        ]
+    },
+    {
+        "id": "RCP_CLAW_ARMS",
+        "parts": [
+            "R_UB_PINCER",
+            "L_UB_PINCER"
+        ]
+    },
+    {
+        "id": "RCP_FIRST_SIMPLE_LEGS",
+        "parts": [
+            "RA1",
+            "LA1",
+            "RF1",
+            "LF1"
+        ]
+    },
+    {
+        "id": "RCP_FIRST_SIMPLE_LEGS_GRASP",
+        "parts": [
+            "RA1",
+            "LA1",
+            "RF1",
+            "LF1"
+        ]
+    },
+    {
+        "id": "RCP_SECOND_SIMPLE_LEGS",
+        "parts": [
+            "RA2",
+            "LA2",
+            "RF2",
+            "LF2"
+        ]
+    },
+    {
+        "id": "RCP_THIRD_SIMPLE_LEGS",
+        "parts": [
+            "RA3",
+            "LA3",
+            "RF3",
+            "LF3"
+        ]
+    },
+    {
+        "id": "RCP_FOURTH_SIMPLE_LEGS",
+        "parts": [
+            "RA4",
+            "LA4",
+            "RF4",
+            "LF4"
+        ]
+    },
+    {
+        "id": "RCP_FIFTH_SIMPLE_LEGS",
+        "parts": [
+            "RA5",
+            "LA5",
+            "RF5",
+            "LF5"
+        ]
+    },
+    {
+        "id": "RCP_SIMPLE_FRONT_LEGS",
+        "parts": [
+            "RA",
+            "LA",
+            "RH",
+            "LH"
+        ]
+    },
+    {
+        "id": "RCP_SIMPLE_FRONT_LEGS_GRASP",
+        "parts": [
+            "RA",
+            "LA",
+            "RH",
+            "LH"
+        ]
+    },
+    {
+        "id": "RCP_SIMPLE_REAR_LEGS",
+        "parts": [
+            "RL",
+            "LL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "RCP_TWO_PART_LEGS",
+        "parts": [
+            "RUL",
+            "LUL",
+            "RLL",
+            "LLL",
+            "RF",
+            "LF"
+        ]
+    },
+    {
+        "id": "RCP_FRONT_FLIPPER",
+        "parts": [
+            "RFFLIP",
+            "LFFLIP"
+        ]
+    },
+    {
+        "id": "RCP_REAR_FLIPPER",
+        "parts": [
+            "RRFLIP",
+            "LRFLIP"
+        ]
+    },
+    {
+        "id": "RCP_TWO_FLIGHTLESS_WINGS",
+        "parts": [
+            "RWING",
+            "LWING"
+        ]
+    },
+    {
+        "id": "RCP_TWO_WINGS",
+        "parts": [
+            "RWING",
+            "LWING"
+        ]
+    },
+    {
+        "id": "RCP_TAIL",
+        "parts": [
+            "TAIL"
+        ]
+    },
+    {
+        "id": "RCP_2_TAILS",
+        "parts": [
+            "TAIL_1",
+            "TAIL_2"
+        ]
+    },
+    {
+        "id": "RCP_3_TAILS",
+        "parts": [
+            "TAIL_1",
+            "TAIL_2",
+            "TAIL_3"
+        ]
+    },
+    {
+        "id": "RCP_TAIL_STINGER",
+        "parts": [
+            "TAIL_STINGER"
+        ]
+    },
+    {
+        "id": "RCP_LOWER_BODY_STINGER",
+        "parts": [
+            "LOWER_BODY_STINGER"
+        ]
+    },
+    {
+        "id": "RCP_PROBOSCIS",
+        "parts": [
+            "PROBOSCIS"
+        ]
+    },
+    {
+        "id": "RCP_TRUNK",
+        "parts": [
+            "TRUNK"
+        ]
+    },
+    {
+        "id": "RCP_SHELL",
+        "parts": [
+            "SHELL"
+        ]
+    },
+    {
+        "id": "RCP_ANTENNAE",
+        "parts": [
+            "R_ANT",
+            "L_ANT"
+        ]
+    },
+    {
+        "id": "RCP_1_HEAD_HORN",
+        "parts": [
+            "HEAD_HORN"
+        ]
+    },
+    {
+        "id": "RCP_2_HEAD_HORNS",
+        "parts": [
+            "HEAD_HORN_1",
+            "HEAD_HORN_2"
+        ]
+    },
+    {
+        "id": "RCP_3_HEAD_HORNS",
+        "parts": [
+            "HEAD_HORN_1",
+            "HEAD_HORN_2",
+            "HEAD_HORN_3"
+        ]
+    },
+    {
+        "id": "RCP_4_HEAD_HORNS",
+        "parts": [
+            "HEAD_HORN_1",
+            "HEAD_HORN_2",
+            "HEAD_HORN_3",
+            "HEAD_HORN_4"
+        ]
+    },
+    {
+        "id": "RCP_LARGE_MANDIBLES",
+        "parts": [
+            "R_MAND",
+            "L_MAND"
+        ]
+    },
+    {
+        "id": "RCP_5_FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2",
+            "FINGER3",
+            "FINGER4",
+            "FINGER5"
+        ]
+    },
+    {
+        "id": "RCP_4_FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2",
+            "FINGER3",
+            "FINGER4"
+        ]
+    },
+    {
+        "id": "RCP_3_FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2",
+            "FINGER3"
+        ]
+    },
+    {
+        "id": "RCP_2_FINGERS",
+        "parts": [
+            "FINGER2",
+            "FINGER3"
+        ]
+    },
+    {
+        "id": "RCP_5_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3",
+            "TOE4",
+            "TOE5"
+        ]
+    },
+    {
+        "id": "RCP_4_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3",
+            "TOE4"
+        ]
+    },
+    {
+        "id": "RCP_3_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3"
+        ]
+    },
+    {
+        "id": "RCP_2_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2"
+        ]
+    },
+    {
+        "id": "RCP_5_FRONT_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3",
+            "TOE4",
+            "TOE5"
+        ]
+    },
+    {
+        "id": "RCP_4_FRONT_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3",
+            "TOE4"
+        ]
+    },
+    {
+        "id": "RCP_3_FRONT_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3"
+        ]
+    },
+    {
+        "id": "RCP_2_FRONT_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2"
+        ]
+    },
+    {
+        "id": "RCP_5_REAR_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3",
+            "TOE4",
+            "TOE5"
+        ]
+    },
+    {
+        "id": "RCP_4_REAR_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3",
+            "TOE4"
+        ]
+    },
+    {
+        "id": "RCP_3_REAR_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2",
+            "TOE3"
+        ]
+    },
+    {
+        "id": "RCP_2_REAR_TOES",
+        "parts": [
+            "TOE1",
+            "TOE2"
+        ]
+    },
+    {
+        "id": "RCP_5_FRONT_FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2",
+            "FINGER3",
+            "FINGER4",
+            "FINGER5"
+        ]
+    },
+    {
+        "id": "RCP_4_FRONT_FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2",
+            "FINGER3",
+            "FINGER4"
+        ]
+    },
+    {
+        "id": "RCP_3_FRONT_FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2",
+            "FINGER3"
+        ]
+    },
+    {
+        "id": "RCP_2_FRONT_FINGERS",
+        "parts": [
+            "FINGER1",
+            "FINGER2"
+        ]
+    },
+    {
+        "id": "RCP_1_EYE",
+        "parts": [
+            "EYE"
+        ]
+    },
+    {
+        "id": "RCP_2_EYES",
+        "parts": [
+            "REYE",
+            "LEYE"
+        ]
+    },
+    {
+        "id": "RCP_3_EYES",
+        "parts": [
+            "REYE",
+            "LEYE",
+            "EYE"
+        ]
+    },
+    {
+        "id": "RCP_BEAK",
+        "parts": [
+            "BEAK"
+        ]
+    },
+    {
+        "id": "RCP_NOSE",
+        "parts": [
+            "NOSE"
+        ]
+    },
+    {
+        "id": "RCP_CHEEKS",
+        "parts": [
+            "L_CHEEK",
+            "R_CHEEK"
+        ]
+    },
+    {
+        "id": "RCP_LUNGS",
+        "parts": [
+            "RLUNG",
+            "LLUNG"
+        ]
+    },
+    {
+        "id": "RCP_HEART",
+        "parts": [
+            "HEART"
+        ]
+    },
+    {
+        "id": "RCP_GUTS",
+        "parts": [
+            "GUTS"
+        ]
+    },
+    {
+        "id": "RCP_THROAT",
+        "parts": [
+            "THROAT"
+        ]
+    },
+    {
+        "id": "RCP_SPINE",
+        "parts": [
+            "UPPERSPINE",
+            "LOWERSPINE"
+        ]
+    },
+    {
+        "id": "RCP_NECK",
+        "parts": [
+            "NK"
+        ]
+    },
+    {
+        "id": "RCP_UPPER_SPINE",
+        "parts": [
+            "NECK"
+        ]
+    },
+    {
+        "id": "RCP_BRAIN",
+        "parts": [
+            "BRAIN"
+        ]
+    },
+    {
+        "id": "RCP_SKULL",
+        "parts": [
+            "SKULL"
+        ]
+    },
+    {
+        "id": "RCP_MOUTH",
+        "parts": [
+            "MOUTH"
+        ]
+    },
+    {
+        "id": "RCP_TEETH",
+        "parts": [
+            "TOOTH"
+        ]
+    },
+    {
+        "id": "RCP_RIBS",
+        "parts": [
+            "L_TRUE_RIB",
+            "R_TRUE_RIB",
+            "L_FALSE_RIB",
+            "R_FALSE_RIB",
+            "L_FLOATING_RIB",
+            "R_FLOATING_RIB"
+        ]
+    },
+    {
+        "id": "RCP_RIBS_EXTERNAL",
+        "parts": [
+            "L_TRUE_RIB",
+            "R_TRUE_RIB",
+            "L_FALSE_RIB",
+            "R_FALSE_RIB",
+            "L_FLOATING_RIB",
+            "R_FLOATING_RIB"
+        ]
+    },
+    {
+        "id": "RCP_LIPS",
+        "parts": [
+            "L_LIP",
+            "U_LIP"
+        ]
+    },
+    {
+        "id": "RCP_TONGUE",
+        "parts": [
+            "TONGUE"
+        ]
+    },
+    {
+        "id": "RCP_FORKED_TONGUE",
+        "parts": [
+            "TONGUE"
+        ]
+    },
+    {
+        "id": "RCP_1_EYELID",
+        "parts": [
+            "EYELID"
+        ]
+    },
+    {
+        "id": "RCP_2_EYELIDS",
+        "parts": [
+            "L_EYELID",
+            "R_EYELID"
+        ]
+    },
+    {
+        "id": "RCP_3_EYELIDS",
+        "parts": [
+            "L_EYELID",
+            "R_EYELID",
+            "EYELID"
+        ]
+    },
+    {
+        "id": "RCP_BILL",
+        "parts": [
+            "BILL"
+        ]
+    },
+    {
+        "id": "RCP_2_HEAD_ANTLERS",
+        "parts": [
+            "HEAD_ANTLER_1",
+            "HEAD_ANTLER_2"
+        ]
+    }
+]

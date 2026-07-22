@@ -1,0 +1,8 @@
+﻿.godot/
+__pycache__/
+*.zip
+*.exe
+_debug*.txt
+_temp_*.txt
+_debug_cache.txt
+desktop.ini

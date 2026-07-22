@@ -1,0 +1,629 @@
+[
+    {
+        "id": "AB_SPECIFIC_HF_SEEKER",
+        "lines": [
+            "seek out [CONTEXT:HIST_FIG:TRANS_NAME] at [CONTEXT:ABSTRACT_BUILDING:TRANS_NAME] over in [CONTEXT:SITE:TRANS_NAME]"
+        ]
+    },
+    {
+        "id": "ANIMAL_SLAYER",
+        "lines": [
+            "I have taken down [CONTEXT:NUMBER] [CONTEXT:RACE:NUMBERED_NAME] while stalking [CONTEXT:PLACE:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "ARCH_INFO_JUSTIFICATION",
+        "lines": [
+            "It is said that the [CONTEXT:ARCH_ELEMENT] of [CONTEXT:ABSTRACT_BUILDING:TRANS_NAME] [CONTEXT:JUSTIFICATION] [CONTEXT:DEF_SPHERE] for the glory of [CONTEXT:HIST_FIG:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "BOOK_ART",
+        "lines": [
+            "The [ADJ] [NO_ART_NAME]",
+            "The [NOUN] and [NAME]",
+            "The [ADJ] [NOUN] and [NAME]",
+            "It Must Have Been [NAME]",
+            "My Friend [NAME]",
+            "The Birth of [NAME]",
+            "The Sun Sets on [NAME]",
+            "We See [NAME]",
+            "And [ANY_PRONOUN] Sang '[NAME]!'"
+        ]
+    },
+    {
+        "id": "BOOK_INSTRUCTION",
+        "lines": [
+            "A Course on [NAME]",
+            "A Humble Offering to [NAME]",
+            "A Meditation on [NAME]",
+            "A Record of [NAME]",
+            "A Treatise on [NAME]",
+            "A World of [NAME]",
+            "About [NAME]",
+            "After [NAME]",
+            "Against [NAME]",
+            "An Exploration of [NAME]",
+            "An Introduction to [NAME]",
+            "An Offering to [NAME]",
+            "At One With [NAME]",
+            "Before [NAME]",
+            "Better [NO_ART_NAME]",
+            "Beyond [NAME]",
+            "Book of [NAME]",
+            "Captivated by [NAME]",
+            "Choose [NAME]",
+            "Classic [NO_ART_NAME]",
+            "Commentary on [NAME]",
+            "Common Sense [NO_ART_NAME]",
+            "Concerning [NAME]",
+            "Discourse on [NAME]",
+            "Discovering [NAME]",
+            "Doubts About [NAME]",
+            "Dreams of [NAME]",
+            "Elements of [NAME]",
+            "Errors In [NAME]",
+            "Exploring [NAME]",
+            "Explorations of [NAME]",
+            "Factual [NO_ART_NAME]",
+            "For the Love of [NAME]",
+            "Foundations of [NAME]",
+            "Give Me [NAME]",
+            "Great [NO_ART_NAME]",
+            "In Pursuit of [NAME]",
+            "Inquiries on [NAME]",
+            "Interpretations of [NAME]",
+            "Introduction to [NAME]",
+            "It All Begins With [NAME]",
+            "It Is [NAME]",
+            "Journey to [NAME]",
+            "Life With [NAME]",
+            "Master of [NAME]",
+            "Mastering [NAME]",
+            "Meditations on [NAME]",
+            "Misconceptions About [NAME]",
+            "More [NO_ART_NAME]",
+            "Musings on [NAME]",
+            "My Thoughts on [NAME]",
+            "Mysteries of [NAME]",
+            "Never Underestimate [NAME]",
+            "New [NO_ART_NAME]",
+            "Of [NAME]",
+            "On [NAME]",
+            "Pathways to [NAME]",
+            "Principles of [NAME]",
+            "Question [NAME]",
+            "Questions About [NAME]",
+            "Records of [NAME]",
+            "Reflections on [NAME]",
+            "Secret [NO_ART_NAME]",
+            "Start Your Day With [NAME]",
+            "Strange [NO_ART_NAME]",
+            "The Art of [NAME]",
+            "The Book of [NAME]",
+            "The Future of [NAME]",
+            "The Great [NO_ART_NAME]",
+            "The Hidden Meaning of [NAME]",
+            "The History of [NAME]",
+            "The Interpretation of [NAME]",
+            "The Journey into [NAME]",
+            "The Knowledge of [NAME]",
+            "The Meaning of [NAME]",
+            "The Mysteries of [NAME]",
+            "The Mystery of [NAME]",
+            "The Nuanced [NO_ART_NAME]",
+            "The Possibilities of [NAME]",
+            "The Pursuit of [NAME]",
+            "The Secret of [NAME]",
+            "The Student's [NO_ART_NAME]",
+            "The Study of [NAME]",
+            "The True [NO_ART_NAME]",
+            "The Truth About [NAME]",
+            "The Unabridged [NO_ART_NAME]",
+            "The Way With [NAME]",
+            "The Wizard's Guide to [NAME]",
+            "The World of [NAME]",
+            "The World Without [NAME]",
+            "Thoughts on [NAME]",
+            "Time Spent With [NAME]",
+            "Traditional [NO_ART_NAME]",
+            "Treatise on [NAME]",
+            "True [NO_ART_NAME]",
+            "Uncanny [NO_ART_NAME]",
+            "Uncovering [NAME]",
+            "Understanding [NAME]",
+            "Unknown [NO_ART_NAME]",
+            "Unusual [NO_ART_NAME]",
+            "Useful [NO_ART_NAME]",
+            "Victory By [NAME]",
+            "Can [NAME] Save The World?",
+            "Could It Be [NAME]?",
+            "Did [NAME] Falter?",
+            "Do We Understand [NAME]?",
+            "Do You Know [NAME]?",
+            "First [NAME], Then The World!",
+            "The [NO_ART_NAME] Book",
+            "To [NAME] and Glory!"
+        ]
+    },
+    {
+        "id": "CHILD_AGE_PROCLAMATION",
+        "lines": [
+            "I'm [CONTEXT:NUMBER]!"
+        ]
+    },
+    {
+        "id": "CURRENT_PROFESSION_NO_YEAR",
+        "lines": [
+            "I am a [CONTEXT:UNIT_NAME]."
+        ]
+    },
+    {
+        "id": "CURRENT_PROFESSION_YEAR",
+        "lines": [
+            "This is my [CONTEXT:ORDINAL] year as a [CONTEXT:UNIT_NAME]."
+        ]
+    },
+    {
+        "id": "CURSE",
+        "lines": [
+            "Who dares to enter my house?  I curse you!"
+        ]
+    },
+    {
+        "id": "FAMILY_RELATIONSHIP_ADDITIONAL",
+        "lines": []
+    },
+    {
+        "id": "FAMILY_RELATIONSHIP_ADDITIONAL_DEAD",
+        "lines": []
+    },
+    {
+        "id": "FAMILY_RELATIONSHIP_NO_SPEC",
+        "lines": [
+            "I have [CONTEXT:INDEF_FAMILY_RELATIONSHIP] named [CONTEXT:HIST_FIG:TRANS_NAME]"
+        ]
+    },
+    {
+        "id": "FAMILY_RELATIONSHIP_NO_SPEC_DEAD",
+        "lines": [
+            "I had [CONTEXT:INDEF_FAMILY_RELATIONSHIP] named [CONTEXT:HIST_FIG:TRANS_NAME]"
+        ]
+    },
+    {
+        "id": "FAMILY_RELATIONSHIP_SPEC",
+        "lines": [
+            "my [CONTEXT:FAMILY_RELATIONSHIP] is named [CONTEXT:HIST_FIG:TRANS_NAME]"
+        ]
+    },
+    {
+        "id": "FAMILY_RELATIONSHIP_SPEC_DEAD",
+        "lines": [
+            "my [CONTEXT:FAMILY_RELATIONSHIP] was named [CONTEXT:HIST_FIG:TRANS_NAME]"
+        ]
+    },
+    {
+        "id": "GENERAL",
+        "lines": [
+            "whose cries for mercy went unheeded by my wrath",
+            "whose insignificant name I struggle to recall",
+            "a spineless slug who was crushed under my might",
+            "whom I buried alive under a mountain of hatred",
+            "who lies dead, now only an embarrassing memory",
+            "who sought my praise, only to be rejected in death",
+            "once revered by those who didn't know any better"
+        ]
+    },
+    {
+        "id": "GOODBYE_WORSHIP_1",
+        "lines": [
+            "upon arising in the mornings,",
+            "when going on a long journey,",
+            "before retiring in the evening,",
+            "as sure as I am here now,",
+            "and lo,",
+            "it cannot be said enough;",
+            "these are dangerous times, so",
+            "I say again",
+            "yes,",
+            "before every meal,",
+            "whenever the tide turns,",
+            "when you return to this place,",
+            "when you arrive at your destination,",
+            "at this juncture in your life,"
+        ]
+    },
+    {
+        "id": "GOODBYE_WORSHIP_2",
+        "lines": [
+            "don't forget to",
+            "always remember to",
+            "it would be wise to",
+            "you should",
+            "you must",
+            "prudence demands that you",
+            "even for a moment",
+            "follow my advice and",
+            "heed my words and",
+            "remember to",
+            "show devotion and"
+        ]
+    },
+    {
+        "id": "GOODBYE_WORSHIP_3",
+        "lines": [
+            "speak the praises of [SPEAKER:HF_LINK:DEITY:TRANS_NAME]",
+            "speak the praises of [SPEAKER:HF_LINK:DEITY:RANDOM_DEF_SPHERE]",
+            "go with [SPEAKER:HF_LINK:DEITY:TRANS_NAME]",
+            "go with [SPEAKER:HF_LINK:DEITY:RANDOM_DEF_SPHERE]",
+            "put your faith in [SPEAKER:HF_LINK:DEITY:TRANS_NAME]",
+            "put your faith in [SPEAKER:HF_LINK:DEITY:RANDOM_DEF_SPHERE]",
+            "experience [SPEAKER:HF_LINK:DEITY:TRANS_NAME]",
+            "experience [SPEAKER:HF_LINK:DEITY:RANDOM_DEF_SPHERE]",
+            "consider [SPEAKER:HF_LINK:DEITY:TRANS_NAME]",
+            "consider [SPEAKER:HF_LINK:DEITY:RANDOM_DEF_SPHERE]",
+            "give yourself to [SPEAKER:HF_LINK:DEITY:TRANS_NAME]",
+            "give yourself to [SPEAKER:HF_LINK:DEITY:RANDOM_DEF_SPHERE]"
+        ]
+    },
+    {
+        "id": "GREET",
+        "lines": [
+            "Greetings.  My name is [SPEAKER:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "GREET_BABY",
+        "lines": [
+            "Hellooo!",
+            "Look at you!",
+            "A baby!  How adorable!"
+        ]
+    },
+    {
+        "id": "GREET_REPLY",
+        "lines": [
+            "Ah, hello.  I'm [SPEAKER:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "GREET_REPLY_AFTER_HERO",
+        "lines": [
+            "I am [SPEAKER:TRANS_NAME].  Can I be of some help?",
+            "I am [SPEAKER:TRANS_NAME].  How can I be of service?"
+        ]
+    },
+    {
+        "id": "GREET_REPLY_DIFF_LANGUAGE",
+        "lines": [
+            "Hello, [AUDIENCE:RACE].  I am [SPEAKER:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "GREET_REPLY_UNUSUAL_FIRST",
+        "lines": [
+            "You know, you don't meet many people with the name [AUDIENCE:FIRST_NAME].",
+            "So, [AUDIENCE:FIRST_NAME]...   [AUDIENCE:FIRST_NAME], was it?"
+        ]
+    },
+    {
+        "id": "GREET_WORSHIP",
+        "lines": [
+            "Praise be to [SPEAKER:HF_LINK:DEITY:TRANS_NAME].",
+            "Praise [SPEAKER:HF_LINK:DEITY:RANDOM_DEF_SPHERE].",
+            "Life is, in a word, [SPEAKER:HF_LINK:DEITY:RANDOM_DEF_SPHERE].",
+            "This servant of [SPEAKER:HF_LINK:DEITY:TRANS_NAME] greets you.",
+            "This servant of [SPEAKER:HF_LINK:DEITY:RANDOM_DEF_SPHERE] greets you."
+        ]
+    },
+    {
+        "id": "GUARD_PROFESSION",
+        "lines": [
+            "I am a guard."
+        ]
+    },
+    {
+        "id": "GUARD_WARNING",
+        "lines": [
+            "Don't start any trouble."
+        ]
+    },
+    {
+        "id": "HIST_FIG_SLAYER",
+        "lines": [
+            "It is I that felled [CONTEXT:HIST_FIG:TRANS_NAME] the [CONTEXT:HIST_FIG:RACE]."
+        ]
+    },
+    {
+        "id": "HUNTING_PROFESSION",
+        "lines": [
+            "I hunt great beasts in [CONTEXT:PLACE:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "HUNTING_PROFESSION_YEAR",
+        "lines": [
+            "I have hunted great beasts in [CONTEXT:PLACE:TRANS_NAME] for [CONTEXT:NUMBER] of my years."
+        ]
+    },
+    {
+        "id": "JUSTIFICATION_ANTITHETICAL",
+        "lines": [
+            "can be thought of as the antithesis of"
+        ]
+    },
+    {
+        "id": "JUSTIFICATION_EXPERIENCE",
+        "lines": [
+            "can allow one to experience"
+        ]
+    },
+    {
+        "id": "JUSTIFICATION_PROXIMITY",
+        "lines": [
+            "can bring one near to"
+        ]
+    },
+    {
+        "id": "JUSTIFICATION_REMINDER",
+        "lines": [
+            "can remind one of"
+        ]
+    },
+    {
+        "id": "JUSTIFICATION_REPRESENTATION",
+        "lines": [
+            "can be thought of as a representation of"
+        ]
+    },
+    {
+        "id": "MERCENARY_PROFESSION",
+        "lines": [
+            "I seek fortune and glory by offering my skill at arms in [CONTEXT:PLACE:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "MERCENARY_PROFESSION_YEAR",
+        "lines": [
+            "I have sought fortune and glory by offering my skill at arms in [CONTEXT:PLACE:TRANS_NAME] for [CONTEXT:NUMBER] of my years."
+        ]
+    },
+    {
+        "id": "NO_FAMILY",
+        "lines": [
+            "I have no family to speak of"
+        ]
+    },
+    {
+        "id": "PAST_HUNTING_PROFESSION",
+        "lines": [
+            "In the past, I hunted great beasts.",
+            "I was a hunter of mighty beasts for [CONTEXT:NUMBER] of my years."
+        ]
+    },
+    {
+        "id": "PAST_MERCENARY_PROFESSION",
+        "lines": [
+            "In the past, I sought fortune and glory by offering my skill at arms.",
+            "I sought fortune and glory by offering my skill at arms for [CONTEXT:NUMBER] of my years."
+        ]
+    },
+    {
+        "id": "PAST_PROFESSION_NO_YEAR",
+        "lines": [
+            "I was once a [CONTEXT:UNIT_NAME]."
+        ]
+    },
+    {
+        "id": "PAST_PROFESSION_YEAR",
+        "lines": [
+            "I was a [CONTEXT:UNIT_NAME] for [CONTEXT:NUMBER] of the years of my life."
+        ]
+    },
+    {
+        "id": "PAST_SNATCHER_PROFESSION",
+        "lines": [
+            "Once it was my calling to rescue lost children.",
+            "For [CONTEXT:NUMBER] of my years, I rescued lost children."
+        ]
+    },
+    {
+        "id": "PAST_THIEF_PROFESSION",
+        "lines": [
+            "I once sought great treasures.",
+            "I sought great treasures for [CONTEXT:NUMBER] of my years."
+        ]
+    },
+    {
+        "id": "PAST_WANDERING_PROFESSION",
+        "lines": [
+            "I once wandered the wilds.",
+            "For [CONTEXT:NUMBER] of my years, I wandered the wilds."
+        ]
+    },
+    {
+        "id": "POSITIVE",
+        "lines": [
+            "fantastic!",
+            "wonderful!",
+            "I'm thrilled to hear that.",
+            "I'm pleased to hear that.",
+            "that is good news.",
+            "that is wonderful news.",
+            "this is encouraging.",
+            "very good.",
+            "I'm proud of you.",
+            "that is a good turn of affairs."
+        ]
+    },
+    {
+        "id": "SAME_SITE_AB_SPECIFIC_HF_SEEKER",
+        "lines": [
+            "seek out [CONTEXT:HIST_FIG:TRANS_NAME] here in [CONTEXT:SITE:TRANS_NAME] at [CONTEXT:ABSTRACT_BUILDING:TRANS_NAME]"
+        ]
+    },
+    {
+        "id": "SAME_SITE_SPECIFIC_HF_SEEKER",
+        "lines": [
+            "seek out [CONTEXT:HIST_FIG:TRANS_NAME] here in [CONTEXT:SITE:TRANS_NAME]"
+        ]
+    },
+    {
+        "id": "SECRET_DEATH",
+        "lines": [
+            "Annihilation",
+            "Bereavement",
+            "Death",
+            "Demise",
+            "Departure",
+            "Doom",
+            "Dying",
+            "Eternal Rest",
+            "Expiration",
+            "Extinction",
+            "Mortality",
+            "Immortality",
+            "Loss",
+            "Oblivion",
+            "Parting",
+            "Ruin",
+            "Ruination",
+            "Sleep",
+            "the Afterlife",
+            "the End",
+            "the Grave"
+        ]
+    },
+    {
+        "id": "SITE_SPECIFIC_HF_SEEKER",
+        "lines": [
+            "seek out [CONTEXT:HIST_FIG:TRANS_NAME] over in [CONTEXT:SITE:TRANS_NAME]"
+        ]
+    },
+    {
+        "id": "SLAYER",
+        "lines": [
+            "bane",
+            "conqueror",
+            "death",
+            "foe",
+            "killer",
+            "lord",
+            "master",
+            "nemesis",
+            "slayer",
+            "vanquisher",
+            "murderer",
+            "crusher",
+            "extinguisher",
+            "strangler"
+        ]
+    },
+    {
+        "id": "SNATCHER_PROFESSION",
+        "lines": [
+            "I rescue lost children and bring them back to [CONTEXT:PLACE:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "SNATCHER_PROFESSION_YEAR",
+        "lines": [
+            "For [CONTEXT:NUMBER] of my years, I have been rescuing lost children and bringing them back to [CONTEXT:PLACE:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "SOLDIER_PROFESSION",
+        "lines": [
+            "I am a soldier."
+        ]
+    },
+    {
+        "id": "TASK_RECOMMENDATION",
+        "lines": []
+    },
+    {
+        "id": "TEMPLE_ALREADY_MEMBER",
+        "lines": [
+            "simply",
+            "it is enough to",
+            "your task is simple;",
+            "just",
+            "all you need is to"
+        ]
+    },
+    {
+        "id": "TEMPLE_BECOME_MEMBER",
+        "lines": [
+            "Welcome to [CONTEXT:ENTITY:TRANS_NAME].  Praise be to [CONTEXT:ENTITY:WORSHIP_HF:TRANS_NAME]!",
+            "Welcome to [CONTEXT:ENTITY:TRANS_NAME].  Praise be to [CONTEXT:ENTITY:WORSHIP_HF:RANDOM_DEF_SPHERE]!",
+            "As a member of [CONTEXT:ENTITY:TRANS_NAME], you can now seek the higher mysteries of [CONTEXT:ENTITY:WORSHIP_HF:TRANS_NAME].",
+            "As a member of [CONTEXT:ENTITY:TRANS_NAME], you can now seek the higher mysteries of [CONTEXT:ENTITY:WORSHIP_HF:RANDOM_DEF_SPHERE]."
+        ]
+    },
+    {
+        "id": "THIEF_PROFESSION",
+        "lines": [
+            "I seek treasures and bring them back to [CONTEXT:PLACE:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "THIEF_PROFESSION_YEAR",
+        "lines": [
+            "I seek treasures and bring them back to [CONTEXT:PLACE:TRANS_NAME] and have done so for [CONTEXT:NUMBER] of the years of my life."
+        ]
+    },
+    {
+        "id": "THREAT",
+        "lines": [
+            "Prepare to die!"
+        ]
+    },
+    {
+        "id": "UNKNOWN_HF_SEEKER",
+        "lines": [
+            "seek out [CONTEXT:HIST_FIG:TRANS_NAME], wherever [CONTEXT:HIST_FIG:PRO_SUB] might be"
+        ]
+    },
+    {
+        "id": "WANDERING_PROFESSION",
+        "lines": [
+            "I wander [CONTEXT:PLACE:TRANS_NAME]."
+        ]
+    },
+    {
+        "id": "WANDERING_PROFESSION_YEAR",
+        "lines": [
+            "I have wandered [CONTEXT:PLACE:TRANS_NAME] for [CONTEXT:NUMBER] of my years."
+        ]
+    },
+    {
+        "id": "SLAIN_DWARF",
+        "lines": [
+            "who was too short to live",
+            "who tunneled away from me like a frightened mole",
+            "who sucked plump helmets like a purring maggot",
+            "whose hammer shattered on the anvil of my power",
+            "who forged [PRO_POS] own doom by challenging me",
+            "who was returned to the rock and muck from which it was spawned",
+            "whose tall tales of bravery were all the more embarrassing because of [PRO_POS] height"
+        ]
+    },
+    {
+        "id": "SLAIN_ELF",
+        "lines": [
+            "who was felled like a slender sapling",
+            "whom I sent back to the home-tree as fertilizer",
+            "whose fragile bones shattered before the power of my contempt",
+            "who came down from the home-tree and was devoured",
+            "who should have stayed in the trees when the real elves came down to fight"
+        ]
+    },
+    {
+        "id": "LAIR_HUNTER_MINOTAUR",
+        "lines": [
+            "I want your bones for my bone mill!",
+            "I'll grind you into porridge!",
+            "I'll eat you whole!"
+        ]
+    }
+]

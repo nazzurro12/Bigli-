@@ -1,0 +1,27 @@
+RENDIMIENTO FASE 3
+
+1. DFWorldSites
+- MAX_LOCAL_MATERIALIZED_SITES = 1.
+- MAX_ACTIVE_SITE_RESIDENTS = 12.
+- Selección determinista del sitio más cercano al embarque.
+- Las familias restantes permanecen en el blueprint abstracto.
+- Menor densidad de estanterías físicas.
+
+2. DFDwarf
+- Ruta de ejecución ligera para is_world_settlement_resident.
+- Necesidades básicas actualizadas solamente por minuto de juego.
+- Movimiento con camino cacheado por destino.
+- Sin comprobación global de colisiones para residentes históricos.
+
+3. DFMain
+- Actualización escalonada por ID de residentes históricos.
+- Exclusión de DFDwarf humano del tick genérico de criaturas.
+- Limpieza automática de residentes detallados excedentes en partidas existentes.
+- Eliminación del segundo queue_redraw por frame.
+
+4. DFRenderer
+- Límite de reconstrucción visual a 60 Hz.
+- Cache de entidades limitada al rectángulo visible.
+- Artefactos y barras de vida procesados solo para entidades visibles.
+- Cache espacial de stockpiles.
+- Filtro de edificios fuera de cámara.

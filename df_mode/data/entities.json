@@ -1,0 +1,142 @@
+[
+    {
+        "id": "MOUNTAIN",
+        "weapons": [
+            "ITEM_WEAPON_AXE_BATTLE",
+            "ITEM_WEAPON_HAMMER_WAR",
+            "ITEM_WEAPON_SWORD_SHORT",
+            "ITEM_WEAPON_SPEAR",
+            "ITEM_WEAPON_MACE",
+            "ITEM_WEAPON_CROSSBOW",
+            "ITEM_WEAPON_AXE_TRAINING",
+            "ITEM_WEAPON_SWORD_SHORT_TRAINING",
+            "ITEM_WEAPON_SPEAR_TRAINING"
+        ],
+        "armor": [
+            "ITEM_ARMOR_BREASTPLATE",
+            "ITEM_ARMOR_MAIL_SHIRT",
+            "ITEM_ARMOR_LEATHER",
+            "ITEM_ARMOR_COAT",
+            "ITEM_ARMOR_SHIRT",
+            "ITEM_ARMOR_CLOAK",
+            "ITEM_ARMOR_TUNIC",
+            "ITEM_ARMOR_TOGA",
+            "ITEM_ARMOR_VEST",
+            "ITEM_ARMOR_DRESS",
+            "ITEM_ARMOR_ROBE"
+        ]
+    },
+    {
+        "id": "FOREST",
+        "weapons": [
+            "ITEM_WEAPON_SWORD_SHORT",
+            "ITEM_WEAPON_SPEAR",
+            "ITEM_WEAPON_BOW",
+            "ITEM_WEAPON_SWORD_LONG"
+        ],
+        "armor": [
+            "ITEM_ARMOR_BREASTPLATE",
+            "ITEM_ARMOR_MAIL_SHIRT",
+            "ITEM_ARMOR_COAT",
+            "ITEM_ARMOR_SHIRT",
+            "ITEM_ARMOR_CLOAK",
+            "ITEM_ARMOR_TUNIC",
+            "ITEM_ARMOR_TOGA",
+            "ITEM_ARMOR_CAPE",
+            "ITEM_ARMOR_VEST",
+            "ITEM_ARMOR_DRESS",
+            "ITEM_ARMOR_ROBE"
+        ]
+    },
+    {
+        "id": "PLAINS",
+        "weapons": [
+            "ITEM_WEAPON_WHIP",
+            "ITEM_WEAPON_AXE_BATTLE",
+            "ITEM_WEAPON_HAMMER_WAR",
+            "ITEM_WEAPON_SWORD_SHORT",
+            "ITEM_WEAPON_SPEAR",
+            "ITEM_WEAPON_MACE",
+            "ITEM_WEAPON_CROSSBOW",
+            "ITEM_WEAPON_BOW",
+            "ITEM_WEAPON_PIKE",
+            "ITEM_WEAPON_HALBERD",
+            "ITEM_WEAPON_SWORD_2H",
+            "ITEM_WEAPON_SWORD_LONG",
+            "ITEM_WEAPON_MAUL",
+            "ITEM_WEAPON_AXE_GREAT",
+            "ITEM_WEAPON_FLAIL",
+            "ITEM_WEAPON_MORNINGSTAR",
+            "ITEM_WEAPON_SCIMITAR",
+            "ITEM_WEAPON_AXE_TRAINING",
+            "ITEM_WEAPON_SWORD_SHORT_TRAINING",
+            "ITEM_WEAPON_SPEAR_TRAINING"
+        ],
+        "armor": [
+            "ITEM_ARMOR_BREASTPLATE",
+            "ITEM_ARMOR_MAIL_SHIRT",
+            "ITEM_ARMOR_LEATHER",
+            "ITEM_ARMOR_COAT",
+            "ITEM_ARMOR_SHIRT",
+            "ITEM_ARMOR_CLOAK",
+            "ITEM_ARMOR_TUNIC",
+            "ITEM_ARMOR_TOGA",
+            "ITEM_ARMOR_CAPE",
+            "ITEM_ARMOR_VEST",
+            "ITEM_ARMOR_DRESS",
+            "ITEM_ARMOR_ROBE"
+        ]
+    },
+    {
+        "id": "EVIL",
+        "weapons": [
+            "ITEM_WEAPON_WHIP",
+            "ITEM_WEAPON_AXE_BATTLE",
+            "ITEM_WEAPON_HAMMER_WAR",
+            "ITEM_WEAPON_SWORD_SHORT",
+            "ITEM_WEAPON_SPEAR",
+            "ITEM_WEAPON_MACE",
+            "ITEM_WEAPON_CROSSBOW",
+            "ITEM_WEAPON_BOW",
+            "ITEM_WEAPON_PIKE",
+            "ITEM_WEAPON_HALBERD",
+            "ITEM_WEAPON_SWORD_2H",
+            "ITEM_WEAPON_SWORD_LONG",
+            "ITEM_WEAPON_MAUL",
+            "ITEM_WEAPON_AXE_GREAT",
+            "ITEM_WEAPON_DAGGER_LARGE",
+            "ITEM_WEAPON_SCOURGE",
+            "ITEM_WEAPON_FLAIL",
+            "ITEM_WEAPON_MORNINGSTAR",
+            "ITEM_WEAPON_SCIMITAR"
+        ],
+        "armor": [
+            "ITEM_ARMOR_BREASTPLATE",
+            "ITEM_ARMOR_MAIL_SHIRT",
+            "ITEM_ARMOR_LEATHER",
+            "ITEM_ARMOR_CLOAK",
+            "ITEM_ARMOR_TUNIC",
+            "ITEM_ARMOR_ROBE"
+        ]
+    },
+    {
+        "id": "SKULKING",
+        "weapons": [
+            "ITEM_WEAPON_SWORD_SHORT",
+            "ITEM_WEAPON_SPEAR",
+            "ITEM_WEAPON_BOW",
+            "ITEM_WEAPON_DAGGER_LARGE"
+        ],
+        "armor": [
+            "ITEM_ARMOR_TUNIC"
+        ]
+    },
+    {
+        "id": "SUBTERRANEAN_ANIMAL_PEOPLES",
+        "weapons": [
+            "ITEM_WEAPON_SPEAR",
+            "ITEM_WEAPON_BLOWGUN"
+        ],
+        "armor": []
+    }
+]

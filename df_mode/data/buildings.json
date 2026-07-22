@@ -1,0 +1,20 @@
+[
+    {
+        "id": "SOAP_MAKER",
+        "type": "BUILDING_WORKSHOP",
+        "name": "Soap Maker's Workshop",
+        "dim": [
+            3,
+            3
+        ]
+    },
+    {
+        "id": "SCREW_PRESS",
+        "type": "BUILDING_WORKSHOP",
+        "name": "Screw Press",
+        "dim": [
+            1,
+            1
+        ]
+    }
+]

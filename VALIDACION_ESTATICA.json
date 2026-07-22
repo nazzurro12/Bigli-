@@ -1,0 +1,98 @@
+[
+  {
+    "file": "df_mode/df_chronicle_db.gd",
+    "lines": 78,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_dwarf.gd",
+    "lines": 5988,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_main.gd",
+    "lines": 4319,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_renderer.gd",
+    "lines": 2876,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_save_load.gd",
+    "lines": 1624,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_stockpile.gd",
+    "lines": 97,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_workshop.gd",
+    "lines": 641,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_world_gen.gd",
+    "lines": 1225,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_world_history.gd",
+    "lines": 1458,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_world_hydrology.gd",
+    "lines": 253,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "df_mode/df_world_sites.gd",
+    "lines": 1052,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  },
+  {
+    "file": "world/world_generation_settings.gd",
+    "lines": 16,
+    "balanced": true,
+    "errors": [],
+    "duplicate_functions": [],
+    "mixed_indent_lines": []
+  }
+]

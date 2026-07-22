@@ -1,0 +1,34 @@
+BIGLIWORLD — SIMULACIÓN CONTINUA DE NPC SIN VOLVERLOS ABSTRACTOS
+
+QUÉ CORRIGE
+- Revierte la eliminación de residentes históricos introducida por el parche de rendimiento.
+- Ya no se limita una aldea a 12 personas activas.
+- Hasta 40 residentes por sitio vuelven a existir como entidades persistentes.
+- Hasta dos asentamientos cercanos pueden materializarse físicamente.
+- Los residentes conservan necesidades, emociones, memoria, heridas, relaciones, inventario, familia, vivienda, trabajo y rutas.
+- Siguen actualizándose aunque estén fuera de la cámara.
+
+CÓMO SE CONTROLA EL RENDIMIENTO
+- No se borra ni se convierte a los NPC en simples estadísticas.
+- Los residentes se distribuyen entre cuatro grupos temporales.
+- Cada tick procesa solamente uno de esos grupos, pero todos continúan avanzando.
+- El renderer conserva la optimización que solo dibuja entidades visibles.
+- Las rutas de residentes se conservan mientras el destino no cambie.
+
+IMPORTANTE SOBRE PARTIDAS YA AFECTADAS
+El parche anterior pudo borrar residentes de world.entities durante la partida. Esta reparación impide que vuelva a ocurrir, pero no puede reconstruir de forma segura personas que ya fueron eliminadas de una partida guardada sin duplicar edificios o familias.
+
+Para comprobar la población completa, crea un mundo nuevo. También puedes cargar una partida guardada antes de instalar el parche de rendimiento anterior.
+
+INSTALACIÓN
+1. Cierra Godot.
+2. Extrae este ZIP directamente en F:\cacaneitor3000\Bigliworld\
+3. Acepta reemplazar:
+   df_mode\df_dwarf.gd
+   df_mode\df_main.gd
+   df_mode\df_world_sites.gd
+4. Borra F:\cacaneitor3000\Bigliworld\.godot
+5. Abre Godot.
+
+ALCANCE
+Esta reparación restaura la simulación completa existente de los residentes y elimina la abstracción destructiva. No convierte todavía cada profesión histórica en una economía tan profunda como la colonia principal. El siguiente bloque técnico será hacer que granjeros, carpinteros, cocineros, comerciantes y guardias produzcan y consuman recursos físicos mediante trabajos persistentes.

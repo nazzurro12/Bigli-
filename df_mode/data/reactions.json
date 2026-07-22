@@ -1,0 +1,457 @@
+[
+    {
+        "id": "MAKE WOODEN CHAIR",
+        "name": "Make wooden chair",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN TABLE",
+        "name": "Make wooden table",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN BED",
+        "name": "Make wooden bed",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN CHEST",
+        "name": "Make wooden chest",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN CABINET",
+        "name": "Make wooden cabinet",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN DOOR",
+        "name": "Make wooden door",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN BARREL",
+        "name": "Make wooden barrel",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN BUCKET",
+        "name": "Make wooden bucket",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN CASKET",
+        "name": "Make wooden casket",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN HATCH COVER",
+        "name": "Make wooden hatch cover",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN GRATE",
+        "name": "Make wooden grate",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN BIN",
+        "name": "Make wooden bin",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN STEPLADDER",
+        "name": "Make wooden stepladder",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN BOOKCASE",
+        "name": "Make wooden bookcase",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN SPLINT",
+        "name": "Make wooden splint",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN CRUTCH",
+        "name": "Make wooden crutch",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN SHIELD",
+        "name": "Make wooden shield",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN BUCKLER",
+        "name": "Make wooden buckler",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN TRAINING AXE",
+        "name": "Make wooden training axe",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN TRAINING SHORT SWORD",
+        "name": "Make wooden training short sword",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN TRAINING SPEAR",
+        "name": "Make wooden training spear",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "MAKE WOODEN PEDESTAL",
+        "name": "Make wooden pedestal",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "TAN_A_HIDE",
+        "name": "Tan a hide",
+        "building": "TANNER"
+    },
+    {
+        "id": "RENDER_FAT",
+        "name": "Render fat",
+        "building": "KITCHEN"
+    },
+    {
+        "id": "MAKE_SOAP_FROM_TALLOW",
+        "name": "Make soap from tallow",
+        "building": "SOAP_MAKER"
+    },
+    {
+        "id": "MAKE_SOAP_FROM_OIL",
+        "name": "Make soap from oil",
+        "building": "SOAP_MAKER"
+    },
+    {
+        "id": "MAKE_PEARLASH",
+        "name": "Make pearlash",
+        "building": "KILN"
+    },
+    {
+        "id": "MAKE_PLASTER_POWDER",
+        "name": "Make plaster powder",
+        "building": "KILN"
+    },
+    {
+        "id": "MAKE_SHARP_ROCK",
+        "name": "Make sharp rock",
+        "building": ""
+    },
+    {
+        "id": "MILL_SEEDS_NUTS_TO_PASTE",
+        "name": "Mill seeds/nuts to paste",
+        "building": "MILLSTONE"
+    },
+    {
+        "id": "MAKE_CLAY_JUG",
+        "name": "Make clay jug",
+        "building": "KILN"
+    },
+    {
+        "id": "MAKE_CLAY_BRICKS",
+        "name": "Make clay bricks",
+        "building": "KILN"
+    },
+    {
+        "id": "MAKE_CLAY_STATUE",
+        "name": "Make clay statue",
+        "building": "KILN"
+    },
+    {
+        "id": "MAKE_LARGE_CLAY_POT",
+        "name": "Make large clay pot",
+        "building": "KILN"
+    },
+    {
+        "id": "MAKE_CLAY_CRAFTS",
+        "name": "Make clay crafts",
+        "building": "KILN"
+    },
+    {
+        "id": "GLAZE_JUG",
+        "name": "Glaze clay/stone jug",
+        "building": "KILN"
+    },
+    {
+        "id": "GLAZE_STATUE",
+        "name": "Glaze clay/stone statue",
+        "building": "KILN"
+    },
+    {
+        "id": "GLAZE_LARGE_POT",
+        "name": "Glaze large clay/stone pot",
+        "building": "KILN"
+    },
+    {
+        "id": "GLAZE_CRAFT",
+        "name": "Glaze clay/stone craft",
+        "building": "KILN"
+    },
+    {
+        "id": "PRESS_OIL",
+        "name": "Press liquid from paste",
+        "building": "SCREW_PRESS"
+    },
+    {
+        "id": "PRESS_OIL_FRUIT",
+        "name": "Press liquid from fruit",
+        "building": "SCREW_PRESS"
+    },
+    {
+        "id": "MAKE_CLAY_HIVE",
+        "name": "Make clay hive",
+        "building": "KILN"
+    },
+    {
+        "id": "PRESS_HONEYCOMB",
+        "name": "Press honey from honeycomb",
+        "building": "SCREW_PRESS"
+    },
+    {
+        "id": "MAKE_WAX_CRAFTS",
+        "name": "Make wax crafts",
+        "building": "CRAFTSMAN"
+    },
+    {
+        "id": "BREW_DRINK_FROM_PLANT",
+        "name": "Brew drink from plant",
+        "building": "STILL"
+    },
+    {
+        "id": "BREW_DRINK_FROM_PLANT_GROWTH",
+        "name": "Brew drink from fruit",
+        "building": "STILL"
+    },
+    {
+        "id": "MAKE_MEAD",
+        "name": "Make mead",
+        "building": "STILL"
+    },
+    {
+        "id": "PROCESS_PLANT_TO_BAG",
+        "name": "Process plant to bag",
+        "building": "FARMER"
+    },
+    {
+        "id": "MAKE_QUICKLIME",
+        "name": "Make quicklime",
+        "building": "KILN"
+    },
+    {
+        "id": "MAKE_MILK_OF_LIME",
+        "name": "Make milk of lime",
+        "building": "ASHERY"
+    },
+    {
+        "id": "MAKE_PARCHMENT",
+        "name": "Make parchment",
+        "building": "TANNER"
+    },
+    {
+        "id": "MAKE_SCROLL",
+        "name": "Make scroll",
+        "building": "CRAFTSMAN"
+    },
+    {
+        "id": "MAKE_QUIRE",
+        "name": "Make quire",
+        "building": "CRAFTSMAN"
+    },
+    {
+        "id": "MAKE_SHEET_FROM_PLANT",
+        "name": "Make sheet from plant",
+        "building": "FARMER"
+    },
+    {
+        "id": "MAKE_SLURRY_FROM_PLANT",
+        "name": "Mash plant into slurry",
+        "building": "MILLSTONE"
+    },
+    {
+        "id": "PRESS_PLANT_PAPER",
+        "name": "Press plant slurry into paper sheet",
+        "building": "SCREW_PRESS"
+    },
+    {
+        "id": "BIND_BOOK",
+        "name": "Bind book",
+        "building": "CRAFTSMAN"
+    },
+    {
+        "id": "CARVE_BONE_FIGURINE",
+        "name": "Carve bone figurine",
+        "building": ""
+    },
+    {
+        "id": "CARVE_BONE_RING",
+        "name": "Carve bone ring",
+        "building": ""
+    },
+    {
+        "id": "CARVE_BONE_EARRING",
+        "name": "Carve bone earring",
+        "building": ""
+    },
+    {
+        "id": "CARVE_BONE_SCEPTER",
+        "name": "Carve bone scepter",
+        "building": ""
+    },
+    {
+        "id": "CARVE_BONE_AMULET",
+        "name": "Carve bone amulet",
+        "building": ""
+    },
+    {
+        "id": "CARVE_BONE_BRACELET",
+        "name": "Carve bone bracelet",
+        "building": ""
+    },
+    {
+        "id": "CARVE_BONE_CROWN",
+        "name": "Carve bone crown",
+        "building": ""
+    },
+    {
+        "id": "CARVE_BONE_GEM",
+        "name": "Carve bone cabochon",
+        "building": ""
+    },
+    {
+        "id": "CARVE_WOODEN_HELVE",
+        "name": "Carve wooden helve from branch",
+        "building": ""
+    },
+    {
+        "id": "ASSEMBLE STONE AXE",
+        "name": "Assemble stone axe",
+        "building": ""
+    },
+    {
+        "id": "MAKE WOODEN DISPLAY CASE",
+        "name": "Make display case",
+        "building": "CARPENTER"
+    },
+    {
+        "id": "BITUMINOUS_COAL_TO_COKE",
+        "name": "Make coke from bituminous coal",
+        "building": "SMELTER"
+    },
+    {
+        "id": "LIGNITE_TO_COKE",
+        "name": "Make coke from lignite",
+        "building": "SMELTER"
+    },
+    {
+        "id": "BRASS_MAKING",
+        "name": "Make brass bars (use ore)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "BRASS_MAKING2",
+        "name": "Make brass bars (use bars)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "BRONZE_MAKING",
+        "name": "Make bronze bars (use ore)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "BRONZE_MAKING2",
+        "name": "Make bronze bars (use bars)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "ELECTRUM_MAKING",
+        "name": "Make electrum bars (use ore)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "ELECTRUM_MAKING2",
+        "name": "Make electrum bars (use bars)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "BILLON_MAKING",
+        "name": "Make billon bars (use ore)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "BILLON_MAKING2",
+        "name": "Make billon bars (use bars)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "PEWTER_FINE_MAKING",
+        "name": "Make fine pewter bars (use ore)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "PEWTER_FINE_MAKING2",
+        "name": "Make fine pewter bars (use bars)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "PEWTER_TRIFLE_MAKING",
+        "name": "Make trifle pewter bars (use ore)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "PEWTER_TRIFLE_MAKING2",
+        "name": "Make trifle pewter bars (use bars)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "PEWTER_LAY_MAKING",
+        "name": "Make lay pewter bars (use bars)",
+        "building": "SMELTER"
+    },
+    {
+        "id": "PIG_IRON_MAKING",
+        "name": "Make pig iron bars",
+        "building": "SMELTER"
+    },
+    {
+        "id": "STEEL_MAKING",
+        "name": "Make steel bars",
+        "building": "SMELTER"
+    },
+    {
+        "id": "NICKEL_SILVER_MAKING",
+        "name": "Make nickel silver bars",
+        "building": "SMELTER"
+    },
+    {
+        "id": "BLACK_BRONZE_MAKING",
+        "name": "Make black bronze bars",
+        "building": "SMELTER"
+    },
+    {
+        "id": "STERLING_SILVER_MAKING",
+        "name": "Make sterling silver bars",
+        "building": "SMELTER"
+    },
+    {
+        "id": "ROSE_GOLD_MAKING",
+        "name": "Make rose gold bars",
+        "building": "SMELTER"
+    },
+    {
+        "id": "BISMUTH_BRONZE_MAKING",
+        "name": "Make bismuth bronze bars",
+        "building": "SMELTER"
+    },
+    {
+        "id": "ADAMANTINE_WAFERS",
+        "name": "Make adamantine wafers",
+        "building": "SMELTER"
+    }
+]

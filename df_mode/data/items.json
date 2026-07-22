@@ -1,0 +1,668 @@
+[
+    {
+        "id": "ITEM_AMMO_BOLTS",
+        "type": "ITEM_AMMO",
+        "name": "Bolt",
+        "size": 150
+    },
+    {
+        "id": "ITEM_AMMO_ARROWS",
+        "type": "ITEM_AMMO",
+        "name": "Arrow",
+        "size": 150
+    },
+    {
+        "id": "ITEM_AMMO_BLOWDARTS",
+        "type": "ITEM_AMMO",
+        "name": "Blowdart",
+        "size": 20
+    },
+    {
+        "id": "ITEM_ARMOR_BREASTPLATE",
+        "type": "ITEM_ARMOR",
+        "name": "Breastplate",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_MAIL_SHIRT",
+        "type": "ITEM_ARMOR",
+        "name": "Mail shirt",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_LEATHER",
+        "type": "ITEM_ARMOR",
+        "name": "Armor",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_COAT",
+        "type": "ITEM_ARMOR",
+        "name": "Coat",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_SHIRT",
+        "type": "ITEM_ARMOR",
+        "name": "Shirt",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_CLOAK",
+        "type": "ITEM_ARMOR",
+        "name": "Cloak",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_TUNIC",
+        "type": "ITEM_ARMOR",
+        "name": "Tunic",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_TOGA",
+        "type": "ITEM_ARMOR",
+        "name": "Toga",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_CAPE",
+        "type": "ITEM_ARMOR",
+        "name": "Cape",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_VEST",
+        "type": "ITEM_ARMOR",
+        "name": "Vest",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_DRESS",
+        "type": "ITEM_ARMOR",
+        "name": "Dress",
+        "size": 100
+    },
+    {
+        "id": "ITEM_ARMOR_ROBE",
+        "type": "ITEM_ARMOR",
+        "name": "Robe",
+        "size": 100
+    },
+    {
+        "id": "ITEM_FOOD_BISCUITS",
+        "type": "ITEM_FOOD",
+        "name": "Biscuits",
+        "size": 100
+    },
+    {
+        "id": "ITEM_FOOD_STEW",
+        "type": "ITEM_FOOD",
+        "name": "Stew",
+        "size": 100
+    },
+    {
+        "id": "ITEM_FOOD_ROAST",
+        "type": "ITEM_FOOD",
+        "name": "Roast",
+        "size": 100
+    },
+    {
+        "id": "ITEM_GLOVES_GAUNTLETS",
+        "type": "ITEM_GLOVES",
+        "name": "Gauntlet",
+        "size": 100
+    },
+    {
+        "id": "ITEM_GLOVES_GLOVES",
+        "type": "ITEM_GLOVES",
+        "name": "Glove",
+        "size": 100
+    },
+    {
+        "id": "ITEM_GLOVES_MITTENS",
+        "type": "ITEM_GLOVES",
+        "name": "Mitten",
+        "size": 100
+    },
+    {
+        "id": "ITEM_HELM_HELM",
+        "type": "ITEM_HELM",
+        "name": "Helm",
+        "size": 100
+    },
+    {
+        "id": "ITEM_HELM_CAP",
+        "type": "ITEM_HELM",
+        "name": "Cap",
+        "size": 100
+    },
+    {
+        "id": "ITEM_HELM_HOOD",
+        "type": "ITEM_HELM",
+        "name": "Hood",
+        "size": 100
+    },
+    {
+        "id": "ITEM_HELM_TURBAN",
+        "type": "ITEM_HELM",
+        "name": "Turban",
+        "size": 100
+    },
+    {
+        "id": "ITEM_HELM_MASK",
+        "type": "ITEM_HELM",
+        "name": "Mask",
+        "size": 100
+    },
+    {
+        "id": "ITEM_HELM_VEIL_HEAD",
+        "type": "ITEM_HELM",
+        "name": "Head veil",
+        "size": 100
+    },
+    {
+        "id": "ITEM_HELM_VEIL_FACE",
+        "type": "ITEM_HELM",
+        "name": "Face veil",
+        "size": 100
+    },
+    {
+        "id": "ITEM_HELM_SCARF_HEAD",
+        "type": "ITEM_HELM",
+        "name": "Headscarf",
+        "size": 100
+    },
+    {
+        "id": "ITEM_PANTS_PANTS",
+        "type": "ITEM_PANTS",
+        "name": "Trousers",
+        "size": 100
+    },
+    {
+        "id": "ITEM_PANTS_GREAVES",
+        "type": "ITEM_PANTS",
+        "name": "Greaves",
+        "size": 100
+    },
+    {
+        "id": "ITEM_PANTS_LEGGINGS",
+        "type": "ITEM_PANTS",
+        "name": "Leggings",
+        "size": 100
+    },
+    {
+        "id": "ITEM_PANTS_LOINCLOTH",
+        "type": "ITEM_PANTS",
+        "name": "Loincloth",
+        "size": 100
+    },
+    {
+        "id": "ITEM_PANTS_THONG",
+        "type": "ITEM_PANTS",
+        "name": "Thong",
+        "size": 100
+    },
+    {
+        "id": "ITEM_PANTS_SKIRT",
+        "type": "ITEM_PANTS",
+        "name": "Skirt",
+        "size": 100
+    },
+    {
+        "id": "ITEM_PANTS_SKIRT_SHORT",
+        "type": "ITEM_PANTS",
+        "name": "Skirt",
+        "size": 100
+    },
+    {
+        "id": "ITEM_PANTS_SKIRT_LONG",
+        "type": "ITEM_PANTS",
+        "name": "Skirt",
+        "size": 100
+    },
+    {
+        "id": "ITEM_PANTS_BRAIES",
+        "type": "ITEM_PANTS",
+        "name": "Braies",
+        "size": 100
+    },
+    {
+        "id": "ITEM_SHIELD_SHIELD",
+        "type": "ITEM_SHIELD",
+        "name": "Shield",
+        "size": 100
+    },
+    {
+        "id": "ITEM_SHIELD_BUCKLER",
+        "type": "ITEM_SHIELD",
+        "name": "Buckler",
+        "size": 100
+    },
+    {
+        "id": "ITEM_SHOES_SHOES",
+        "type": "ITEM_SHOES",
+        "name": "Shoe",
+        "size": 100
+    },
+    {
+        "id": "ITEM_SHOES_BOOTS",
+        "type": "ITEM_SHOES",
+        "name": "High boot",
+        "size": 100
+    },
+    {
+        "id": "ITEM_SHOES_BOOTS_LOW",
+        "type": "ITEM_SHOES",
+        "name": "Low boot",
+        "size": 100
+    },
+    {
+        "id": "ITEM_SHOES_SANDAL",
+        "type": "ITEM_SHOES",
+        "name": "Sandal",
+        "size": 100
+    },
+    {
+        "id": "ITEM_SHOES_CHAUSSE",
+        "type": "ITEM_SHOES",
+        "name": "Chausse",
+        "size": 100
+    },
+    {
+        "id": "ITEM_SHOES_SOCKS",
+        "type": "ITEM_SHOES",
+        "name": "Sock",
+        "size": 100
+    },
+    {
+        "id": "ITEM_SIEGEAMMO_BALLISTA",
+        "type": "ITEM_SIEGEAMMO",
+        "name": "Ballista arrow",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOOL_CAULDRON",
+        "type": "ITEM_TOOL",
+        "name": "Cauldron",
+        "size": 4000
+    },
+    {
+        "id": "ITEM_TOOL_LADLE",
+        "type": "ITEM_TOOL",
+        "name": "Ladle",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOOL_BOWL",
+        "type": "ITEM_TOOL",
+        "name": "Bowl",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOOL_MORTAR",
+        "type": "ITEM_TOOL",
+        "name": "Mortar",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOOL_PESTLE",
+        "type": "ITEM_TOOL",
+        "name": "Pestle",
+        "size": 20
+    },
+    {
+        "id": "ITEM_TOOL_KNIFE_CARVING",
+        "type": "ITEM_TOOL",
+        "name": "Carving knife",
+        "size": 150
+    },
+    {
+        "id": "ITEM_TOOL_KNIFE_BONING",
+        "type": "ITEM_TOOL",
+        "name": "Boning knife",
+        "size": 50
+    },
+    {
+        "id": "ITEM_TOOL_KNIFE_SLICING",
+        "type": "ITEM_TOOL",
+        "name": "Slicing knife",
+        "size": 150
+    },
+    {
+        "id": "ITEM_TOOL_KNIFE_MEAT_CLEAVER",
+        "type": "ITEM_TOOL",
+        "name": "Meat cleaver",
+        "size": 300
+    },
+    {
+        "id": "ITEM_TOOL_FORK_CARVING",
+        "type": "ITEM_TOOL",
+        "name": "Carving fork",
+        "size": 150
+    },
+    {
+        "id": "ITEM_TOOL_NEST_BOX",
+        "type": "ITEM_TOOL",
+        "name": "Nest box",
+        "size": 1000
+    },
+    {
+        "id": "ITEM_TOOL_JUG",
+        "type": "ITEM_TOOL",
+        "name": "Jug",
+        "size": 300
+    },
+    {
+        "id": "ITEM_TOOL_LARGE_POT",
+        "type": "ITEM_TOOL",
+        "name": "Pot",
+        "size": 5000
+    },
+    {
+        "id": "ITEM_TOOL_HIVE",
+        "type": "ITEM_TOOL",
+        "name": "Hive",
+        "size": 2000
+    },
+    {
+        "id": "ITEM_TOOL_HONEYCOMB",
+        "type": "ITEM_TOOL",
+        "name": "Honeycomb",
+        "size": 1000
+    },
+    {
+        "id": "ITEM_TOOL_POUCH",
+        "type": "ITEM_TOOL",
+        "name": "Pouch",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOOL_MINECART",
+        "type": "ITEM_TOOL",
+        "name": "Minecart",
+        "size": 40000
+    },
+    {
+        "id": "ITEM_TOOL_WHEELBARROW",
+        "type": "ITEM_TOOL",
+        "name": "Wheelbarrow",
+        "size": 30000
+    },
+    {
+        "id": "ITEM_TOOL_STEPLADDER",
+        "type": "ITEM_TOOL",
+        "name": "Stepladder",
+        "size": 40000
+    },
+    {
+        "id": "ITEM_TOOL_SCROLL_ROLLERS",
+        "type": "ITEM_TOOL",
+        "name": "Scroll rollers",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOOL_BOOK_BINDING",
+        "type": "ITEM_TOOL",
+        "name": "Book binding",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOOL_SCROLL",
+        "type": "ITEM_TOOL",
+        "name": "Scroll",
+        "size": 200
+    },
+    {
+        "id": "ITEM_TOOL_QUIRE",
+        "type": "ITEM_TOOL",
+        "name": "Quire",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOOL_BOOKCASE",
+        "type": "ITEM_TOOL",
+        "name": "Bookcase",
+        "size": 1000
+    },
+    {
+        "id": "ITEM_TOOL_HELVE",
+        "type": "ITEM_TOOL",
+        "name": "Helve",
+        "size": 250
+    },
+    {
+        "id": "ITEM_TOOL_STONE_AXE",
+        "type": "ITEM_TOOL",
+        "name": "Axe",
+        "size": 400
+    },
+    {
+        "id": "ITEM_TOOL_PEDESTAL",
+        "type": "ITEM_TOOL",
+        "name": "Pedestal",
+        "size": 500
+    },
+    {
+        "id": "ITEM_TOOL_DISPLAY_CASE",
+        "type": "ITEM_TOOL",
+        "name": "Display case",
+        "size": 1000
+    },
+    {
+        "id": "ITEM_TOOL_ALTAR",
+        "type": "ITEM_TOOL",
+        "name": "Altar",
+        "size": 500
+    },
+    {
+        "id": "ITEM_TOOL_DIE",
+        "type": "ITEM_TOOL",
+        "name": "Die",
+        "size": 5
+    },
+    {
+        "id": "ITEM_TOY_PUZZLEBOX",
+        "type": "ITEM_TOY",
+        "name": "Puzzlebox",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOY_BOAT",
+        "type": "ITEM_TOY",
+        "name": "Toy boat",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOY_HAMMER",
+        "type": "ITEM_TOY",
+        "name": "Toy hammer",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOY_AXE",
+        "type": "ITEM_TOY",
+        "name": "Toy axe",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TOY_MINIFORGE",
+        "type": "ITEM_TOY",
+        "name": "Mini-forge",
+        "size": 100
+    },
+    {
+        "id": "ITEM_TRAPCOMP_GIANTAXEBLADE",
+        "type": "ITEM_TRAPCOMP",
+        "name": "Axe blade",
+        "size": 1600
+    },
+    {
+        "id": "ITEM_TRAPCOMP_ENORMOUSCORKSCREW",
+        "type": "ITEM_TRAPCOMP",
+        "name": "Corkscrew",
+        "size": 1600
+    },
+    {
+        "id": "ITEM_TRAPCOMP_SPIKEDBALL",
+        "type": "ITEM_TRAPCOMP",
+        "name": "Ball",
+        "size": 1000
+    },
+    {
+        "id": "ITEM_TRAPCOMP_LARGESERRATEDDISC",
+        "type": "ITEM_TRAPCOMP",
+        "name": "Disc",
+        "size": 1000
+    },
+    {
+        "id": "ITEM_TRAPCOMP_MENACINGSPIKE",
+        "type": "ITEM_TRAPCOMP",
+        "name": "Spike",
+        "size": 1600
+    },
+    {
+        "id": "ITEM_WEAPON_WHIP",
+        "type": "ITEM_WEAPON",
+        "name": "Whip",
+        "size": 100
+    },
+    {
+        "id": "ITEM_WEAPON_AXE_BATTLE",
+        "type": "ITEM_WEAPON",
+        "name": "Battle axe",
+        "size": 800
+    },
+    {
+        "id": "ITEM_WEAPON_HAMMER_WAR",
+        "type": "ITEM_WEAPON",
+        "name": "War hammer",
+        "size": 400
+    },
+    {
+        "id": "ITEM_WEAPON_SWORD_SHORT",
+        "type": "ITEM_WEAPON",
+        "name": "Short sword",
+        "size": 300
+    },
+    {
+        "id": "ITEM_WEAPON_SPEAR",
+        "type": "ITEM_WEAPON",
+        "name": "Spear",
+        "size": 400
+    },
+    {
+        "id": "ITEM_WEAPON_MACE",
+        "type": "ITEM_WEAPON",
+        "name": "Mace",
+        "size": 800
+    },
+    {
+        "id": "ITEM_WEAPON_CROSSBOW",
+        "type": "ITEM_WEAPON",
+        "name": "Crossbow",
+        "size": 400
+    },
+    {
+        "id": "ITEM_WEAPON_PICK",
+        "type": "ITEM_WEAPON",
+        "name": "Pick",
+        "size": 500
+    },
+    {
+        "id": "ITEM_WEAPON_BOW",
+        "type": "ITEM_WEAPON",
+        "name": "Bow",
+        "size": 300
+    },
+    {
+        "id": "ITEM_WEAPON_BLOWGUN",
+        "type": "ITEM_WEAPON",
+        "name": "Blowgun",
+        "size": 150
+    },
+    {
+        "id": "ITEM_WEAPON_PIKE",
+        "type": "ITEM_WEAPON",
+        "name": "Lucio",
+        "size": 800
+    },
+    {
+        "id": "ITEM_WEAPON_HALBERD",
+        "type": "ITEM_WEAPON",
+        "name": "Halberd",
+        "size": 1200
+    },
+    {
+        "id": "ITEM_WEAPON_SWORD_2H",
+        "type": "ITEM_WEAPON",
+        "name": "Two-handed sword",
+        "size": 900
+    },
+    {
+        "id": "ITEM_WEAPON_SWORD_LONG",
+        "type": "ITEM_WEAPON",
+        "name": "Long sword",
+        "size": 700
+    },
+    {
+        "id": "ITEM_WEAPON_MAUL",
+        "type": "ITEM_WEAPON",
+        "name": "Maul",
+        "size": 1300
+    },
+    {
+        "id": "ITEM_WEAPON_AXE_GREAT",
+        "type": "ITEM_WEAPON",
+        "name": "Great axe",
+        "size": 1300
+    },
+    {
+        "id": "ITEM_WEAPON_DAGGER_LARGE",
+        "type": "ITEM_WEAPON",
+        "name": "Dagger",
+        "size": 200
+    },
+    {
+        "id": "ITEM_WEAPON_SCOURGE",
+        "type": "ITEM_WEAPON",
+        "name": "Scourge",
+        "size": 300
+    },
+    {
+        "id": "ITEM_WEAPON_FLAIL",
+        "type": "ITEM_WEAPON",
+        "name": "Flail",
+        "size": 500
+    },
+    {
+        "id": "ITEM_WEAPON_MORNINGSTAR",
+        "type": "ITEM_WEAPON",
+        "name": "Morningstar",
+        "size": 500
+    },
+    {
+        "id": "ITEM_WEAPON_SCIMITAR",
+        "type": "ITEM_WEAPON",
+        "name": "Scimitar",
+        "size": 300
+    },
+    {
+        "id": "ITEM_WEAPON_AXE_TRAINING",
+        "type": "ITEM_WEAPON",
+        "name": "Training axe",
+        "size": 800
+    },
+    {
+        "id": "ITEM_WEAPON_SWORD_SHORT_TRAINING",
+        "type": "ITEM_WEAPON",
+        "name": "Training sword",
+        "size": 300
+    },
+    {
+        "id": "ITEM_WEAPON_SPEAR_TRAINING",
+        "type": "ITEM_WEAPON",
+        "name": "Training spear",
+        "size": 400
+    }
+]

@@ -1,0 +1,466 @@
+[
+    {
+        "id": "AMBER",
+        "name": "Amber"
+    },
+    {
+        "id": "AMETHYST",
+        "name": "Amethyst"
+    },
+    {
+        "id": "AQUA",
+        "name": "Aqua"
+    },
+    {
+        "id": "AQUAMARINE",
+        "name": "Aquamarine"
+    },
+    {
+        "id": "ASH_GRAY",
+        "name": "Ash_gray"
+    },
+    {
+        "id": "AUBURN",
+        "name": "Auburn"
+    },
+    {
+        "id": "AZURE",
+        "name": "Azure"
+    },
+    {
+        "id": "BEIGE",
+        "name": "Beige"
+    },
+    {
+        "id": "BLACK",
+        "name": "Black"
+    },
+    {
+        "id": "BLUE",
+        "name": "Blue"
+    },
+    {
+        "id": "BRASS",
+        "name": "Brass"
+    },
+    {
+        "id": "BRONZE",
+        "name": "Bronze"
+    },
+    {
+        "id": "BROWN",
+        "name": "Brown"
+    },
+    {
+        "id": "BUFF",
+        "name": "Buff"
+    },
+    {
+        "id": "BURNT_SIENNA",
+        "name": "Burnt_sienna"
+    },
+    {
+        "id": "BURNT_UMBER",
+        "name": "Burnt_umber"
+    },
+    {
+        "id": "CARDINAL",
+        "name": "Cardenal"
+    },
+    {
+        "id": "CARMINE",
+        "name": "Carmine"
+    },
+    {
+        "id": "CERULEAN",
+        "name": "Cerulean"
+    },
+    {
+        "id": "CHARCOAL",
+        "name": "Charcoal"
+    },
+    {
+        "id": "CHARTREUSE",
+        "name": "Chartreuse"
+    },
+    {
+        "id": "CHESTNUT",
+        "name": "Chestnut"
+    },
+    {
+        "id": "CHOCOLATE",
+        "name": "Chocolate"
+    },
+    {
+        "id": "CINNAMON",
+        "name": "Cinnamon"
+    },
+    {
+        "id": "CLEAR",
+        "name": "Clear"
+    },
+    {
+        "id": "COBALT",
+        "name": "Cobalt"
+    },
+    {
+        "id": "COPPER",
+        "name": "Copper"
+    },
+    {
+        "id": "CREAM",
+        "name": "Cream"
+    },
+    {
+        "id": "CRIMSON",
+        "name": "Crimson"
+    },
+    {
+        "id": "DARK_BLUE",
+        "name": "Dark_blue"
+    },
+    {
+        "id": "DARK_BROWN",
+        "name": "Dark_brown"
+    },
+    {
+        "id": "DARK_CHESTNUT",
+        "name": "Dark_chestnut"
+    },
+    {
+        "id": "DARK_GREEN",
+        "name": "Dark_green"
+    },
+    {
+        "id": "DARK_INDIGO",
+        "name": "Dark_indigo"
+    },
+    {
+        "id": "DARK_OLIVE",
+        "name": "Dark_olive"
+    },
+    {
+        "id": "DARK_PEACH",
+        "name": "Dark_peach"
+    },
+    {
+        "id": "DARK_PINK",
+        "name": "Dark_pink"
+    },
+    {
+        "id": "DARK_SCARLET",
+        "name": "Dark_scarlet"
+    },
+    {
+        "id": "DARK_TAN",
+        "name": "Dark_tan"
+    },
+    {
+        "id": "DARK_VIOLET",
+        "name": "Dark_violet"
+    },
+    {
+        "id": "ECRU",
+        "name": "Ecru"
+    },
+    {
+        "id": "EGGPLANT",
+        "name": "Eggplant"
+    },
+    {
+        "id": "EMERALD",
+        "name": "Emerald"
+    },
+    {
+        "id": "FERN_GREEN",
+        "name": "Fern_green"
+    },
+    {
+        "id": "FLAX",
+        "name": "Flax"
+    },
+    {
+        "id": "FUCHSIA",
+        "name": "Fuchsia"
+    },
+    {
+        "id": "GOLD",
+        "name": "Gold"
+    },
+    {
+        "id": "GOLDEN_YELLOW",
+        "name": "Golden_yellow"
+    },
+    {
+        "id": "GOLDENROD",
+        "name": "Goldenrod"
+    },
+    {
+        "id": "GRAY",
+        "name": "Gray"
+    },
+    {
+        "id": "GREEN",
+        "name": "Green"
+    },
+    {
+        "id": "GREEN-YELLOW",
+        "name": "Green-yellow"
+    },
+    {
+        "id": "HELIOTROPE",
+        "name": "Heliotrope"
+    },
+    {
+        "id": "INDIGO",
+        "name": "Indigo"
+    },
+    {
+        "id": "IVORY",
+        "name": "Ivory"
+    },
+    {
+        "id": "JADE",
+        "name": "Jade"
+    },
+    {
+        "id": "LAVENDER",
+        "name": "Lavender"
+    },
+    {
+        "id": "LAVENDER_BLUSH",
+        "name": "Lavender_blush"
+    },
+    {
+        "id": "LEMON",
+        "name": "Lemon"
+    },
+    {
+        "id": "LIGHT_BLUE",
+        "name": "Light_blue"
+    },
+    {
+        "id": "LIGHT_BROWN",
+        "name": "Light_brown"
+    },
+    {
+        "id": "LILAC",
+        "name": "Lilac"
+    },
+    {
+        "id": "LIME",
+        "name": "Lime"
+    },
+    {
+        "id": "MAHOGANY",
+        "name": "Mahogany"
+    },
+    {
+        "id": "MAROON",
+        "name": "Maroon"
+    },
+    {
+        "id": "MAUVE",
+        "name": "Mauve"
+    },
+    {
+        "id": "MAUVE_TAUPE",
+        "name": "Mauve_taupe"
+    },
+    {
+        "id": "MIDNIGHT_BLUE",
+        "name": "Midnight_blue"
+    },
+    {
+        "id": "MINT_GREEN",
+        "name": "Mint_green"
+    },
+    {
+        "id": "MOSS_GREEN",
+        "name": "Moss_green"
+    },
+    {
+        "id": "OCHRE",
+        "name": "Ochre"
+    },
+    {
+        "id": "OLIVE",
+        "name": "Olive"
+    },
+    {
+        "id": "ORANGE",
+        "name": "Orange"
+    },
+    {
+        "id": "PALE_BLUE",
+        "name": "Pale_blue"
+    },
+    {
+        "id": "PALE_BROWN",
+        "name": "Pale_brown"
+    },
+    {
+        "id": "PALE_CHESTNUT",
+        "name": "Pale_chestnut"
+    },
+    {
+        "id": "PALE_PINK",
+        "name": "Pale_pink"
+    },
+    {
+        "id": "PEACH",
+        "name": "Peach"
+    },
+    {
+        "id": "PEARL",
+        "name": "Pearl"
+    },
+    {
+        "id": "PERIWINKLE",
+        "name": "Periwinkle"
+    },
+    {
+        "id": "PINE_GREEN",
+        "name": "Pine_green"
+    },
+    {
+        "id": "PINK",
+        "name": "Pink"
+    },
+    {
+        "id": "PLUM",
+        "name": "Plum"
+    },
+    {
+        "id": "PUCE",
+        "name": "Puce"
+    },
+    {
+        "id": "PUMPKIN",
+        "name": "Pumpkin"
+    },
+    {
+        "id": "PURPLE",
+        "name": "Purple"
+    },
+    {
+        "id": "RAW_UMBER",
+        "name": "Raw_umber"
+    },
+    {
+        "id": "RED",
+        "name": "Red"
+    },
+    {
+        "id": "RED_PURPLE",
+        "name": "Red_purple"
+    },
+    {
+        "id": "ROSE",
+        "name": "Rose"
+    },
+    {
+        "id": "RUSSET",
+        "name": "Russet"
+    },
+    {
+        "id": "RUST",
+        "name": "Rust"
+    },
+    {
+        "id": "SAFFRON",
+        "name": "Saffron"
+    },
+    {
+        "id": "SCARLET",
+        "name": "Scarlet"
+    },
+    {
+        "id": "SEA_GREEN",
+        "name": "Sea_green"
+    },
+    {
+        "id": "SEPIA",
+        "name": "Sepia"
+    },
+    {
+        "id": "SILVER",
+        "name": "Silver"
+    },
+    {
+        "id": "SKY_BLUE",
+        "name": "Sky_blue"
+    },
+    {
+        "id": "SLATE_GRAY",
+        "name": "Slate_gray"
+    },
+    {
+        "id": "SPRING_GREEN",
+        "name": "Spring_green"
+    },
+    {
+        "id": "TAN",
+        "name": "Tan"
+    },
+    {
+        "id": "TAUPE_DARK",
+        "name": "Taupe_dark"
+    },
+    {
+        "id": "TAUPE_GRAY",
+        "name": "Taupe_gray"
+    },
+    {
+        "id": "TAUPE_MEDIUM",
+        "name": "Taupe_medium"
+    },
+    {
+        "id": "TAUPE_PURPLE",
+        "name": "Taupe_purple"
+    },
+    {
+        "id": "TAUPE_PALE",
+        "name": "Taupe_pale"
+    },
+    {
+        "id": "TAUPE_ROSE",
+        "name": "Taupe_rose"
+    },
+    {
+        "id": "TAUPE_SANDY",
+        "name": "Taupe_sandy"
+    },
+    {
+        "id": "TEAL",
+        "name": "Teal"
+    },
+    {
+        "id": "TURQUOISE",
+        "name": "Turquoise"
+    },
+    {
+        "id": "VERMILION",
+        "name": "Vermilion"
+    },
+    {
+        "id": "VIOLET",
+        "name": "Violet"
+    },
+    {
+        "id": "WHITE",
+        "name": "White"
+    },
+    {
+        "id": "YELLOW",
+        "name": "Yellow"
+    },
+    {
+        "id": "YELLOW_GREEN",
+        "name": "Yellow_green"
+    },
+    {
+        "id": "BLUE-GRAY",
+        "name": "Blue-gray"
+    }
+]

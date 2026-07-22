@@ -1,0 +1,12 @@
+PARCHE: evita que DFCreature ataque DFItem
+
+Reemplaza dentro del proyecto:
+- df_mode/df_creature.gd
+- core/ai/creature_decision_rules.gd
+
+Después cierra Godot, elimina la carpeta .godot y vuelve a abrir el proyecto.
+
+Cambios:
+- Los objetivos deben tener creature_type, health, tile_pos e is_alive == true.
+- _hunt_prey() descarta IDs que ya no representan una criatura viva.
+- _perform_attack() valida otra vez el objetivo antes de acceder a health.
