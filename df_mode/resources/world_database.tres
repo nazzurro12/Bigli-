@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="WorldDatabase" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://df_mode/core/database/world_database.gd" id="1_database"]
+[ext_resource type="Script" path="res://df_mode/core/database/creature_definition.gd" id="2_creature"]
+[ext_resource type="Script" path="res://df_mode/core/database/faction_definition.gd" id="3_faction"]
+
+[sub_resource type="Resource" id="Creature_dwarf"]
+script = ExtResource("2_creature")
+id = "dwarf"
+display_name = "Enano"
+glyph = "☻"
+color = Color(0.9, 0.8, 0.55, 1)
+strength = 6.0
+intelligence = 7.0
+diet = PackedStringArray("plant", "meat")
+
+[sub_resource type="Resource" id="Creature_goblin"]
+script = ExtResource("2_creature")
+id = "goblin"
+display_name = "Goblin"
+glyph = "g"
+color = Color(0.35, 0.8, 0.3, 1)
+is_hostile = true
+diet = PackedStringArray("plant", "meat")
+
+[sub_resource type="Resource" id="Faction_dwarves"]
+script = ExtResource("3_faction")
+id = "dwarves"
+display_name = "Enanos"
+culture = "Montañesa"
+technology_level = 2
+preferred_jobs = PackedStringArray("mining", "masonry", "smithing")
+
+[resource]
+script = ExtResource("1_database")
+creatures = Array[ExtResource("2_creature")]([SubResource("Creature_dwarf"), SubResource("Creature_goblin")])
+factions = Array[ExtResource("3_faction")]([SubResource("Faction_dwarves")])

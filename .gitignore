@@ -6,3 +6,5 @@ _debug*.txt
 _temp_*.txt
 _debug_cache.txt
 desktop.ini
+
+df_mode/nul

@@ -1,0 +1,527 @@
+extends RefCounted
+class_name DFCaravan
+
+# ─── Sistema de Caravanas Comerciales ───
+# Civilizaciones externas visitan la fortaleza para comerciar.
+# Precios dinámicos basados en oferta/demanda, distancia, y relaciones.
+
+enum CaravanState {
+	APPROACHING,    # Viene hacia la fortaleza (visible en el mapa)
+	ARRIVED,        # Acampó en el Depot
+	TRADING,        # Intercambiando con los enanos
+	DEPARTING,      # Empaquetando para irse
+	GONE            # Se fue, limpiar estado
+}
+
+enum TradeGoodType {
+	FOOD, DRINK, RAW_MATERIAL, WEAPON, ARMOR, TOOL, 
+	CLOTHING, GEM, TOY, LUXURY, ANIMAL, SEED, MAGICAL, ARTIFACT
+}
+
+# Civilizaciones que pueden enviar caravanas
+const CIVILIZATIONS = {
+	"human": {
+		"name": "Humanos del Reino del Norte",
+		"glyph": "H",
+		"color": Color("#88CCFF"),
+		"goods": ["food", "drink", "weapon", "armor", "cloth", "seed"],
+		"wants": ["stone", "ore", "gem", "metal", "bone", "leather"],
+		"aggro": 0.0,
+		"base_wealth": 2000
+	},
+	"elf": {
+		"name": "Elfos del Bosque Eterno",
+		"glyph": "E",
+		"color": Color("#55FF55"),
+		"goods": ["food", "drink", "cloth", "toy", "seed", "wood"],
+		"wants": ["metal", "weapon", "gem", "tool"],
+		"aggro": 0.0,
+		"base_wealth": 1500
+	},
+	"dwarf": {
+		"name": "Enanos de la Montaña Profunda",
+		"glyph": "D",
+		"color": Color("#FF8844"),
+		"goods": ["weapon", "armor", "tool", "gem", "metal", "drink"],
+		"wants": ["food", "wood", "cloth", "leather", "seed"],
+		"aggro": 0.0,
+		"base_wealth": 3000
+	},
+	"goblin": {
+		"name": "Trasgos de las Cavernas",
+		"glyph": "g",
+		"color": Color("#AA0000"),
+		"goods": ["weapon", "toy", "armor"],
+		"wants": ["food", "drink", "gem", "metal"],
+		"aggro": 0.4,
+		"base_wealth": 500
+	},
+	"kobold": {
+		"name": "Kobolds del Túnel Olvidado",
+		"glyph": "k",
+		"color": Color("#AAAA00"),
+		"goods": ["toy", "tool", "raw_material"],
+		"wants": ["food", "drink", "gem"],
+		"aggro": 0.1,
+		"base_wealth": 300
+	}
+}
+
+# Catálogo de bienes con precio base y tipo
+const TRADE_GOODS = {
+	"food":          {"base_price": 3,  "type": TradeGoodType.FOOD, "glyph": "%", "color": Color("#FF8844"), "name": "Comida"},
+	"drink":         {"base_price": 5,  "type": TradeGoodType.DRINK, "glyph": "~", "color": Color("#FFCC00"), "name": "Bebida"},
+	"wood":          {"base_price": 2,  "type": TradeGoodType.RAW_MATERIAL, "glyph": "=", "color": Color("#8B5A2B"), "name": "Madera"},
+	"stone":         {"base_price": 1,  "type": TradeGoodType.RAW_MATERIAL, "glyph": "#", "color": Color("#888888"), "name": "Piedra"},
+	"ore":           {"base_price": 8,  "type": TradeGoodType.RAW_MATERIAL, "glyph": "*", "color": Color("#AA5500"), "name": "Mineral"},
+	"metal":         {"base_price": 15, "type": TradeGoodType.RAW_MATERIAL, "glyph": "i", "color": Color("#AAAAAA"), "name": "Metal"},
+	"weapon":        {"base_price": 25, "type": TradeGoodType.WEAPON, "glyph": "/", "color": Color("#88CCFF"), "name": "Arma"},
+	"armor":         {"base_price": 30, "type": TradeGoodType.ARMOR, "glyph": "[", "color": Color("#88CCFF"), "name": "Armadura"},
+	"tool":          {"base_price": 10, "type": TradeGoodType.TOOL, "glyph": "p", "color": Color("#88CCFF"), "name": "Herramienta"},
+	"cloth":         {"base_price": 6,  "type": TradeGoodType.CLOTHING, "glyph": "&", "color": Color("#FF88FF"), "name": "Tela"},
+	"gem":           {"base_price": 50, "type": TradeGoodType.GEM, "glyph": "*", "color": Color("#55FFFF"), "name": "Gema"},
+	"toy":           {"base_price": 8,  "type": TradeGoodType.TOY, "glyph": "o", "color": Color("#FF88FF"), "name": "Juguete"},
+	"seed":          {"base_price": 2,  "type": TradeGoodType.SEED, "glyph": ".", "color": Color("#00FF88"), "name": "Semilla"},
+	"leather":       {"base_price": 7,  "type": TradeGoodType.RAW_MATERIAL, "glyph": "=", "color": Color("#AA5500"), "name": "Cuero"},
+	"bone":          {"base_price": 4,  "type": TradeGoodType.RAW_MATERIAL, "glyph": "=", "color": Color("#DDDDDD"), "name": "Hueso"},
+	"luxury":        {"base_price": 100,"type": TradeGoodType.LUXURY, "glyph": "✦", "color": Color("#FFD700"), "name": "Lujo"},
+}
+
+# Precios de venta base de la fortaleza (lo que los enanos producen)
+const FORTRESS_GOODS = {
+	"plump_helmet":      {"name": "Seta Regordeta", "category": "food",    "base_price": 4,  "glyph": "%", "color": Color("#FF8844")},
+	"dwarven_ale":       {"name": "Ale Enano",      "category": "drink",   "base_price": 8,  "glyph": "~", "color": Color("#FFCC00")},
+	"iron_weapon":       {"name": "Arma de Hierro", "category": "weapon",  "base_price": 40, "glyph": "/", "color": Color("#88CCFF")},
+	"iron_armor":        {"name": "Armadura de Hierro", "category": "armor", "base_price": 50, "glyph": "[", "color": Color("#88CCFF")},
+	"copper_pickaxe":    {"name": "Pico de Cobre",  "category": "tool",    "base_price": 15, "glyph": "p", "color": Color("#CC8844")},
+	"wooden_toy":        {"name": "Juguete de Madera", "category": "toy",  "base_price": 5,  "glyph": "o", "color": Color("#FF88FF")},
+	"wool_cloth":        {"name": "Tela de Lana",   "category": "cloth",   "base_price": 10, "glyph": "&", "color": Color("#FF88FF")},
+	"stone_block":       {"name": "Bloque de Piedra", "category": "raw_material", "base_price": 3, "glyph": "#", "color": Color("#888888")},
+}
+
+# Temporada de llegada de caravanas
+const CARAVAN_SEASONS = ["Spring", "Summer", "Autumn"]
+
+var rng: RandomNumberGenerator
+
+# Caravanas activas
+var caravans: Array = []  # Array de Dictionary con estado de cada caravana
+
+# Historial de comercio (para precios dinámicos)
+var trade_history: Dictionary = {}  # good_id -> {sold: int, bought: int, last_price: float}
+var total_trades: int = 0
+var total_wealth_traded: float = 0.0
+
+# Relaciones con civilizaciones
+var relations: Dictionary = {}  # civ_id -> float (-100 a 100)
+
+var _seed: int
+
+func _init(seed: int):
+	_seed = seed
+	rng = RandomNumberGenerator.new()
+	rng.seed = seed
+	for civ_id in CIVILIZATIONS:
+		relations[civ_id] = rng.randf_range(-20, 40)
+		trade_history[civ_id] = {"total_trades": 0, "total_value": 0.0}
+
+# ─── TICK PRINCIPAL ───
+func tick(minute_ticked: bool, game_minute: int, game_hour: int, game_day: int, 
+		  game_season: String, dwarves_count: int, fortress_wealth: float,
+		  world_width: int, world_depth: int, entities: Array) -> Dictionary:
+	"""Procesa un tick. Retorna eventos para mostrar al jugador."""
+	
+	var events: Array = []
+	
+	# 1. Spawnear nuevas caravanas (estacionalmente)
+	if minute_ticked and game_day == 1 and game_hour == 8 and game_minute == 0:
+		if game_season in CARAVAN_SEASONS:
+			_try_spawn_caravan(game_season, dwarves_count, fortress_wealth)
+	
+	# 2. Procesar caravanas existentes
+	for caravan in caravans:
+		match caravan.state:
+			CaravanState.APPROACHING:
+				_approach_tick(caravan)
+				if caravan.progress >= 1.0:
+					caravan.state = CaravanState.ARRIVED
+					caravan.arrival_day = game_day
+					events.append("¡%s ha llegado! (%s)" % [caravan.civ_name, caravan.merchant_name])
+			
+			CaravanState.ARRIVED:
+				# La caravana espera 3-5 días
+				var wait_days = game_day - caravan.arrival_day
+				if wait_days >= caravan.stay_duration:
+					caravan.state = CaravanState.DEPARTING
+					caravan.progress = 0.0
+					caravan.departure_day = game_day
+					events.append("%s empacando para partir..." % caravan.civ_name)
+				elif game_hour >= 7 and game_hour <= 19 and game_minute % 30 == 0:
+					# Los caravaneros comercian activamente durante el día
+					_passive_trade(caravan, entities)
+			
+			CaravanState.DEPARTING:
+				caravan.progress += 0.01
+				if caravan.progress >= 1.0:
+					caravan.state = CaravanState.GONE
+					var profit = caravan.total_sold - caravan.total_bought
+					var profit_str = "ganancia"
+					if profit < 0:
+						profit_str = "pérdida"
+					events.append("Caravana de %s partió (%s: %d oro). Vuelve en %d días." % [
+						caravan.civ_name, profit_str, abs(profit), caravan.return_interval])
+	
+	# 3. Limpiar caravanas GONE
+	var before = caravans.size()
+	caravans = caravans.filter(func(c): return c.state != CaravanState.GONE)
+	if caravans.size() < before:
+		var removed = before - caravans.size()
+		events.append("%d caravana(s) han partido del mapa." % removed)
+	
+	return {"events": events}
+
+# ─── SPAWN DE CARAVANA ───
+func _try_spawn_caravan(season: String, dwarves_count: int, fortress_wealth: float) -> void:
+	"""Intenta enviar una caravana. Más probable con más riqueza y mejores relaciones."""
+	
+	# Máximo 2 caravanas simultáneas
+	var active = caravans.filter(func(c): return c.state != CaravanState.GONE).size()
+	if active >= 2:
+		return
+	
+	# Elegir civilización
+	var candidates = []
+	for civ_id, civ_data in CIVILIZATIONS:
+		var rel = relations.get(civ_id, 0)
+		var prob = 0.02 + (fortress_wealth / 50000.0) * 0.3 + (rel + 100) / 400.0 * 0.3
+		# Civilizaciones agresivas tienen menos chances de comerciar
+		prob *= (1.0 - civ_data.aggro * 0.5)
+		if rng.randf() < prob:
+			candidates.append(civ_id)
+	
+	if candidates.is_empty():
+		return
+	
+	var chosen_id = candidates[rng.randi() % candidates.size()]
+	var civ = CIVILIZATIONS[chosen_id]
+	
+	# Generar nombre de mercader
+	var merchant_name = _generate_merchant_name(chosen_id)
+	
+	# Generar inventario de la caravana
+	var goods = _generate_caravan_goods(chosen_id, fortress_wealth)
+	
+	# Crear caravana
+	var caravan = {
+		"id": chosen_id,
+		"civ_name": civ.name,
+		"civ_glyph": civ.glyph,
+		"civ_color": civ.color,
+		"merchant_name": merchant_name,
+		"state": CaravanState.APPROACHING,
+		"progress": 0.0,
+		"arrival_day": 0,
+		"departure_day": 0,
+		"stay_duration": 3 + rng.randi() % 3,  # 3-5 días
+		"return_interval": 20 + rng.randi() % 40,  # 20-60 días
+		"inventory": goods,
+		"total_sold": 0,
+		"total_bought": 0,
+		"wealth": civ.base_wealth + int(fortress_wealth * 0.1),
+		"tile_pos": Vector3i(10, 3, 10),  # Esquina del mapa (se mueve)
+		"pack_animals": 2 + rng.randi() % 4  # 2-5 animales de carga
+	}
+	
+	caravans.append(caravan)
+
+func _generate_merchant_name(civ_id: String) -> String:
+	var prefixes = ["Comerciante", "Mercader", "Negociante", "Tratante", "Vendedor"]
+	var names_human = ["Gareth", "Lysandra", "Thorn", "Baldric", "Mira", "Stefan", "Elara"]
+	var names_elf = ["Aerendil", "Laeronis", "Thalassia", "Faelan", "Sylvanor", "Ithilwen"]
+	var names_dwarf = ["Kazador", "Thrain", "Borin", "Helga", "Gimli", "Dwalin", "Nora"]
+	var names_goblin = ["Snag", "Grib", "Muck", "Vex", "Gnat", "Sprocket"]
+	var names_kobold = ["Kip", "Yip", "Zix", "Tik", "Tok", "Wix"]
+	
+	var name_pool = names_human
+	match civ_id:
+		"human": name_pool = names_human
+		"elf": name_pool = names_elf
+		"dwarf": name_pool = names_dwarf
+		"goblin": name_pool = names_goblin
+		"kobold": name_pool = names_kobold
+	
+	return "%s %s" % [prefixes[rng.randi() % prefixes.size()], name_pool[rng.randi() % name_pool.size()]]
+
+func _generate_caravan_goods(civ_id: String, fortress_wealth: float) -> Array:
+	"""Genera el inventario de la caravana según la civilización."""
+	var civ = CIVILIZATIONS.get(civ_id, CIVILIZATIONS["human"])
+	var goods: Array = []
+	var wealth_factor = clampf(fortress_wealth / 10000.0, 0.5, 3.0)
+	var inventory_size = 5 + int(wealth_factor * 3) + rng.randi() % 5
+	
+	for i in range(inventory_size):
+		var good_type = civ.goods[rng.randi() % civ.goods.size()]
+		var good_def = TRADE_GOODS.get(good_type, TRADE_GOODS["food"])
+		var quantity = 5 + rng.randi() % 20
+		# Civilizaciones con más riqueza traen más cantidad
+		quantity = int(quantity * wealth_factor)
+		
+		var price = _calculate_price(good_type, civ_id, false)
+		
+		goods.append({
+			"id": good_type,
+			"name": good_def.name,
+			"type": good_def.type,
+			"glyph": good_def.glyph,
+			"color": good_def.color,
+			"quantity": max(1, quantity),
+			"buy_price": price,  # Precio al que la caravana VENDE al jugador
+			"sell_price": int(price * 0.6)  # Precio al que la caravana COMPRA del jugador
+		})
+	
+	return goods
+
+# ─── PRECIOS DINÁMICOS ───
+func _calculate_price(good_id: String, civ_id: String, is_selling_to_caravan: bool) -> int:
+	"""Calcula precio dinámico basado en oferta/demanda y relaciones."""
+	var good_def = TRADE_GOODS.get(good_id, TRADE_GOODS["food"])
+	var base = good_def.base_price
+	
+	# Modificador por relación comercial
+	var civ_history = trade_history.get(civ_id, {})
+	var total_civ_trades = civ_history.get("total_trades", 0)
+	var trade_mod = 1.0 - clampf(total_civ_trades * 0.005, 0.0, 0.3)  # Descuento por fidelidad
+	
+	# Modificador por relación diplomática
+	var rel = relations.get(civ_id, 0)
+	var rel_mod = 1.0 + clampf(-rel * 0.003, -0.2, 0.2)  # Mejor relación = mejor precio
+	
+	# Modificador por estacionalidad
+	var seasonal_mod = 1.0
+	if good_id == "food":
+		seasonal_mod = 1.2  # Comida más cara en temporada de escasez
+	elif good_id == "drink":
+		seasonal_mod = 1.1
+	
+	# Variación aleatoria
+	var variance = 0.85 + rng.randf() * 0.3
+	
+	var final_price = int(base * trade_mod * rel_mod * seasonal_mod * variance)
+	
+	if is_selling_to_caravan:
+		# El jugador vende a la caravana - precio más bajo (la caravana tiene que ganar)
+		final_price = int(final_price * 0.6)
+	
+	return max(1, final_price)
+
+func _update_prices_after_trade(good_id: String, civ_id: String, quantity: int, value: float) -> void:
+	"""Actualiza precios después de una transacción."""
+	var civ_history = trade_history.get(civ_id, {})
+	if civ_history.is_empty():
+		civ_history = {"total_trades": 0, "total_value": 0.0}
+	
+	civ_history["total_trades"] = civ_history.get("total_trades", 0) + quantity
+	civ_history["total_value"] = civ_history.get("total_value", 0.0) + value
+	trade_history[civ_id] = civ_history
+	
+	total_trades += quantity
+	total_wealth_traded += value
+
+# ─── APROXIMACIÓN DE CARAVANA ───
+func _approach_tick(caravan: Dictionary) -> void:
+	"""Mueve la caravana hacia la fortaleza."""
+	caravan.progress += 0.01 + rng.randf() * 0.005
+	
+	# Animar posición (viene desde el borde del mapa)
+	var progress = caravan.progress
+	var edge_x = 5
+	var edge_z = 5
+	var center_x = 128
+	var center_z = 128
+	
+	caravan.tile_pos = Vector3i(
+		int(edge_x + (center_x - edge_x) * progress),
+		3,
+		int(edge_z + (center_z - edge_z) * progress)
+	)
+
+# ─── COMERCIO PASIVO ───
+func _passive_trade(caravan: Dictionary, entities: Array) -> void:
+	"""Comercio automático mientras la caravana está en la fortaleza."""
+	
+	# Buscar items en el suelo cerca de la caravana
+	var nearby_items = _find_nearby_tradeable_items(caravan.tile_pos, entities)
+	
+	if nearby_items.is_empty():
+		return
+	
+	# La caravana compra algo si tiene oro
+	for item in nearby_items:
+		if caravan.wealth <= 0:
+			break
+		
+		var category = item.get("category", "food")
+		if category in caravan.wants:
+			var price = _calculate_price(category, caravan.id, true)
+			var max_buy = min(5, caravan.wealth / max(1, price))
+			if max_buy <= 0:
+				continue
+			
+			var qty = rng.randi() % int(max_buy) + 1
+			var total = price * qty
+			caravan.total_bought += total
+			caravan.wealth -= total
+			caravan.inventory.append({
+				"name": item.get("display_name", "Item"),
+				"type": TradeGoodType.RAW_MATERIAL,
+				"quantity": qty,
+				"value": total
+			})
+			_update_prices_after_trade(category, caravan.id, qty, total)
+
+func _find_nearby_tradeable_items(pos: Vector3i, entities: Array) -> Array:
+	"""Encuentra items comerciables cerca de una posición."""
+	var result: Array = []
+	var radius = 15
+	
+	for e in entities:
+		if e is DFItem:
+			var dist = abs(e.tile_pos.x - pos.x) + abs(e.tile_pos.z - pos.z)
+			if dist <= radius and e.has_method("get_category"):
+				var cat = e.get_category()
+				if cat in ["food", "drink", "stone", "ore", "metal", "bone", "leather", "wood", "cloth"]:
+					result.append({
+						"id": e.get("item_id", ""),
+						"category": cat,
+						"display_name": e.get("display_name", "Item"),
+						"entity": e
+					})
+	
+	return result
+
+# ─── COMERCIO MANUAL (para la UI) ───
+func buy_from_caravan(caravan_index: int, good_index: int, quantity: int) -> Dictionary:
+	"""El jugador compra bienes de la caravana."""
+	if caravan_index >= caravans.size():
+		return {"success": false, "message": "Caravana no encontrada."}
+	
+	var caravan = caravans[caravan_index]
+	if caravan.state != CaravanState.ARRIVED:
+		return {"success": false, "message": "La caravana no está en posición de comerciar."}
+	
+	if good_index >= caravan.inventory.size():
+		return {"success": false, "message": "Producto no disponible."}
+	
+	var good = caravan.inventory[good_index]
+	var qty = mini(quantity, good.quantity)
+	if qty <= 0:
+		return {"success": false, "message": "No hay stock."}
+	
+	var total_cost = good.buy_price * qty
+	
+	# Aquí se descontaría el oro de la fortaleza
+	good.quantity -= qty
+	caravan.total_sold += total_cost
+	caravan.wealth += total_cost
+	
+	_update_prices_after_trade(good.id, caravan.id, qty, total_cost)
+	
+	return {
+		"success": true,
+		"message": "Comprados %d x %s por %d oro." % [qty, good.name, total_cost],
+		"item_id": good.id,
+		"quantity": qty,
+		"total_cost": total_cost,
+		"remaining": good.quantity
+	}
+
+func sell_to_caravan(caravan_index: int, good_id: String, quantity: int) -> Dictionary:
+	"""El jugador vende bienes a la caravana."""
+	if caravan_index >= caravans.size():
+		return {"success": false, "message": "Caravana no encontrada."}
+	
+	var caravan = caravans[caravan_index]
+	if caravan.state != CaravanState.ARRIVED:
+		return {"success": false, "message": "La caravana no está en posición de comerciar."}
+	
+	if caravan.wealth <= 0:
+		return {"success": false, "message": "La caravana no tiene oro para comprar."}
+	
+	# Calcular precio
+	var category = _guess_category(good_id)
+	var price = _calculate_price(category, caravan.id, true)
+	var max_qty = min(quantity, caravan.wealth / max(1, price))
+	
+	if max_qty <= 0:
+		return {"success": false, "message": "La caravana no puede pagar por esto."}
+	
+	var qty = int(max_qty)
+	var total = price * qty
+	caravan.wealth -= total
+	caravan.total_bought += total
+	
+	_update_prices_after_trade(category, caravan.id, qty, total)
+	
+	return {
+		"success": true,
+		"message": "Vendidos %d items por %d oro." % [qty, total],
+		"quantity": qty,
+		"total_earned": total
+	}
+
+func _guess_category(good_id: String) -> String:
+	var cat_map = {
+		"plump_helmet": "food", "dwarven_ale": "drink", 
+		"iron_weapon": "weapon", "iron_armor": "armor",
+		"copper_pickaxe": "tool", "wooden_toy": "toy",
+		"wool_cloth": "cloth", "stone_block": "stone"
+	}
+	return cat_map.get(good_id, "raw_material")
+
+# ─── GETTERS ───
+func get_caravans_at_state(state: int) -> Array:
+	return caravans.filter(func(c): return c.state == state)
+
+func get_caravans_for_sidebar() -> Array:
+	"""Retorna info de caravanas para mostrar en la UI."""
+	var result: Array = []
+	for c in caravans:
+		if c.state in [CaravanState.APPROACHING, CaravanState.ARRIVED, CaravanState.DEPARTING]:
+			result.append({
+				"name": c.civ_name,
+				"merchant": c.merchant_name,
+				"state": c.state,
+				"glyph": c.civ_glyph,
+				"color": c.civ_color,
+				"tile_pos": c.tile_pos,
+				"wealth": c.wealth,
+				"inventory_count": c.inventory.size(),
+				"pack_animals": c.pack_animals
+			})
+	return result
+
+func get_caravan_detail(index: int) -> Dictionary:
+	"""Retorna detalle completo de una caravana."""
+	if index >= caravans.size():
+		return {}
+	
+	var c = caravans[index]
+	return {
+		"civ_name": c.civ_name,
+		"merchant_name": c.merchant_name,
+		"state": c.state,
+		"wealth": c.wealth,
+		"inventory": c.inventory,
+		"total_sold": c.total_sold,
+		"total_bought": c.total_bought,
+		"pack_animals": c.pack_animals,
+		"tile_pos": c.tile_pos
+	}
+
+func get_trade_stats() -> Dictionary:
+	return {
+		"total_caravans": total_trades,
+		"total_wealth": total_wealth_traded,
+		"active_caravans": caravans.size(),
+		"relations": relations
+	}

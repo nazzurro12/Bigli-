@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://b2xnicbvlveo5"]
+
+[ext_resource type="Script" uid="uid://c0cpvr3sjabyc" path="res://df_mode/df_main.gd" id="1_dfmain"]
+
+[node name="DFMain" type="Control" unique_id=737829810]
+layout_mode = 3
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = 7.0
+offset_right = -3.0
+offset_bottom = 4.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 2
+mouse_filter = 2
+script = ExtResource("1_dfmain")
