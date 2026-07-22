@@ -1,1 +1,2 @@
 Disparador posterior a la reparación de sintaxis.
+PR temporal reabierto para generar artefacto.
