@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   build-patch:
@@ -26,6 +27,14 @@ jobs:
           cat build.log
           echo "$code" > build.exit
           exit 0
+      - name: Publish build log in PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '### Resultado del constructor temporal\n\n```text\n' > pr-comment.md
+          cat build.log >> pr-comment.md
+          printf '\n```\n' >> pr-comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file pr-comment.md
       - name: Upload diagnostics and patch
         uses: actions/upload-artifact@v4
         with:
