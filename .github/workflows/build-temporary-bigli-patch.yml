@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          python tools/build_performance_patch.py > build.log 2>&1
+          python tools/run_patch_builder.py > build.log 2>&1
           code=$?
           cat build.log
           echo "$code" > build.exit
