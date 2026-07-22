@@ -35,13 +35,10 @@ jobs:
           cat build.log >> pr-comment.md
           printf '\n```\n' >> pr-comment.md
           gh pr comment "${{ github.event.pull_request.number }}" --body-file pr-comment.md
-      - name: Upload diagnostics and patch
+      - name: Upload directly extractable patch
         uses: actions/upload-artifact@v4
         with:
-          name: Bigliworld_optimizacion_fase1
-          path: |
-            build.log
-            build.exit
-            dist/Bigliworld_optimizacion_fase1.zip
-          if-no-files-found: warn
+          name: Bigliworld_optimizacion_fase1_directo
+          path: _patch_build/Bigliworld_optimizacion_fase1/
+          if-no-files-found: error
           retention-days: 7
