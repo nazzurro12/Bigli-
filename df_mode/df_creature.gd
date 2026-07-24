@@ -890,7 +890,7 @@ func _feed_on_corpse(world, target) -> void:
 	ai_state = AIState.EAT
 	var _cn = target.get("name"); var corpse_item = DFItem.new(target.tile_pos, "Cuerpo de %s" % (_cn if _cn != null else "criatura"), "corpse", 0, "%", Color("#884422"))
 	corpse_item.nutrition = 0.8
-	world.entities.append(corpse_item)
+	world.add_entity(corpse_item)
 
 # ---- FLEEING ----
 func _check_threats(world) -> void:
@@ -990,7 +990,7 @@ func _check_items_for_food(world) -> void:
 		if it.item_type in ["food", "plant", "animal_product"]:
 			var dist = abs(it.tile_pos.x - tile_pos.x) + abs(it.tile_pos.z - tile_pos.z)
 			if dist <= 1:
-				world.entities.erase(it)
+				world.remove_entity(it)
 				body.ingested_substances["food"] = body.ingested_substances.get("food", 0.0) + 0.5
 				ai_state = AIState.EAT
 				return
@@ -1091,7 +1091,7 @@ func _give_birth(world) -> void:
 		var parent_genome = genome if genome != null else DFGenetics.Genome.new()
 		baby.genome = parent_genome.mutate(0.15, 0.12)
 		baby.body_mass_kg = BASE_MASS_BY_SIZE.get(baby.creature_size, 10.0) * baby.genome.size_multiplier
-		world.entities.append(baby)
+		world.add_entity(baby)
 		children_count += 1
 
 # ---- PACK SYSTEM ----

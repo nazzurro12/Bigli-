@@ -26,19 +26,20 @@ class_name CreatureDefinition
 @export var is_hostile: bool = false
 
 func apply_to(creature: Object) -> void:
-	if creature.name.is_empty() or creature.name.to_lower() == id.to_lower():
+	if "name" in creature and (creature.name.is_empty() or creature.name.to_lower() == id.to_lower()):
 		creature.name = display_name
-	creature.glyph = glyph
-	creature.display_color = color
-	creature.size_label = size
-	creature.health = minf(creature.health, health / 10.0)
-	creature.strength = strength
-	creature.agility = agility
-	creature.intelligence = intelligence
-	creature.armor = armor
-	creature.speed = speed
-	creature.sight_range = sight_range
-	creature.is_hostile = is_hostile
-	creature.set_meta("definition_id", id)
-	creature.set_meta("diet", diet)
-	creature.set_meta("prey_ids", prey_ids)
+	if "glyph" in creature: creature.glyph = glyph
+	if "display_color" in creature: creature.display_color = color
+	if "size_label" in creature: creature.size_label = size
+	if "health" in creature: creature.health = minf(creature.health, health / 10.0)
+	if "strength" in creature: creature.strength = strength
+	if "agility" in creature: creature.agility = agility
+	if "intelligence" in creature: creature.intelligence = intelligence
+	if "armor" in creature: creature.armor = armor
+	if "speed" in creature: creature.speed = speed
+	if "sight_range" in creature: creature.sight_range = sight_range
+	if "is_hostile" in creature: creature.is_hostile = is_hostile
+	if creature.has_method("set_meta"):
+		creature.set_meta("definition_id", id)
+		creature.set_meta("diet", diet)
+		creature.set_meta("prey_ids", prey_ids)

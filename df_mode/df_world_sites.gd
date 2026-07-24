@@ -810,7 +810,7 @@ static func _spawn_site_residents(
 		var water := DFItem.new(spawn_pos, "Agua", "drink", 0, "~", Color("#66AADD"))
 		water.carried_by_id = resident.id
 		resident.inventory.append(water)
-		world.entities.append(resident)
+		world.add_entity(resident)
 		created_by_id[resident_id] = resident
 
 	for family_id_variant in families_by_id.keys():

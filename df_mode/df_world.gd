@@ -6,6 +6,7 @@ const DFItem = preload("res://df_mode/df_item.gd")
 const DFCreature = preload("res://df_mode/df_creature.gd")
 const DFDwarf = preload("res://df_mode/df_dwarf.gd")
 const DFPathfinding = preload("res://df_mode/df_pathfinding.gd")
+const DFGeologyLayers = preload("res://core/world/df_geology_layers.gd")
 
 
 enum TileType {
@@ -146,11 +147,18 @@ var tiles: Dictionary = {}
 var materials: Dictionary = {}
 var tile_data: Dictionary = {}
 var entities: Array = []
+var dwarves: Array[DFDwarf] = []
+var creatures: Array[DFCreature] = []
+var items: Array[DFItem] = []
+var _entity_grid: Dictionary = {}  # key: "x,y,z" -> Array[Variant]
+var _grid_version: int = 0
 var stockpiles: Array = []
 var rivers: Array = []
 var revealed: Dictionary = {}
 var buildings: Array = []
 var world_version: int = 0
+var geology_seed: int = 0
+var geology_enabled: bool = false
 
 var world_name: String = ""
 var game_year: int = 63
@@ -279,7 +287,15 @@ func _init(w: int = 128, d: int = 128, h: int = 16):
 
 # ---- TILE QUERIES ----
 func get_tile(pos: Vector3i) -> int:
-	return tiles.get(pos, TileType.CAVE_WALL if pos.y <= 0 else TileType.FLOOR if pos.y == 0 else TileType.CAVE_FLOOR)
+	if tiles.has(pos):
+		return int(tiles[pos])
+	if pos.x >= 0 and pos.x < width and pos.z >= 0 and pos.z < depth:
+		var surface: int = get_surface_height(pos.x, pos.z)
+		if pos.y < surface:
+			return TileType.CAVE_WALL
+		if pos.y == surface:
+			return TileType.FLOOR
+	return TileType.CAVE_FLOOR
 
 func set_tile(pos: Vector3i, tile_type: int) -> void:
 	tiles[pos] = tile_type
@@ -287,7 +303,27 @@ func set_tile(pos: Vector3i, tile_type: int) -> void:
 	DFPathfinding.bump_world_version()
 
 func get_material(pos: Vector3i) -> int:
-	return materials.get(pos, MatType.STONE)
+	if materials.has(pos):
+		return int(materials[pos])
+	if geology_enabled and pos.x >= 0 and pos.x < width and pos.z >= 0 and pos.z < depth:
+		return DFGeologyLayers.get_material_at(self, pos)
+	return MatType.STONE
+
+func get_material_name(material_id: int) -> String:
+	var names: Dictionary = {
+		MatType.STONE: "piedra", MatType.GRANITE: "granito",
+		MatType.LIMESTONE: "caliza", MatType.SANDSTONE: "arenisca",
+		MatType.DIORITE: "diorita", MatType.OBSIDIAN: "obsidiana",
+		MatType.MARBLE: "mármol", MatType.GABBRO: "gabro",
+		MatType.SOIL: "tierra", MatType.CLAY: "arcilla",
+		MatType.SAND: "arena", MatType.COAL: "carbón",
+		MatType.IRON: "hierro", MatType.GOLD: "oro",
+		MatType.SILVER: "plata", MatType.COPPER: "cobre",
+		MatType.TIN: "estaño", MatType.PLATINUM: "platino",
+		MatType.WOOD: "madera", MatType.WATER: "agua",
+		MatType.MAGMA: "magma", MatType.CONSTRUCTION: "material de construcción",
+	}
+	return str(names.get(material_id, "piedra"))
 
 func set_material(pos: Vector3i, mat: int) -> void:
 	materials[pos] = mat
@@ -333,12 +369,6 @@ func is_liquid(pos: Vector3i) -> bool:
 	var t = get_tile(pos)
 	return t in [TileType.WATER_DEEP, TileType.WATER_SHALLOW, TileType.BROOK, TileType.MURKY_POOL, TileType.MAGMA]
 
-func find_path(from: Vector3i, to: Vector3i, use_dwarf_rules: bool = true) -> Array:
-	return DFPathfinding.find_path(self, from, to, use_dwarf_rules)
-
-func has_path(from: Vector3i, to: Vector3i, use_dwarf_rules: bool = true) -> bool:
-	return not find_path(from, to, use_dwarf_rules).is_empty()
-
 func is_stair(pos: Vector3i) -> bool:
 	var t = get_tile(pos)
 	return t in [TileType.STAIRS_UP, TileType.STAIRS_DOWN, TileType.STAIRS_UPDOWN, TileType.RAMP]
@@ -360,9 +390,11 @@ func get_surface_height(x: int, z: int) -> int:
 
 # ---- ENTITY HELPERS ----
 func get_entity_at(pos: Vector3i):
-	for e in entities:
-		var is_alive = e.get("is_alive")
-		if e.tile_pos == pos and (is_alive == null or is_alive == true):
+	_rebuild_grid_if_needed()
+	var key = "%d,%d,%d" % [pos.x, pos.y, pos.z]
+	var at_pos = _entity_grid.get(key, [])
+	for e in at_pos:
+		if e.get("is_alive") != false:
 			return e
 	return null
 
@@ -373,31 +405,77 @@ func get_dwarf_by_id(dwarf_id: int):
 	return null
 
 func get_hostile_entities_at(pos: Vector3i, exclude_id: int = -1) -> Array:
+	_rebuild_grid_if_needed()
 	var result = []
-	for e in entities:
+	var key = "%d,%d,%d" % [pos.x, pos.y, pos.z]
+	var at_pos = _entity_grid.get(key, [])
+	for e in at_pos:
 		var is_hostile = e.get("is_hostile") == true
-		var is_alive = e.get("is_alive")
-		if e.tile_pos == pos and (is_alive == null or is_alive == true) and is_hostile and e.id != exclude_id:
+		if (e.get("is_alive") != false) and is_hostile and e.id != exclude_id:
 			result.append(e)
 	return result
 
 func get_creatures_at(pos: Vector3i, creature_type: String = "") -> Array:
+	_rebuild_grid_if_needed()
 	var result = []
-	for e in entities:
-		if e.tile_pos != pos: continue
-		var is_alive = e.get("is_alive")
-		if is_alive != null and is_alive == false: continue
+	var key = "%d,%d,%d" % [pos.x, pos.y, pos.z]
+	var at_pos = _entity_grid.get(key, [])
+	for e in at_pos:
+		if e.get("is_alive") == false: continue
 		if creature_type != "" and e.get("creature_type") != creature_type: continue
 		if e.get("creature_type") != null:
 			result.append(e)
 	return result
 
 func get_items_at(pos: Vector3i) -> Array:
+	_rebuild_grid_if_needed()
 	var result = []
-	for e in entities:
-		if e is DFItem and e.tile_pos == pos:
+	var key = "%d,%d,%d" % [pos.x, pos.y, pos.z]
+	var at_pos = _entity_grid.get(key, [])
+	for e in at_pos:
+		if e is DFItem:
 			result.append(e)
 	return result
+
+func _rebuild_grid_if_needed() -> void:
+	if _grid_version == world_version:
+		return
+	_entity_grid.clear()
+	for e in entities:
+		_index_entity(e)
+	_grid_version = world_version
+
+func _index_entity(e) -> void:
+	var key = "%d,%d,%d" % [e.tile_pos.x, e.tile_pos.y, e.tile_pos.z]
+	if not _entity_grid.has(key):
+		_entity_grid[key] = []
+	_entity_grid[key].append(e)
+
+func _unindex_entity(e) -> void:
+	var key = "%d,%d,%d" % [e.tile_pos.x, e.tile_pos.y, e.tile_pos.z]
+	var at_pos = _entity_grid.get(key)
+	if at_pos != null:
+		at_pos.erase(e)
+
+func add_entity(e) -> void:
+	entities.append(e)
+	_index_entity(e)
+	if e is DFDwarf:
+		dwarves.append(e)
+	elif e is DFItem:
+		items.append(e)
+	elif e is DFCreature:
+		creatures.append(e)
+
+func remove_entity(e) -> void:
+	entities.erase(e)
+	_unindex_entity(e)
+	if e is DFDwarf:
+		dwarves.erase(e)
+	elif e is DFItem:
+		items.erase(e)
+	elif e is DFCreature:
+		creatures.erase(e)
 
 func count_entities_of_type(ctype: String) -> int:
 	var count = 0
@@ -1032,18 +1110,9 @@ func tick_caveins() -> void:
 		set_tile(pos, TileType.STONE_FLOOR)
 		_spawn_item(pos, "Escombro de Roca", "stone", MatType.STONE, "*", Color("#808080"))
 		for e in entities:
-			# Los escombros se crean como DFItem en esta misma casilla.
-			# Solo las entidades vivas que realmente tengan salud reciben daño.
-			if e == null or e.get("tile_pos") != pos:
-				continue
-			var health_value: Variant = e.get("health")
-			if health_value == null:
-				continue
-			var alive: Variant = e.get("is_alive")
-			if alive == false:
-				continue
-			e.set("health", maxf(0.0, float(health_value) - 0.8))
-			if e.has_method("add_thought"):
+			var alive = e.get("is_alive")
+			if e.tile_pos == pos and (alive == null or alive == true):
+				e.health = max(0.0, e.health - 0.8)
 				e.add_thought("¡Quedó atrapado en un derrumbe!", -0.5)
 		if randi() % 3 == 0:
 			var above = Vector3i(pos.x, pos.y + 1, pos.z)

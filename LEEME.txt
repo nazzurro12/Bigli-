@@ -1,12 +1,11 @@
-PARCHE: evita que DFCreature ataque DFItem
+REPARACIÓN: is_world_settlement_resident
 
-Reemplaza dentro del proyecto:
-- df_mode/df_creature.gd
-- core/ai/creature_decision_rules.gd
+1. Cierra Godot.
+2. Extrae este ZIP dentro de F:\cacaneitor3000\Bigliworld\
+3. Acepta reemplazar df_mode\df_dwarf.gd.
+4. Borra la carpeta .godot.
+5. Abre el proyecto nuevamente.
 
-Después cierra Godot, elimina la carpeta .godot y vuelve a abrir el proyecto.
-
-Cambios:
-- Los objetivos deben tener creature_type, health, tile_pos e is_alive == true.
-- _hunt_prey() descarta IDs que ya no representan una criatura viva.
-- _perform_attack() valida otra vez el objetivo antes de acceder a health.
+Cambio realizado:
+- Se añadió is_world_settlement_resident: bool = false a DFDwarf.
+- No altera partidas, inventario, metas ni acciones autónomas.

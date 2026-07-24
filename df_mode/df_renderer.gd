@@ -120,7 +120,12 @@ var _world_minimap_cache_key: String = ""
 # El juego puede procesar a más de 60 FPS, pero reconstruir miles de tiles,
 # entidades y paneles 120 veces por segundo no aporta información nueva.
 const MAP_REDRAW_INTERVAL: float = 1.0 / 60.0
+const RENDERER_LOGIC_SYNC_INTERVAL: float = 1.0 / 30.0
 var _map_redraw_accumulator: float = 0.0
+var _renderer_logic_accumulator: float = 0.0
+var performance_effects_enabled: bool = false
+var performance_overlay_enabled: bool = false
+var _last_visible_entity_count: int = 0
 
 func invalidate_world_minimap_cache() -> void:
 	_world_minimap_texture = null
@@ -332,11 +337,16 @@ func _process(delta: float) -> void:
 	# como máximo a 60 Hz. Esto elimina el doble redibujado que hundía los FPS al
 	# materializar aldeas con muchas casas, muebles y residentes.
 	_map_redraw_accumulator += delta
+	_renderer_logic_accumulator += delta
 	if _map_redraw_accumulator >= MAP_REDRAW_INTERVAL:
 		_map_redraw_accumulator = fmod(_map_redraw_accumulator, MAP_REDRAW_INTERVAL)
 		queue_redraw()
 	
-	# Sync data del mundo al renderer cada frame
+	if _renderer_logic_accumulator < RENDERER_LOGIC_SYNC_INTERVAL:
+		return
+	_renderer_logic_accumulator = fmod(_renderer_logic_accumulator, RENDERER_LOGIC_SYNC_INTERVAL)
+
+	# Datos ambientales y cursor: 30 Hz son suficientes y evitan trabajo repetido.
 	if world != null:
 		# Tiempo desde el nodo principal
 		var main_nd = get_parent()
@@ -397,6 +407,7 @@ func add_message(msg: String) -> void:
 func _draw() -> void:
 	if _tileset == null:
 		return
+	var effect_time_ms: float = float(Time.get_ticks_msec())
 
 	var main_node = get_parent()
 	if main_node != null and "current_state" in main_node:
@@ -453,6 +464,7 @@ func _draw() -> void:
 	# Solo se indexan las entidades visibles. Antes se recorría y convertía todo
 	# el mundo local en cada redibujado aunque la cámara mostrara una fracción.
 	var visible_entities: Array = _rebuild_entity_cache(cam_x, cam_z, vw, vh, cam_y)
+	_last_visible_entity_count = visible_entities.size()
 
 	# Cache espacial para talleres, edificios y almacenes (O(1) por tile)
 	var _workshop_at_pos: Dictionary = {}
@@ -480,6 +492,9 @@ func _draw() -> void:
 				
 	if world != null and world.workshops != null:
 		for ws_item in world.workshops:
+			var ws_pos: Vector3i = ws_item.tile_pos
+			if ws_pos.x < cam_x - 4 or ws_pos.x > cam_x + vw + 4 or ws_pos.z < cam_z - 4 or ws_pos.z > cam_z + vh + 4 or ws_pos.y != cam_y:
+				continue
 			# Precompute 3x3 area around workshop for background darkening
 			for dx2 in [-1, 0, 1]:
 				for dz2 in [-1, 0, 1]:
@@ -529,18 +544,19 @@ func _draw() -> void:
 						ch = tile_char
 						if tile_type == DFWorld.TileType.MAGMA:
 							ch = "≈" if (wx + wz + _dwarf_animation_tick / 6) % 3 != 0 else "≡"
-							var magma_wave = cos((wx * 0.3) - (wz * 0.4) + (Time.get_ticks_msec() * 0.002)) * 0.5 + 0.5
+							var magma_wave = cos((wx * 0.3) - (wz * 0.4) + (effect_time_ms * 0.002)) * 0.5 + 0.5
 							fg = Color(1.3, 0.35, 0.0).lerp(Color(1.5, 1.0, 0.0), magma_wave)
 							bg = Color(0.25, 0.0, 0.0).lerp(Color(0.4, 0.05, 0.0), magma_wave * 0.5)
-							var glow_r = 30.0 + 8.0 * sin(Time.get_ticks_msec() * 0.003 + wx + wz)
+							var glow_r = 30.0 + 8.0 * sin(effect_time_ms * 0.003 + wx + wz)
 							var glow_alpha = 0.15 + 0.1 * magma_wave
-							draw_circle(char_pos + _char_size / 2.0, glow_r, Color(1.0, 0.3, 0.0, glow_alpha))
+							if performance_effects_enabled:
+								draw_circle(char_pos + _char_size / 2.0, glow_r, Color(1.0, 0.3, 0.0, glow_alpha))
 						elif tile_type in [DFWorld.TileType.WATER_DEEP, DFWorld.TileType.WATER_SHALLOW, DFWorld.TileType.BROOK, DFWorld.TileType.MURKY_POOL]:
 							var water_chars = ["~", "≈", "~", "≈", ";", "~", "≈", ";"]
 							var wi = (wx * 3 + wz * 7 + _dwarf_animation_tick / 6) % water_chars.size()
 							ch = water_chars[wi]
-							var wave1 = sin((wx * 0.4) + (wz * 0.3) + (Time.get_ticks_msec() * 0.003)) * 0.5 + 0.5
-							var wave2 = sin((wx * 0.7) - (wz * 0.5) + (Time.get_ticks_msec() * 0.005)) * 0.5 + 0.5
+							var wave1 = sin((wx * 0.4) + (wz * 0.3) + (effect_time_ms * 0.003)) * 0.5 + 0.5
+							var wave2 = sin((wx * 0.7) - (wz * 0.5) + (effect_time_ms * 0.005)) * 0.5 + 0.5
 							var combined = wave1 * 0.7 + wave2 * 0.3
 							fg = Color(0.1, 0.2, 0.8).lerp(Color(0.25, 0.7, 1.3), combined)
 							bg = Color(0.01, 0.05, 0.15)
@@ -620,7 +636,7 @@ func _draw() -> void:
 
 				# Artifact glow overlay (pulsating aura beneath artifact items)
 				if _artifact_glow_at.has(pos):
-					var art_pulse = 0.3 + 0.2 * sin(Time.get_ticks_msec() * 0.004 + pos.x * 1.7 + pos.z * 2.3)
+					var art_pulse = 0.3 + 0.2 * sin(effect_time_ms * 0.004 + pos.x * 1.7 + pos.z * 2.3)
 					var art_glow = Color(1.0, 0.75, 0.2, art_pulse)
 					bg = bg.blend(art_glow)
 
@@ -649,24 +665,26 @@ func _draw() -> void:
 				char_pos = Vector2(border_x + x * _char_size.x, z * _char_size.y)
 				_draw_tile(char_pos, ch, fg, bg)
 
-				# Draw ambient occlusion (3D wall shadows) on floor tiles next to walls
-				if wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth and not world.is_blocked(pos):
-					var cell_rect = Rect2(char_pos.x, char_pos.y, _char_size.x, _char_size.y)
-					if wz > 0 and world.is_blocked(Vector3i(wx, cam_y, wz - 1)):
-						draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.position.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
-					if wz < world.depth - 1 and world.is_blocked(Vector3i(wx, cam_y, wz + 1)):
-						draw_line(Vector2(cell_rect.position.x, cell_rect.end.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
-					if wx > 0 and world.is_blocked(Vector3i(wx - 1, cam_y, wz)):
-						draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.position.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
-					if wx < world.width - 1 and world.is_blocked(Vector3i(wx + 1, cam_y, wz)):
-						draw_line(Vector2(cell_rect.end.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
+				if performance_effects_enabled:
+					# Draw ambient occlusion (3D wall shadows) on floor tiles next to walls
+					if wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth and not world.is_blocked(pos):
+						var cell_rect = Rect2(char_pos.x, char_pos.y, _char_size.x, _char_size.y)
+						if wz > 0 and world.is_blocked(Vector3i(wx, cam_y, wz - 1)):
+							draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.position.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
+						if wz < world.depth - 1 and world.is_blocked(Vector3i(wx, cam_y, wz + 1)):
+							draw_line(Vector2(cell_rect.position.x, cell_rect.end.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
+						if wx > 0 and world.is_blocked(Vector3i(wx - 1, cam_y, wz)):
+							draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.position.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
+						if wx < world.width - 1 and world.is_blocked(Vector3i(wx + 1, cam_y, wz)):
+							draw_line(Vector2(cell_rect.end.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
 
-				# Draw pulsating miasma gas cloud particles on top
-				if world != null and world.splatters != null and world.splatters.has(pos):
-					var tile_subs_miasma = world.splatters[pos]
-					if tile_subs_miasma.has("miasma"):
-						var pulse_miasma = 0.15 + 0.3 * sin(Time.get_ticks_msec() * 0.0035 + (wx * 7.0 + wz * 3.0))
-						draw_circle(char_pos + _char_size / 2.0, _char_size.x * 0.45, Color(0.55, 0.15, 0.9, pulse_miasma))
+				if performance_effects_enabled:
+					# Draw pulsating miasma gas cloud particles on top
+					if world != null and world.splatters != null and world.splatters.has(pos):
+						var tile_subs_miasma = world.splatters[pos]
+						if tile_subs_miasma.has("miasma"):
+							var pulse_miasma = 0.15 + 0.3 * sin(effect_time_ms * 0.0035 + (wx * 7.0 + wz * 3.0))
+							draw_circle(char_pos + _char_size / 2.0, _char_size.x * 0.45, Color(0.55, 0.15, 0.9, pulse_miasma))
 
 				# Entity HP bar (small bar below creatures with health data)
 				if _entity_hp_cache.has(pos):
@@ -681,7 +699,7 @@ func _draw() -> void:
 
 				# Cursor highlight with animated glow
 				if pos == _highlighted_tile:
-					var pulse = 0.3 + 0.3 * sin(Time.get_ticks_msec() * 0.006)
+					var pulse = 0.3 + 0.3 * sin(effect_time_ms * 0.006)
 					draw_rect(Rect2(char_pos.x - 1, char_pos.y - 1, _char_size.x + 2, _char_size.y + 2), Color(1.0, 1.0, 1.0, pulse), false, 1.5)
 					draw_rect(Rect2(char_pos.x - 1, char_pos.y - 1, _char_size.x + 2, 1), Color(0.8, 0.9, 1.0, pulse * 0.5), true)
 
@@ -699,6 +717,8 @@ func _draw() -> void:
 	elif show_sidebar and world != null:
 		var side_x = border_x + vw * _char_size.x + 8
 		_draw_sidebar(side_x)
+	if performance_overlay_enabled:
+		_draw_performance_overlay()
 
 	# Draw glowing retro terminal outer border around the map + sidebar
 	if world != null and not show_help:
@@ -2908,3 +2928,26 @@ func _draw_dashed_border(rect: Rect2, color: Color, step: float = 6.0) -> void:
 		draw_line(Vector2(rect.position.x, y), Vector2(rect.position.x, y + draw_h), color, 1.5)
 		draw_line(Vector2(rect.end.x, y), Vector2(rect.end.x, y + draw_h), color, 1.5)
 		y += step * 2.0
+
+
+# ---- DIAGNÓSTICO DE RENDIMIENTO ----
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F3:
+		performance_overlay_enabled = not performance_overlay_enabled
+		queue_redraw()
+		get_viewport().set_input_as_handled()
+
+func _draw_performance_overlay() -> void:
+	var total_entities: int = world.entities.size() if world != null else 0
+	var lines: Array[String] = [
+		"FPS: %d" % Engine.get_frames_per_second(),
+		"Entidades visibles: %d / %d" % [_last_visible_entity_count, total_entities],
+		"Efectos costosos: %s" % ("ACTIVOS" if performance_effects_enabled else "DESACTIVADOS"),
+		"F3: cerrar diagnóstico"
+	]
+	var panel_pos := Vector2(12, 12)
+	var panel_size := Vector2(260, 20 + lines.size() * 18)
+	draw_rect(Rect2(panel_pos, panel_size), Color(0.0, 0.0, 0.0, 0.82), true)
+	draw_rect(Rect2(panel_pos, panel_size), Color(0.75, 0.75, 0.75, 0.9), false, 1.0)
+	for line_index in range(lines.size()):
+		draw_string(_font, panel_pos + Vector2(8, 18 + line_index * 18), lines[line_index], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color.WHITE)

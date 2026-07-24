@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://test_df_integration"]
+
+[ext_resource type="Script" path="res://test_df_integration.gd" id="1_tdi"]
+
+[node name="TestDFIntegration" type="Node"]
+script = ExtResource("1_tdi")

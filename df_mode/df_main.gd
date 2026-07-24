@@ -472,7 +472,7 @@ func _place_dwarves_and_setup() -> void:
 		var dwarf = DFDwarf.new(dpos, dname)
 		# Inventario inicial: 2 comida + 2 bebida por enano
 		_give_embark_inventory(dwarf, i)
-		world.entities.append(dwarf)
+		world.add_entity(dwarf)
 
 	# === FASE 3: ALMACEN DE EMBARQUE ===
 	# Zona de almacenamiento en el centro-sur del refugio
@@ -931,8 +931,8 @@ func _cycle_follow() -> void:
 	if world == null:
 		return
 	var dwarves = []
-	for e in world.entities:
-		if e.get("creature_type") == "dwarf" and e.get("is_alive") != false:
+	for e in world.dwarves:
+		if e.get("is_alive") != false:
 			dwarves.append(e)
 	if dwarves.is_empty():
 		add_message("No hay enanos vivos para seguir.")
@@ -998,7 +998,7 @@ func _populate_creatures_local() -> void:
 			var pos = Vector3i(x, h, z)
 			if world.is_water(pos) or world.is_blocked(pos): continue
 			var creature = DFCreature.new(pos, str(chosen.get("id", chosen["name"])).to_lower(), chosen.get("tile", chosen.get("glyph", "c")), Color(chosen.get("color", "#FFFFFF")), chosen.get("size", "medium"), chosen)
-			world.entities.append(creature)
+			world.add_entity(creature)
 
 func _process(delta: float) -> void:
 	if renderer == null:
@@ -1273,6 +1273,7 @@ func _run_world_generation_loop() -> void:
 func _tick() -> void:
 	if world == null:
 		return
+	world._grid_version = -1  # force spatial grid rebuild this tick
 	var minute_ticked = false
 	var dwarves_count = 0
 	var mil_strength = 0.0
@@ -1298,14 +1299,13 @@ func _tick() -> void:
 					_game_year += 1
 
 	if minute_ticked:
-		for e in world.entities:
-			var is_dwarf = e.get("creature_type") == "dwarf"
-			if is_dwarf and e.get("is_alive") == true:
+		for e in world.dwarves:
+			if e.get("is_alive") == true:
 				dwarves_count += 1
 				mil_strength += e.combat_skill
 				_fortress_wealth_calc += 10.0
-			elif e is DFItem:
-				_fortress_wealth_calc += 1.0
+		for e in world.items:
+			_fortress_wealth_calc += 1.0
 
 	if minute_ticked:
 		_maintain_autonomous_economy()
@@ -1328,7 +1328,7 @@ func _tick() -> void:
 			enemy.set_meta("invasion_type", enemy_data.get("invasion_type", -1))
 			enemy.set_meta("damage", enemy_data.get("damage", 1))
 			enemy.set_meta("armor", enemy_data.get("armor", 0))
-			world.entities.append(enemy)
+			world.add_entity(enemy)
 		if inv_result["notification"] != "" and _game_minute % 60 == 0:
 			add_message(inv_result["notification"])
 		if inv_result["ended"]:
@@ -1338,14 +1338,13 @@ func _tick() -> void:
 				add_message("La invasion ha terminado.")
 
 	if world.combat_system != null and _simulation_tick_clock % 3 == 0:
-		for e3 in world.entities:
+		for e3 in world.creatures:
 			var is_hostile = e3.get("is_hostile") == true
 			if is_hostile and e3.get("is_alive") == true:
 				var nearest_dwarf = null
 				var nearest_dist = 20.0
-				for e3b in world.entities:
-					var is_dwarf3 = e3b.get("creature_type") == "dwarf"
-					if is_dwarf3 and e3b.get("is_alive") == true:
+				for e3b in world.dwarves:
+					if e3b.get("is_alive") == true:
 						var d = abs(e3.tile_pos.x - e3b.tile_pos.x) + abs(e3.tile_pos.z - e3b.tile_pos.z)
 						if d < nearest_dist:
 							nearest_dist = d
@@ -1372,7 +1371,7 @@ func _tick() -> void:
 						var corpse_name = "Cuerpo de " + e3.name
 						var corpse_item = DFItem.new(e3.tile_pos, corpse_name, "corpse", 0, "%", Color("#884422"))
 						corpse_item.nutrition = 0.8
-						world.entities.append(corpse_item)
+						world.add_entity(corpse_item)
 						if quest_system != null:
 							var creature_name = e3.get("name")
 							if creature_name != null:
@@ -1437,7 +1436,7 @@ func _tick() -> void:
 		if _chronicle_events_game.size() > 50:
 			_chronicle_events_game.pop_front()
 
-	for e4 in world.entities:
+	for e4 in world.dwarves.duplicate():
 		if e4.get("is_alive") == false:
 			continue
 			
@@ -1514,36 +1513,34 @@ func _tick() -> void:
 
 	# TICK DE REPRODUCCION: cada minuto de juego
 	if minute_ticked:
-		for e5 in world.entities:
-			var is_dwarf5 = e5.get("creature_type") == "dwarf"
-			if is_dwarf5 and e5.get("is_alive") == true and e5.has_method("tick_reproduction"):
+		world.set_meta("_pending_births", [])
+		for e5 in world.dwarves.duplicate():
+			if e5.get("is_alive") == true and e5.has_method("tick_reproduction"):
 				e5.tick_reproduction(world)
+		var _pending_births: Array = world.get_meta("_pending_births", [])
+		for _child in _pending_births:
+			world.add_entity(_child)
+		world.set_meta("_pending_births", null)
 
 	if _simulation_tick_clock % 4 == 0:
-		for e6 in world.entities:
-			# Los residentes humanos DFDwarf ya fueron procesados de forma ligera y
-			# escalonada arriba. Aquí solo entran criaturas ecológicas normales.
-			if e6 is DFDwarf:
-				continue
-			var is_creature6: bool = e6.get("creature_type") != null and e6.get("creature_type") != "dwarf" and e6.get("creature_type") != ""
-			if is_creature6 and e6.get("is_alive") == true and e6.has_method("tick"):
+		for e6 in world.creatures.duplicate():
+			if e6.get("is_alive") == true:
 				e6.tick(world, minute_ticked or _simulation_tick_clock % 20 == 0)
 
 	if minute_ticked:
-		for e_corpse in world.entities:
-			if e_corpse.get("creature_type") != null and e_corpse.get("creature_type") != "dwarf" and e_corpse.get("creature_type") != "":
-				if e_corpse.get("is_alive") == false and not bool(e_corpse.get_meta("_has_corpse", false)):
-					e_corpse.set_meta("_has_corpse", true)
-					var corpse_name_1258 = "Cuerpo de " + str(_safe_get(e_corpse, "name", "criatura"))
-					var corpse_item_1259 = DFItem.new(e_corpse.tile_pos, corpse_name_1258, "corpse", 0, "%", Color("#884422"))
-					corpse_item_1259.nutrition = 0.8
-					corpse_item_1259.set_meta("creature_name", str(_safe_get(e_corpse, "name", "")))
-					corpse_item_1259.set_meta("creature_size", str(_safe_get(e_corpse, "size_label", "medium")))
-					world.entities.append(corpse_item_1259)
+		for e_corpse in world.creatures:
+			if e_corpse.get("is_alive") == false and not bool(e_corpse.get_meta("_has_corpse", false)):
+				e_corpse.set_meta("_has_corpse", true)
+				var corpse_name_1258 = "Cuerpo de " + str(_safe_get(e_corpse, "name", "criatura"))
+				var corpse_item_1259 = DFItem.new(e_corpse.tile_pos, corpse_name_1258, "corpse", 0, "%", Color("#884422"))
+				corpse_item_1259.nutrition = 0.8
+				corpse_item_1259.set_meta("creature_name", str(_safe_get(e_corpse, "name", "")))
+				corpse_item_1259.set_meta("creature_size", str(_safe_get(e_corpse, "size_label", "medium")))
+				world.add_entity(corpse_item_1259)
 
 	if minute_ticked and _game_minute % 10 == 0:
-		for e7 in world.entities:
-			if e7 is DFItem and e7.has_method("tick_decay"):
+		for e7 in world.items:
+			if e7.has_method("tick_decay"):
 				e7.tick_decay()
 
 	if minute_ticked:
@@ -1585,7 +1582,7 @@ func _tick() -> void:
 	world.messages.clear()
 
 	# Check for historical figure/beast deaths to update chronicle DB
-	for e_dead in world.entities:
+	for e_dead in world.creatures:
 		if e_dead.get("is_alive") == false:
 			if e_dead.has_meta("beast_instance_id"):
 				var b_id = e_dead.get_meta("beast_instance_id")
@@ -1628,14 +1625,13 @@ func _recover_orphaned_jobs() -> void:
 		return
 	var alive_dwarf_ids: Dictionary = {}
 	var active_job_owner_ids: Dictionary = {}
-	for world_entry in world.entities:
-		if world_entry is DFDwarf:
-			var dwarf_entry: DFDwarf = world_entry
-			if not dwarf_entry.is_alive:
-				continue
-			alive_dwarf_ids[dwarf_entry.id] = true
-			if dwarf_entry.current_job != null:
-				active_job_owner_ids[dwarf_entry.current_job.get_instance_id()] = dwarf_entry.id
+	for world_entry in world.dwarves:
+		var dwarf_entry: DFDwarf = world_entry
+		if not dwarf_entry.is_alive:
+			continue
+		alive_dwarf_ids[dwarf_entry.id] = true
+		if dwarf_entry.current_job != null:
+			active_job_owner_ids[dwarf_entry.current_job.get_instance_id()] = dwarf_entry.id
 
 	for queued_job in designation.job_queue:
 		if queued_job.state not in [DFJob.JobState.ASSIGNED, DFJob.JobState.IN_PROGRESS]:
@@ -1652,8 +1648,8 @@ func _recover_orphaned_jobs() -> void:
 		for reservation_key in ["target_item_id", "material_item_id"]:
 			var reserved_item_id: int = int(queued_job.get_meta(reservation_key, -1))
 			if reserved_item_id >= 0:
-				for item_entry in world.entities:
-					if item_entry is DFItem and item_entry.id == reserved_item_id:
+				for item_entry in world.items:
+					if item_entry.id == reserved_item_id:
 						item_entry.release_reservation(previous_worker_id)
 						break
 			queued_job.set_meta(reservation_key, -1)
@@ -1675,20 +1671,16 @@ func _cleanup_completed_jobs() -> void:
 func _follow_dwarf_camera() -> void:
 	if renderer.follow_dwarf < 0:
 		return
-	for e in world.entities:
-		if e is DFItem:
-			continue
-		var is_alive = e.get("is_alive")
-		if e.get("id") != null and e.id == renderer.follow_dwarf and (is_alive == null or is_alive == true):
-			camera_pos = e.tile_pos
-			return
+	var fd = world.get_dwarf_by_id(renderer.follow_dwarf)
+	if fd != null and (fd.get("is_alive") != false):
+		camera_pos = fd.tile_pos
+		return
 	renderer.follow_dwarf = -1
 
 func _possess_dwarf(id: int) -> void:
-	for e in world.entities:
-		var is_dwarf = e.get("creature_type") == "dwarf"
+	for e in world.dwarves:
 		var is_alive = e.get("is_alive")
-		if is_dwarf and e.id == id and (is_alive == null or is_alive == true):
+		if e.id == id and (is_alive == null or is_alive == true):
 			possessed_dwarf = e
 			last_possessed_dwarf = e
 			possessed_dwarf.is_possessed = true
@@ -1955,6 +1947,8 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	# Una región local puede reutilizar el mismo objeto World. Limpiar antes de
 	# materializar impide duplicar edificios, residentes y almacenes.
 	world.entities.clear()
+	world._entity_grid.clear()
+	world._grid_version = -1
 	world.buildings.clear()
 	world.workshops.clear()
 	world.stockpiles.clear()
@@ -2054,7 +2048,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 		_apply_dwarf_profile(dwarf, i, load_play_now)
 		_ensure_dwarf_starting_kit(dwarf, i, weapon_str)
 		
-		world.entities.append(dwarf)
+		world.add_entity(dwarf)
 		embark_colonists.append(dwarf)
 		
 	# Establecer relaciones y amistades iniciales
@@ -2078,8 +2072,8 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	else:
 		items_to_spawn = embark_custom_items
 	var embark_dwarves: Array = []
-	for embark_entity in world.entities:
-		if embark_entity is DFDwarf and embark_entity.is_alive and not embark_entity.is_world_settlement_resident:
+	for embark_entity in world.dwarves:
+		if embark_entity.is_alive and not embark_entity.is_world_settlement_resident:
 			embark_dwarves.append(embark_entity)
 	for it_name in items_to_spawn:
 		var qty: int = int(items_to_spawn[it_name])
@@ -2092,7 +2086,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 			var ipos: Vector3i = _fix_surface(Vector3i(rx, local_center_surface.y, rz))
 			var embark_item: DFItem = DFItem.new(ipos, str(it_name), itype, 0, glyph, color)
 			if not _try_distribute_initial_item(embark_item, embark_dwarves):
-				world.entities.append(embark_item)
+				world.add_entity(embark_item)
 	load_progress = 0.85
 	await get_tree().process_frame
 	
@@ -2112,6 +2106,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	_auto_designate_initial_jobs(local_center_surface)
 	var simulation_database = load("res://df_mode/resources/world_database.tres")
 	world_simulation = DFWorldSimulationScript.new(simulation_database)
+
 	world_simulation.initialize(world)
 	renderer.set_world(world)
 	renderer.designation = designation
@@ -2133,8 +2128,8 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 		
 	if has_meta("adventure_mode_pending") and get_meta("adventure_mode_pending") == true:
 		remove_meta("adventure_mode_pending")
-		for ent in world.entities:
-			if ent.get("creature_type") == "dwarf" and ent.get("is_alive") == true:
+		for ent in world.dwarves:
+			if ent.get("is_alive") == true:
 				_possess_dwarf(ent.id)
 				break
 		add_message("========================================")
@@ -2144,8 +2139,8 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 		add_message("========================================")
 	else:
 		var alive_count = 0
-		for ent in world.entities:
-			if ent.get("creature_type") == "dwarf" and ent.get("is_alive") != false:
+		for ent in world.dwarves:
+			if ent.get("is_alive") != false:
 				alive_count += 1
 		add_message("========================================")
 		add_message("  NUEVO EMBARQUE EN %s!" % world_name.to_upper())
@@ -2202,14 +2197,14 @@ func _build_initial_settlement(center: Vector3i) -> void:
 	# --- Habitaciones Privadas (Generadas dinámicamente en espiral según la población) ---
 	# Determinar cuántas cabañas construir basado en la cantidad de entidades activas (enanos)
 	var alive_dwarf_count = 0
-	for ent in world.entities:
-		if ent.get("creature_type") == "dwarf" and ent.get("is_alive") != false:
+	for ent in world.dwarves:
+		if ent.get("is_alive") != false:
 			alive_dwarf_count += 1
 	var cabin_count = maxi(7, alive_dwarf_count)
 	var cabin_offsets = _get_spiral_offsets(cabin_count)
 	var settlement_dwarves: Array = []
-	for resident in world.entities:
-		if resident.get("creature_type") == "dwarf" and resident.get("is_alive") != false:
+	for resident in world.dwarves:
+		if resident.get("is_alive") != false:
 			settlement_dwarves.append(resident)
 	var used_house_origins: Array = []
 	
@@ -2396,7 +2391,7 @@ func _warehouse_has_land_access(center_pos: Vector3i, settlement_pos: Vector3i) 
 	if world.is_water(approach_pos) or world.is_blocked(approach_pos) or not world.is_floor(approach_pos):
 		return false
 
-	var route: Array = world.find_path(settlement_pos, approach_pos, true)
+	var route: Array = DFPathfinding.find_path(world, settlement_pos, approach_pos, true)
 	if route.is_empty():
 		return false
 
@@ -2421,7 +2416,7 @@ func _build_warehouse_access_road(settlement_pos: Vector3i, warehouse_center: Ve
 	var approach_pos: Vector3i = warehouse_center + Vector3i(
 		approach_offset.x, 0, approach_offset.y
 	)
-	var route: Array = world.find_path(settlement_pos, approach_pos, true)
+	var route: Array = DFPathfinding.find_path(world, settlement_pos, approach_pos, true)
 	for step_value: Variant in route:
 		var step: Vector3i = step_value
 		if world.is_water(step) or world.is_wall(step):
@@ -3584,7 +3579,7 @@ func _generate_historical_settlements() -> void:
 							art_item.artifact_lore = "Reliquia legendaria de %s. Forjado en el año %d por %s." % [site.get("name", "Anurkar"), chosen["year"], chosen.get("creator_name", "un artesano olvidado")]
 							art_item.set_meta("is_artifact", true)
 							art_item.set_meta("artifact_lore", art_item.artifact_lore)
-							world.entities.append(art_item)
+							world.add_entity(art_item)
 							placed_artifact = true
 							add_message("¡Reliquia histórica '%s' engendrada en el cofre!" % chosen["name"])
 					
@@ -3599,7 +3594,7 @@ func _generate_historical_settlements() -> void:
 								bones_item.set_meta("is_beast_bones", true)
 								bones_item.set_meta("beast_name", bi.get("name"))
 								bones_item.set_meta("beast_desc", "Huesos legendarios de la megabestia '%s', derrotada en este sitio en el año %d." % [bi.get("name"), hf_rec.death_year])
-								world.entities.append(bones_item)
+								world.add_entity(bones_item)
 								add_message("¡Huesos de la megabestia '%s' encontrados en la ruina!" % bi.get("name"))
 								break
 					
@@ -3621,7 +3616,7 @@ func _generate_historical_settlements() -> void:
 										dwarf.profession = hf.profession
 										dwarf.combat_skill = int(hf.combat_power)
 										dwarf.set_meta("historical_figure_id", hf.id)
-										world.entities.append(dwarf)
+										world.add_entity(dwarf)
 										add_message("¡El héroe histórico '%s' ha spawnado aquí!" % hf.name)
 									else:
 										var ct = "human" if hf.race == "human" else "elf" if hf.race == "elf" else "goblin"
@@ -3631,7 +3626,7 @@ func _generate_historical_settlements() -> void:
 										npc.set_meta("creature_type", ct)
 										npc.set_meta("historical_figure_id", hf.id)
 										npc.combat_skill = int(hf.combat_power)
-										world.entities.append(npc)
+										world.add_entity(npc)
 										add_message("¡La figura histórica '%s' (%s) ha spawnado aquí!" % [hf.name, hf.profession])
 
 					if not placed_artifact:

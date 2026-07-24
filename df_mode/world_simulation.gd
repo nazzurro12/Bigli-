@@ -30,7 +30,7 @@ func initialize(world) -> void:
 		for entity in world.entities:
 			var creature_type = entity.get("creature_type")
 			var definition = database.get_creature(str(creature_type) if creature_type != null else "")
-			if definition != null:
+			if definition != null and entity is DFCreature:
 				definition.apply_to(entity)
 	if faction_relations.is_empty():
 		set_relation("dwarves", "goblins", -60)

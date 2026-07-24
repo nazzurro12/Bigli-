@@ -1331,7 +1331,7 @@ func materialize_near_embark(world: Object, world_gen: Object, embark_cursor: Ve
 		if ai.has("inherited_by") and ai.get("inherited_name", "") != "":
 			lore += " Herencia de %s, pasado a %s." % [ai.get("creator_name", "desconocido"), ai["inherited_name"]]
 		item.artifact_lore = lore
-		world.entities.append(item)
+		world.add_entity(item)
 		items_spawned += 1
 
 	for bi in beast_instances:
@@ -1348,7 +1348,7 @@ func materialize_near_embark(world: Object, world_gen: Object, embark_cursor: Ve
 			corpse.is_organic = true
 			corpse.decay_time = 500
 			corpse.artifact_lore = body_desc
-			world.entities.append(corpse)
+			world.add_entity(corpse)
 			corpses_spawned += 1
 		else:
 			var lair_pos = _world_to_local(bi["lair_x"], bi["lair_z"], world_gen, embark_cursor, local_w, local_d)
@@ -1373,7 +1373,7 @@ func materialize_near_embark(world: Object, world_gen: Object, embark_cursor: Ve
 			creature.home_pos = lair_pos
 			creature.ai_state = DFCreature.AIState.IDLE
 			creature.set_meta("beast_instance_id", bi.get("hf_id", -1))
-			world.entities.append(creature)
+			world.add_entity(creature)
 			creatures_spawned += 1
 
 	for cs in corpse_sites:
@@ -1402,7 +1402,7 @@ func materialize_near_embark(world: Object, world_gen: Object, embark_cursor: Ve
 		grave.base_value = 50
 		grave.total_value = 50
 		grave.artifact_lore = epitaph
-		world.entities.append(grave)
+		world.add_entity(grave)
 		corpses_spawned += 1
 
 	var local_books = []
@@ -1432,7 +1432,7 @@ func materialize_near_embark(world: Object, world_gen: Object, embark_cursor: Ve
 		book_item.artifact_lore = "Un %s escrito por %s en el anio %d. Trata sobre %s.%s" % [w["genre"], w["author_name"], w["year"], w["subject_name"], dyn_line]
 		book_item.base_value = 30
 		book_item.total_value = 30
-		world.entities.append(book_item)
+		world.add_entity(book_item)
 		local_books.append(book_item)
 		items_spawned += 1
 
