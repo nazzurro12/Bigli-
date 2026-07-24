@@ -1286,6 +1286,7 @@ func _tick() -> void:
 		_simulation_tick_clock = 0
 		minute_ticked = true
 		_game_minute += 1
+		world.set_meta("simulation_minute", int(world.get_meta("simulation_minute", 0)) + 1)
 		if _game_minute >= 60:
 			_game_minute = 0
 			_game_hour += 1
