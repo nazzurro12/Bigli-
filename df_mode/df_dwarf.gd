@@ -2671,24 +2671,25 @@ func _idle_wander(world) -> void:
 	if path.size() > 0 and path_index < path.size():
 		_move_toward(world, path.back())
 
-func _find_unclaimed_bed(world):
-	if world == null or world.entities == null:
-		return null
-	var best = null
-	var best_dist = 99999
-	for e in world.entities:
-		if e is DFItem and e.get("is_bed") == true and not _is_bed_claimed(world, e.tile_pos):
-			var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
-			if d < best_dist:
-				best_dist = d
-				best = e.tile_pos
+func _find_unclaimed_bed(world) -> Vector3i:
+	var best := Vector3i(-1, -1, -1)
+	if world == null:
+		return best
+	var best_dist: int = 99999
+	for item_value in world.items:
+		if not item_value.is_bed or item_value.is_decayed or _is_bed_claimed(world, item_value.tile_pos):
+			continue
+		var distance: int = abs(item_value.tile_pos.x - tile_pos.x) + abs(item_value.tile_pos.z - tile_pos.z)
+		if distance < best_dist:
+			best_dist = distance
+			best = item_value.tile_pos
 	return best
 
 func _is_bed_claimed(world, bed_pos: Vector3i) -> bool:
 	if world == null:
 		return false
-	for e in world.entities:
-		if e.get("creature_type") == "dwarf" and e.get("is_alive") == true and e.preferred_bed == bed_pos:
+	for dwarf_value in world.dwarves:
+		if dwarf_value.is_alive and dwarf_value.preferred_bed == bed_pos:
 			return true
 	return false
 
