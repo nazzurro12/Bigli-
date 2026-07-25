@@ -1031,38 +1031,73 @@ func _has_open_adjacent_tile(world_ref, pos: Vector3i) -> bool:
 	return false
 
 func _populate_creatures_local() -> void:
+	_populate_region_fauna(world, embark_cursor)
+
+func _ensure_biome_creature_index() -> void:
+	if not _biome_creature_index.is_empty():
+		return
 	var data = DFData.new(generation_seed)
 	DFWorld._init_plants_from_data()
 	var creature_templates = data.creatures
 	if creature_templates.is_empty():
 		creature_templates = [{"name": "Fox", "tile": "f", "color": "#FF8800", "biomes": ["grassland", "temperate_forest", "taiga", "savanna"], "size": "small"}]
-	
 	_biome_creature_index.clear()
 	for ct in creature_templates:
 		for biome in ct.get("biomes", []):
 			if not _biome_creature_index.has(biome):
 				_biome_creature_index[biome] = []
 			_biome_creature_index[biome].append(ct)
-	
+
+func _populate_region_fauna(target_world, region: Vector2i) -> int:
+	if target_world == null or world_gen == null:
+		return 0
+	_ensure_biome_creature_index()
+	var region_biome: String = str(world_gen.get_biome(region.x, region.y))
+	var possible: Array = _biome_creature_index.get(region_biome, [])
+	if possible.is_empty():
+		return 0
 	var rng_local = RandomNumberGenerator.new()
-	rng_local.seed = generation_seed + 9999
-	
-	for z in range(world.depth):
-		for x in range(world.width):
-			if rng_local.randf() > 0.015: continue
-			var wx = int(float(x) / float(world.width) * world_gen.world_width)
-			var wz = int(float(z) / float(world.depth) * world_gen.world_depth)
-			if wx >= world_gen.biome_map[0].size() or wz >= world_gen.biome_map.size(): continue
-			var creature_biome = world_gen.biome_map[wz][wx]
-			var possible = _biome_creature_index.get(creature_biome, [])
-			if possible.is_empty(): continue
-			var chosen = possible[rng_local.randi() % possible.size()]
-			var h = world.get_surface_height(x, z)
-			if h < 1 or h > 8: continue
-			var pos = Vector3i(x, h, z)
-			if world.is_water(pos) or world.is_blocked(pos): continue
-			var creature = DFCreature.new(pos, str(chosen.get("id", chosen["name"])).to_lower(), chosen.get("tile", chosen.get("glyph", "c")), Color(chosen.get("color", "#FFFFFF")), chosen.get("size", "medium"), chosen)
-			world.add_entity(creature)
+	rng_local.seed = generation_seed + region.x * 73856093 + region.y * 19349663
+	var desired_count: int = rng_local.randi_range(14, 28)
+	var spawned_count: int = 0
+	var attempt_budget: int = desired_count * 10
+	for _attempt_index in range(attempt_budget):
+		if spawned_count >= desired_count:
+			break
+		var x: int = rng_local.randi_range(4, target_world.width - 5)
+		var z: int = rng_local.randi_range(4, target_world.depth - 5)
+		var h: int = target_world.get_surface_height(x, z)
+		if h < 1 or h > 12:
+			continue
+		var pos := Vector3i(x, h, z)
+		if target_world.is_water(pos) or target_world.is_blocked(pos):
+			continue
+		var chosen: Dictionary = possible[rng_local.randi() % possible.size()]
+		var creature = DFCreature.new(
+			pos,
+			str(chosen.get("id", chosen.get("name", "animal"))).to_lower(),
+			chosen.get("tile", chosen.get("glyph", "c")),
+			Color(chosen.get("color", "#FFFFFF")),
+			chosen.get("size", "medium"),
+			chosen
+		)
+		target_world.add_entity(creature)
+		spawned_count += 1
+	return spawned_count
+
+func _populate_streamed_planet_region(target_world, region: Vector2i) -> void:
+	if target_world == null or bool(target_world.get_meta("regional_population_complete", false)):
+		return
+	var historical_count: int = 0
+	if history_gen != null:
+		historical_count = history_gen.materialize_near_embark(target_world, world_gen, region)
+	var fauna_count: int = _populate_region_fauna(target_world, region)
+	target_world.set_meta("regional_population_complete", true)
+	target_world.set_meta("regional_historical_entities", historical_count)
+	target_world.set_meta("regional_fauna_count", fauna_count)
+	add_message("Región %d,%d: %d entidades históricas y %d animales." % [
+		region.x, region.y, historical_count, fauna_count
+	])
 
 func _process(delta: float) -> void:
 	_poll_planet_transition()
@@ -1890,6 +1925,7 @@ func _activate_planet_region(target_world) -> void:
 	planet_designation_cache[old_key] = designation
 	world = target_world
 	active_planet_region = _planet_transition_target
+	_populate_streamed_planet_region(world, active_planet_region)
 	var entry_2d: Vector2i = DFPlanetRegions.entry_tile(
 		_planet_transition_direction, world.width, world.depth
 	)
@@ -2322,6 +2358,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	load_status = "Poblando fauna y flora indómita"
 	await get_tree().process_frame
 	_populate_creatures_local()
+	world.set_meta("regional_population_complete", true)
 	camera_pos = local_center_surface
 	load_progress = 0.95
 	await get_tree().process_frame
