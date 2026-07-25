@@ -277,6 +277,38 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("modify_relationship(e.id", social)
         self.assertIn("e.modify_relationship(id", social)
 
+    def test_interface_uses_a_reusable_2004_desktop_visual_language(self):
+        for token in (
+            "UI_CLASSIC_FACE",
+            "UI_CLASSIC_TITLE",
+            "UI_CLASSIC_SHADOW",
+            "func _draw_classic_bevel",
+            "func _draw_classic_titlebar",
+            "func _draw_application_frame",
+        ):
+            self.assertIn(token, self.renderer)
+
+    def test_real_godot_controls_share_the_classic_theme(self):
+        self.assertIn("func _apply_classic_control_theme", self.renderer)
+        self.assertIn('set_stylebox("normal", "Button"', self.renderer)
+        self.assertIn('set_stylebox("pressed", "Button"', self.renderer)
+        self.assertIn('set_stylebox("panel", "Panel"', self.renderer)
+
+    def test_main_hud_is_presented_as_a_desktop_application(self):
+        self.assertIn('"Bigli World Simulator"', self.renderer)
+        self.assertIn('"Archivo   Ver   Simulación', self.renderer)
+        self.assertIn('"Propiedades de la colonia"', self.renderer)
+        self.assertIn('"Registro de sucesos"', self.renderer)
+
+    def test_desktop_chrome_reserves_space_and_preserves_mouse_targeting(self):
+        self.assertIn("UI_CONTENT_TOP: int = 44", self.renderer)
+        self.assertGreaterEqual(self.renderer.count("UI_CONTENT_TOP + z * _char_size.y"), 2)
+        self.assertIn("mouse_pos.y - UI_CONTENT_TOP", self.renderer)
+        frame = self.renderer.split("func _draw_application_frame", 1)[1].split(
+            "func _apply_night_lighting", 1
+        )[0]
+        self.assertNotIn("_draw_classic_bevel(outer", frame)
+
 
 if __name__ == "__main__":
     unittest.main()
