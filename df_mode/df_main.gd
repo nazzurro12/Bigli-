@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 53158)
+Total output lines: 5034
+
 extends Control
 class_name DFMain
 
@@ -1167,8 +1170,9 @@ func _process(delta: float) -> void:
 		renderer._world_curse_desc = world_gen.world_curse_description
 		var ht = renderer._highlighted_tile
 		if ht.x >= 0:
-			var wx = int(float(ht.x) / float(world.width) * world_gen.world_width)
-			var wz = int(float(ht.z) / float(world.depth) * world_gen.world_depth)
+			var cursor_sample: Vector2 = world_gen._get_world_sample(ht.x, ht.z, world.width, world.depth)
+			var wx: int = floori(cursor_sample.x)
+			var wz: int = floori(cursor_sample.y)
 			if wx >= 0 and wx < world_gen.world_width and wz >= 0 and wz < world_gen.world_depth:
 				if world_gen.biome_map.size() > wz and world_gen.biome_map[wz].size() > wx:
 					renderer._biome_at_cursor = world_gen.biome_map[wz][wx]
@@ -2001,18 +2005,23 @@ func _planet_dimensions() -> Vector2i:
 	return Vector2i(maxi(1, int(world_gen.world_width)), maxi(1, int(world_gen.world_depth)))
 
 func _region_is_habitable(candidate: Vector2i) -> bool:
-	if world_gen == null or world_gen.is_ocean(candidate.x, candidate.y) or world_gen.is_lake(candidate.x, candidate.y):
+	if world_gen == null:
+		return false
+	var planet_size := _planet_dimensions()
+	var atlas_candidate := DFPlanetRegions.atlas_region(candidate, planet_size.x, planet_size.y)
+	if world_gen.is_ocean(atlas_candidate.x, atlas_candidate.y) or world_gen.is_lake(atlas_candidate.x, atlas_candidate.y):
 		return false
 	var land_samples: int = 0
 	var total_samples: int = 0
 	for sample_z in range(-2, 3):
 		for sample_x in range(-2, 3):
-			var check_x: int = posmod(candidate.x + sample_x, int(world_gen.world_width))
-			var check_z: int = candidate.y + sample_z
-			if check_z < 0 or check_z >= int(world_gen.world_depth):
-				continue
+			var atlas_sample := DFPlanetRegions.atlas_region(
+				candidate + Vector2i(sample_x, sample_z),
+				planet_size.x,
+				planet_size.y
+			)
 			total_samples += 1
-			if not world_gen.is_ocean(check_x, check_z) and not world_gen.is_lake(check_x, check_z):
+			if not world_gen.is_ocean(atlas_sample.x, atlas_sample.y) and not world_gen.is_lake(atlas_sample.x, atlas_sample.y):
 				land_samples += 1
 	return total_samples > 0 and float(land_samples) / float(total_samples) >= 0.72
 
@@ -2041,9 +2050,6 @@ func _request_planet_transition(direction: Vector2i) -> void:
 	if _planet_transition_in_progress or world == null or world_gen == null:
 		return
 	var planet_size := _planet_dimensions()
-	if not DFPlanetRegions.can_cross(active_planet_region, direction, planet_size.y):
-		add_message("Has alcanzado una región polar.")
-		return
 	_planet_transition_direction = direction
 	_planet_transition_target = DFPlanetRegions.neighbor(active_planet_region, direction, planet_size.x, planet_size.y)
 	var target_key: String = DFPlanetRegions.region_key(_planet_transition_target)
@@ -2293,309 +2299,7 @@ func _handle_menu_key(kc: int) -> void:
 		GameState.EMBARK_MAP_SELECT:
 			var world_navigation_step: int = 16 if Input.is_key_pressed(KEY_SHIFT) else 1
 			match kc:
-				KEY_UP: embark_cursor.y = clampi(embark_cursor.y - world_navigation_step, 0, world_gen.world_depth - 1)
-				KEY_DOWN: embark_cursor.y = clampi(embark_cursor.y + world_navigation_step, 0, world_gen.world_depth - 1)
-				KEY_LEFT: embark_cursor.x = clampi(embark_cursor.x - world_navigation_step, 0, world_gen.world_width - 1)
-				KEY_RIGHT: embark_cursor.x = clampi(embark_cursor.x + world_navigation_step, 0, world_gen.world_width - 1)
-				KEY_ESCAPE: current_state = GameState.MODE_SELECT; setting_selected_index = 0
-				KEY_ENTER: current_state = GameState.EMBARK_PREPARE; embark_prepare_step = 0; setting_selected_index = 0; embark_prepare_points = 100
-		GameState.EMBARK_PREPARE:
-			if embark_prepare_step == 0:
-				match kc:
-					KEY_UP, KEY_DOWN: setting_selected_index = posmod(setting_selected_index + (1 if kc == KEY_DOWN else -1), 2)
-					KEY_ESCAPE: current_state = GameState.EMBARK_MAP_SELECT
-					KEY_ENTER:
-						if setting_selected_index == 0:
-							_finalize_embark_and_land(true)
-						else:
-							embark_prepare_step = 1; setting_selected_index = 0
-							for k in embark_custom_skills: embark_custom_skills[k] = 1
-							embark_custom_items = {"Plump Helmet Seed": 10, "Plump Helmet": 15, "Dwarven Ale": 15, "Copper Pickaxe": 2, "Copper Woodcutter Axe": 1}
-							embark_prepare_points = 100
-			elif embark_prepare_step == 1:
-				var skill_keys = embark_custom_skills.keys()
-				var item_keys = embark_custom_items.keys()
-				var total_opts = skill_keys.size() + item_keys.size()
-				match kc:
-					KEY_UP: setting_selected_index = posmod(setting_selected_index - 1, total_opts)
-					KEY_DOWN: setting_selected_index = posmod(setting_selected_index + 1, total_opts)
-					KEY_LEFT, KEY_RIGHT:
-						var embark_step = 1 if kc == KEY_RIGHT else -1
-						if setting_selected_index < skill_keys.size():
-							var sname = skill_keys[setting_selected_index]
-							var embark_val = embark_custom_skills[sname]
-							if embark_step > 0 and embark_prepare_points >= 5 and embark_val < 5:
-								embark_custom_skills[sname] = embark_val + 1; embark_prepare_points -= 5
-							elif embark_step < 0 and embark_val > 0:
-								embark_custom_skills[sname] = embark_val - 1; embark_prepare_points += 5
-						else:
-							var itname = item_keys[setting_selected_index - skill_keys.size()]
-							var item_val = embark_custom_items[itname]
-							var cost = 1
-							if ("Ale" in itname) or ("Plump Helmet" in itname and not "Seed" in itname): cost = 2
-							elif "Pickaxe" in itname or "Axe" in itname: cost = 15
-							if embark_step > 0 and embark_prepare_points >= cost:
-								embark_custom_items[itname] = item_val + 1; embark_prepare_points -= cost
-							elif embark_step < 0 and item_val > 0:
-								embark_custom_items[itname] = item_val - 1; embark_prepare_points += cost
-					KEY_ESCAPE: embark_prepare_step = 0; setting_selected_index = 0
-					KEY_ENTER: _finalize_embark_and_land(false)
-
-func _finalize_embark_and_land(play_now: bool) -> void:
-	load_progress = 0.0
-	load_status = "Iniciando desembarco..."
-	load_step = 0
-	load_play_now = play_now
-	current_state = GameState.LOADING_PLAYING
-	if world == null:
-		world = DFWorld.new(256, 256, 16)
-	if dialogue != null:
-		dialogue.world_ref = world
-	if fast_travel != null:
-		fast_travel.world_ref = world
-	if quest_system != null:
-		quest_system.world_ref = world
-
-func _run_loading_playing_loop(play_now: bool) -> void:
-	if _loading_in_progress:
-		return
-	_loading_in_progress = true
-	
-	current_state = GameState.LOADING_PLAYING
-	load_play_now = play_now
-	
-	if world == null:
-		world = DFWorld.new(256, 256, 16)
-	if dialogue != null:
-		dialogue.world_ref = world
-	if fast_travel != null:
-		fast_travel.world_ref = world
-	if quest_system != null:
-		quest_system.world_ref = world
-		
-	var local_center_surface := Vector3i(128, 3, 128)
-	if dialogue == null:
-		dialogue = DFDialogue.new(world, self)
-		
-	# Step 0
-	load_status = "Preparando terreno local"
-	load_progress = 0.1
-	await get_tree().process_frame
-	
-	# Step 1
-	load_status = "Generando relieve, biomas y asentamientos locales"
-	await get_tree().process_frame
-	var resolved_embark_region := _resolve_habitable_embark_region(embark_cursor)
-	if resolved_embark_region != embark_cursor:
-		add_message("La zona elegida era oceánica. La expedición llegó a tierra firme en %d,%d." % [
-			resolved_embark_region.x, resolved_embark_region.y
-		])
-		embark_cursor = resolved_embark_region
-	# Una región local puede reutilizar el mismo objeto World. Limpiar antes de
-	# materializar impide duplicar edificios, residentes y almacenes.
-	world.entities.clear()
-	world._entity_grid.clear()
-	world._grid_version = -1
-	world.buildings.clear()
-	world.workshops.clear()
-	world.stockpiles.clear()
-	world.growing_crops.clear()
-	world.set_meta("generated_world_sites", [])
-	world.set_meta("active_world_region", [embark_cursor.x, embark_cursor.y])
-	active_planet_region = embark_cursor
-	planet_region_cache.clear()
-	planet_designation_cache.clear()
-	world_gen.generate_local_map(world, embark_cursor)
-	# El centro debe calcularse después de crear el terreno. Antes podía quedar dentro del agua.
-	local_center_surface = _find_safe_settlement_center(Vector2i(128, 128))
-	settlement_center = local_center_surface
-	world.set_meta("settlement_center", settlement_center)
-	load_progress = 0.3
-	await get_tree().process_frame
-	
-	# Step 2
-	load_status = "Localizando ruinas y asentamientos históricos"
-	await get_tree().process_frame
-	_generate_historical_settlements()
-	load_progress = 0.45
-	await get_tree().process_frame
-	
-	# Step 3
-	load_status = "Materializando artefactos y bestias"
-	await get_tree().process_frame
-	if history_gen != null:
-		var spawned = history_gen.materialize_near_embark(world, world_gen, embark_cursor)
-		add_message("  *** %d entidades históricas materializadas en el área ***" % spawned)
-	
-	# Step 4
-	load_status = "Simulando historia local: %d años de colonia" % gen_max_years
-	await get_tree().process_frame
-	# Los habitantes históricos y residentes de aldeas ya fueron materializados.
-	# No se borran aquí; los colonos del jugador se agregan a continuación.
-	
-	# === SIMULACIÓN DEMOGRÁFICA REAL POR AÑOS ===
-	var survivors = _simulate_embark_demographics(gen_max_years)
-	var num_dwarves = survivors.size()
-	
-	
-	# Buscar enanos históricos vivos que proceden del mundo simulado
-	var candidate_hfs = []
-	if history_gen != null:
-		for hf in history_gen.historical_figures:
-			if hf.death_year == -1 and hf.race == "dwarf":
-				candidate_hfs.append(hf)
-	
-	var used_dwarf_ids = []
-	var used_spawn_positions: Array = []
-	var embark_colonists: Array = []
-	for i in range(num_dwarves):
-		var surv = survivors[i]
-		var dname = surv.name
-		var hf_id = -1
-		var hf_deeds = []
-		var hf_birth = 0
-		
-		# Si hay un HF histórico para este enano, tomar sus datos
-		if i < candidate_hfs.size():
-			hf_id = candidate_hfs[i].id
-			hf_deeds = candidate_hfs[i].notable_deeds
-			hf_birth = candidate_hfs[i].birth_year
-		
-		# Spawnear en suelo seco alrededor del centro; la cama real se asigna al construir la cabaña.
-		var dpos = _find_valid_spawn_spiral(local_center_surface, used_spawn_positions)
-		used_spawn_positions.append(dpos)
-		var dwarf = DFDwarf.new(dpos, dname)
-		dwarf.profession = surv.profession
-		dwarf.preferred_bed = Vector3i(-1, -1, -1)
-		
-		# La herramienta configurada se entrega al inventario después de aplicar el perfil.
-		# Antes se generaba una copia en el suelo que nadie reclamaba.
-		var weapon_str: String = str(surv.get("equipped_weapon", ""))
-		
-		# Aplicar prioridades de tareas
-		var prio_dict = surv.get("priorities", {})
-		for labor_key in prio_dict:
-			if dwarf.has_method("set_labor_priority"):
-				dwarf.set_labor_priority(labor_key, prio_dict[labor_key])
-		
-		# Sincronizar datos históricos garantizando ID único
-		if hf_id != -1 and not hf_id in used_dwarf_ids:
-			dwarf.id = hf_id
-			used_dwarf_ids.append(hf_id)
-			dwarf.set_meta("historical_figure_id", hf_id)
-			var hf_age = gen_max_years - hf_birth
-			dwarf.set_meta("age", hf_age)
-			for deed in hf_deeds:
-				dwarf.add_thought(deed, 0.05)
-		else:
-			var fallback_id = 1000 + i
-			while fallback_id in used_dwarf_ids:
-				fallback_id += 1
-			dwarf.id = fallback_id
-			used_dwarf_ids.append(fallback_id)
-		
-		# Aplicar perfil único y completar un kit físico real en el inventario.
-		_apply_dwarf_profile(dwarf, i, load_play_now)
-		_ensure_dwarf_starting_kit(dwarf, i, weapon_str)
-		
-		world.add_entity(dwarf)
-		embark_colonists.append(dwarf)
-		
-	# Establecer relaciones y amistades iniciales
-	for rel_i in range(embark_colonists.size()):
-		for rel_j in range(embark_colonists.size()):
-			if rel_i != rel_j:
-				var other_id: int = embark_colonists[rel_j].id
-				embark_colonists[rel_i].relationships[other_id] = randf_range(0.60, 0.95)
-				if not other_id in embark_colonists[rel_i].friends:
-					embark_colonists[rel_i].friends.append(other_id)
-				
-	load_progress = 0.7
-	await get_tree().process_frame
-	
-	# Step 5
-	load_status = "Descargando equipamiento del carro"
-	await get_tree().process_frame
-	var items_to_spawn = {}
-	if load_play_now:
-		items_to_spawn = {"Plump Helmet Seed": 15, "Plump Helmet": 20, "Dwarven Ale": 25, "Copper Pickaxe": 2, "Copper Woodcutter Axe": 1}
-	else:
-		items_to_spawn = embark_custom_items
-	var embark_dwarves: Array = []
-	for embark_entity in world.dwarves:
-		if embark_entity.is_alive and not embark_entity.is_world_settlement_resident:
-			embark_dwarves.append(embark_entity)
-	for it_name in items_to_spawn:
-		var qty: int = int(items_to_spawn[it_name])
-		var itype: String = "food" if "Helmet" in it_name and not "Seed" in it_name else "drink" if "Ale" in it_name else "seed" if "Seed" in it_name else "weapon"
-		var glyph: String = "%" if itype == "food" else "~" if itype == "drink" else "." if itype == "seed" else "/" if it_name == "Copper Woodcutter Axe" else "p"
-		var color: Color = Color("#FF8844") if itype == "food" else Color("#FFCC00") if itype == "drink" else Color("#00FF88") if itype == "seed" else Color("#88CCFF")
-		for q in range(qty):
-			var rx: int = local_center_surface.x + (randi() % 5) - 2
-			var rz: int = local_center_surface.z + (randi() % 5) - 2
-			var ipos: Vector3i = _fix_surface(Vector3i(rx, local_center_surface.y, rz))
-			var embark_item: DFItem = DFItem.new(ipos, str(it_name), itype, 0, glyph, color)
-			if not _try_distribute_initial_item(embark_item, embark_dwarves):
-				world.add_entity(embark_item)
-	load_progress = 0.85
-	await get_tree().process_frame
-	
-	# Step 6
-	load_status = "Poblando fauna y flora indómita"
-	await get_tree().process_frame
-	_populate_creatures_local()
-	world.set_meta("regional_population_complete", true)
-	camera_pos = local_center_surface
-	load_progress = 0.95
-	await get_tree().process_frame
-	
-	# Step 7
-	load_status = "Fundando asentamiento inicial"
-	await get_tree().process_frame
-	designation = DFDesignation.new(world)
-	_build_initial_settlement(local_center_surface)
-	_auto_designate_initial_jobs(local_center_surface)
-	var simulation_database = load("res://df_mode/resources/world_database.tres")
-	world_simulation = DFWorldSimulationScript.new(simulation_database)
-
-	world_simulation.initialize(world)
-	renderer.set_world(world)
-	renderer.designation = designation
-	renderer.game_year = gen_max_years
-	caravan_system = DFCaravan.new(generation_seed)
-	paused = false
-	renderer.paused = false
-	current_state = GameState.PLAYING
-	renderer.show_sidebar = true
-	var audio = get_node("DFAudio") as DFAudio
-	if audio != null:
-		audio.play_music("main_theme")
-		var gx = int(float(settlement_center.x) / float(world.width) * world_gen.world_width)
-		var gz = int(float(settlement_center.z) / float(world.depth) * world_gen.world_depth)
-		var biome = "grassland"
-		if world_gen.biome_map.size() > gz and world_gen.biome_map[gz].size() > gx:
-			biome = world_gen.biome_map[gz][gx]
-		audio.play_ambient(biome)
-		
-	if has_meta("adventure_mode_pending") and get_meta("adventure_mode_pending") == true:
-		remove_meta("adventure_mode_pending")
-		for ent in world.dwarves:
-			if ent.get("is_alive") == true:
-				_possess_dwarf(ent.id)
-				break
-		add_message("========================================")
-		add_message("  *** MODO AVENTURA (ROGUELIKE) INICIADO! ***")
-		add_message("  Controlas a tu héroe con WASD / Flechas.")
-		add_message("  T: Hablar con NPCs  |  V: Viaje Rápido  |  Q: Salir")
-		add_message("========================================")
-	else:
-		var alive_count = 0
-		for ent in world.dwarves:
-			if ent.get("is_alive") != false:
-				alive_count += 1
-		add_message("========================================")
-		add_message("  NUEVO EMBARQUE EN %s!" % world_name.to_upper())
-		add_message("  Colonia: %d supervivientes tras %d años de historia." % [alive_count, gen_max_years])
+				KE…3158 tokens truncated…  Colonia: %d supervivientes tras %d años de historia." % [alive_count, gen_max_years])
 		add_message("  Presiona ESPACIO para pausar, 1-6 para designar.")
 		add_message("========================================")
 		
