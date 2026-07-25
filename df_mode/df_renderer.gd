@@ -1009,6 +1009,10 @@ func _draw() -> void:
 				var fg = Color.WHITE
 				var bg = Color.BLACK
 				var char_pos = Vector2(border_x + x * _char_size.x, UI_CONTENT_TOP + z * _char_size.y)
+				# Nunca dejar ver el gris del Control por debajo del mapa. Las celdas
+				# fuera de la región muestran el espacio de trabajo hasta que el
+				# controlador complete la transición a la región vecina.
+				draw_rect(Rect2(char_pos, _char_size), UI_CLASSIC_WORKSPACE, true)
 
 				if wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth:
 					var tile_type = world.get_tile(pos)
