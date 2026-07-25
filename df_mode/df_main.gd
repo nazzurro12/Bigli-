@@ -1870,7 +1870,7 @@ func _try_move_possessed(direction: Vector2i) -> bool:
 		# El relieve procedural puede formar una pared exactamente sobre el borde.
 		# Esa pared no debe convertir una región del planeta en una caja cerrada.
 		const BORDER_EXIT_MARGIN := 3
-		var leaving_through_border := (
+		var leaving_through_border: bool = (
 			(direction.x < 0 and current_position.x <= BORDER_EXIT_MARGIN)
 			or (direction.x > 0 and current_position.x >= world.width - BORDER_EXIT_MARGIN - 1)
 			or (direction.y < 0 and current_position.z <= BORDER_EXIT_MARGIN)
