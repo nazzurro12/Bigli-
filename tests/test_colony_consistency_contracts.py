@@ -24,6 +24,9 @@ class ColonyConsistencyContracts(unittest.TestCase):
         cls.story_director = (ROOT / "df_mode/df_story_director.gd").read_text(
             encoding="utf-8"
         )
+        cls.autonomous_plan = (
+            ROOT / "core/ai/df_autonomous_plan.gd"
+        ).read_text(encoding="utf-8")
 
     def test_crises_require_time_and_sustained_pressure(self):
         self.assertIn("CRISIS_GRACE_MINUTES: int = 1440", self.dwarf)
@@ -723,6 +726,28 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("embark_pos != NO_EMBARK_REGION", global_sample)
         self.assertNotIn("fposmod", global_sample)
         self.assertIn("DFPlanetRegions.atlas_region(candidate", self.main)
+
+    def test_daily_schedule_physically_routes_residents_to_beds(self):
+        self.assertIn("hour >= 22 or hour < 6", self.dwarf)
+        self.assertIn("hour >= 14 and hour < 22", self.dwarf)
+        self.assertIn("_try_sleep(world, true)", self.dwarf)
+        sleep = self.dwarf.split("func _try_sleep", 1)[1].split(
+            "func _idle_wander", 1
+        )[0]
+        self.assertIn('current_task = "Yendo a su cama"', sleep)
+        self.assertIn("_move_toward(world, preferred_bed)", sleep)
+        self.assertIn("dist_to_bed > 1", sleep)
+
+    def test_failed_plans_and_unreachable_workplaces_release_residents(self):
+        self.assertIn("MAX_STEP_FAILURES: int = 3", self.autonomous_plan)
+        self.assertIn('plan["state"] = "failed"', self.autonomous_plan)
+        self.assertIn("DFAutonomousPlan.is_failed(autonomous_plan)", self.dwarf)
+        movement = self.dwarf.split("func _move_toward", 1)[1].split(
+            "func get_display_char", 1
+        )[0]
+        self.assertIn("operating_workshop.unassign_dwarf()", movement)
+        self.assertIn('DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada', movement)
+        self.assertIn("preferred_bed = Vector3i(-1, -1, -1)", movement)
 
 
 if __name__ == "__main__":
