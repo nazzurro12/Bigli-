@@ -11,12 +11,12 @@ const DFWorldSites = preload("res://df_mode/df_world_sites.gd")
 const BIOME_FALLBACK: String = "grassland"
 # Escala horizontal equivalente al mundo "Large" de Dwarf Fortress:
 # 257 regiones * 16 bloques * 48 casillas = 197.376 casillas por eje.
-# Bigli materializa zonas locales de 128 casillas, por lo que necesita
-# 197.376 / 128 = 1.542 regiones transmitidas por eje.
+# Bigli materializa zonas locales de 256 casillas, por lo que necesita
+# 197.376 / 256 = 771 regiones transmitidas por eje.
 const DF_LARGE_MACRO_REGIONS: int = 257
 const DF_BLOCKS_PER_MACRO_REGION: int = 16
 const DF_TILES_PER_BLOCK: int = 48
-const STREAMED_REGION_TILES: int = 128
+const STREAMED_REGION_TILES: int = 256
 const MAX_PLANET_REGIONS_PER_AXIS: int = (
 	DF_LARGE_MACRO_REGIONS * DF_BLOCKS_PER_MACRO_REGION * DF_TILES_PER_BLOCK
 ) / STREAMED_REGION_TILES
@@ -33,7 +33,7 @@ var world_depth: int = MAX_PLANET_REGIONS_PER_AXIS
 var sea_level_value: int = 30
 var local_region_span: float = 6.0
 
-# Los mapas mundiales usan filas Packed* para que un mundo de 1542² no
+# Los mapas mundiales usan filas Packed* para que un mundo planetario no
 # consuma cientos de megabytes en Variants de GDScript.
 var elevation_map: Array = []
 var rainfall_map: Array = []
