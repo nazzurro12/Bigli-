@@ -1527,7 +1527,7 @@ func _tick() -> void:
 			var is_active_follower: bool = e4.has_meta("is_follower") and e4.get_meta("is_follower") == true
 			var available_jobs: Array = [] if is_active_follower else (designation.job_queue if designation != null else [])
 			e4.tick(world, available_jobs, minute_ticked)
-			if e4.get("is_resting_medical") == true and designation != null:
+			if minute_ticked and e4.get("is_resting_medical") == true and designation != null:
 				var has_medical_job = false
 				for job_item in designation.job_queue:
 					if job_item.job_type == DFJob.JobType.TEND_WOUNDS and job_item.has_meta("patient_id") and job_item.get_meta("patient_id") == e4.get_instance_id():
@@ -1575,8 +1575,12 @@ func _tick() -> void:
 	for cb_bld in campfires_to_remove:
 		world.buildings.erase(cb_bld)
 
-	_recover_orphaned_jobs()
-	_cleanup_completed_jobs()
+	# El mantenimiento administrativo no necesita ejecutarse 25 veces por
+	# minuto simulado. Repartirlo elimina barridos repetidos de colonos,
+	# trabajos e inventario sin cambiar el resultado lógico.
+	if _simulation_tick_clock % 10 == 0:
+		_recover_orphaned_jobs()
+		_cleanup_completed_jobs()
 
 	# TICK DE REPRODUCCION: cada minuto de juego
 	if minute_ticked:
