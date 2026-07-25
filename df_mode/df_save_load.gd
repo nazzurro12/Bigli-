@@ -959,6 +959,9 @@ static func serialize_region_world(region_world, region_designation = null) -> D
 		"world_version": region_world.world_version,
 		"active_world_region": region_world.get_meta("active_world_region", []).duplicate(),
 		"generated_world_sites": region_world.get_meta("generated_world_sites", []).duplicate(true),
+		"regional_population_complete": bool(region_world.get_meta("regional_population_complete", false)),
+		"regional_historical_entities": int(region_world.get_meta("regional_historical_entities", 0)),
+		"regional_fauna_count": int(region_world.get_meta("regional_fauna_count", 0)),
 		"tiles": [],
 		"elevation": [],
 		"entities": [],
@@ -1019,6 +1022,9 @@ static func deserialize_region_world(payload: Dictionary) -> Dictionary:
 	restored_world.world_version = int(payload.get("world_version", 0))
 	restored_world.set_meta("active_world_region", payload.get("active_world_region", []).duplicate())
 	restored_world.set_meta("generated_world_sites", payload.get("generated_world_sites", []).duplicate(true))
+	restored_world.set_meta("regional_population_complete", bool(payload.get("regional_population_complete", false)))
+	restored_world.set_meta("regional_historical_entities", int(payload.get("regional_historical_entities", 0)))
+	restored_world.set_meta("regional_fauna_count", int(payload.get("regional_fauna_count", 0)))
 	for entry in payload.get("tiles", []):
 		var position := _arr_to_v3i(entry.get("p", [0, 0, 0]))
 		var tile_value: int = int(entry.get("t", -1))
@@ -1119,6 +1125,9 @@ static func save_game(main) -> bool:
 	data["world"]["name"] = w.world_name
 	data["world"]["world_version"] = w.world_version
 	data["world"]["generated_world_sites"] = w.get_meta("generated_world_sites", []).duplicate(true)
+	data["world"]["regional_population_complete"] = bool(w.get_meta("regional_population_complete", false))
+	data["world"]["regional_historical_entities"] = int(w.get_meta("regional_historical_entities", 0))
+	data["world"]["regional_fauna_count"] = int(w.get_meta("regional_fauna_count", 0))
 	data["world"]["active_world_region"] = w.get_meta("active_world_region", []).duplicate()
 
 	var pos_keys = w.tiles.keys()
@@ -1297,6 +1306,9 @@ static func load_game(main) -> bool:
 	w.world_name = wd.get("name", "")
 	w.world_version = wd.get("world_version", 0)
 	w.set_meta("generated_world_sites", wd.get("generated_world_sites", []).duplicate(true))
+	w.set_meta("regional_population_complete", bool(wd.get("regional_population_complete", false)))
+	w.set_meta("regional_historical_entities", int(wd.get("regional_historical_entities", 0)))
+	w.set_meta("regional_fauna_count", int(wd.get("regional_fauna_count", 0)))
 	w.set_meta("active_world_region", wd.get("active_world_region", []).duplicate())
 
 	w.tiles.clear()
@@ -1548,6 +1560,9 @@ static func _build_save_data(main) -> Dictionary:
 	data["world"]["name"] = w.world_name
 	data["world"]["world_version"] = w.world_version
 	data["world"]["generated_world_sites"] = w.get_meta("generated_world_sites", []).duplicate(true)
+	data["world"]["regional_population_complete"] = bool(w.get_meta("regional_population_complete", false))
+	data["world"]["regional_historical_entities"] = int(w.get_meta("regional_historical_entities", 0))
+	data["world"]["regional_fauna_count"] = int(w.get_meta("regional_fauna_count", 0))
 	data["world"]["active_world_region"] = w.get_meta("active_world_region", []).duplicate()
 
 	var pos_keys = w.tiles.keys()
@@ -1704,6 +1719,9 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	w.world_name = wd.get("name", "")
 	w.world_version = wd.get("world_version", 0)
 	w.set_meta("generated_world_sites", wd.get("generated_world_sites", []).duplicate(true))
+	w.set_meta("regional_population_complete", bool(wd.get("regional_population_complete", false)))
+	w.set_meta("regional_historical_entities", int(wd.get("regional_historical_entities", 0)))
+	w.set_meta("regional_fauna_count", int(wd.get("regional_fauna_count", 0)))
 	w.set_meta("active_world_region", wd.get("active_world_region", []).duplicate())
 
 	w.tiles.clear()
