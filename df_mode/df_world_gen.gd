@@ -311,14 +311,15 @@ func _octave_noise(x: float, y: float, octaves: int, persistence: float, scale: 
 func _generate_elevation() -> void:
 	elevation_map.clear()
 	var plate_count: int = clampi(int(round(sqrt(float(world_width * world_depth)) / 85.0)), 8, 18)
-	var plates: Array = []
+	var plate_centers := PackedVector2Array()
+	var plate_radii := PackedFloat32Array()
+	var plate_uplifts := PackedFloat32Array()
+	var plate_ridges := PackedFloat32Array()
 	for plate_index in range(plate_count):
-		plates.append({
-			"center": Vector2(rng.randf_range(0.08, 0.92), rng.randf_range(0.08, 0.92)),
-			"radius": rng.randf_range(0.18, 0.42),
-			"uplift": rng.randf_range(-0.18, 0.36),
-			"ridge": rng.randf_range(0.4, 1.0)
-		})
+		plate_centers.append(Vector2(rng.randf_range(0.08, 0.92), rng.randf_range(0.08, 0.92)))
+		plate_radii.append(rng.randf_range(0.18, 0.42))
+		plate_uplifts.append(rng.randf_range(-0.18, 0.36))
+		plate_ridges.append(rng.randf_range(0.4, 1.0))
 	for z in range(world_depth):
 		var row := PackedByteArray()
 		row.resize(world_width)
@@ -330,16 +331,17 @@ func _generate_elevation() -> void:
 			var plate_field: float = 0.0
 			var ridge_field: float = 0.0
 			var point := Vector2(nx, nz)
-			for plate_variant in plates:
-				var plate: Dictionary = plate_variant
-				var center: Vector2 = plate["center"]
-				var radius: float = float(plate["radius"])
+			for active_plate_index in range(plate_count):
+				var center: Vector2 = plate_centers[active_plate_index]
+				var radius: float = plate_radii[active_plate_index]
 				var distance: float = point.distance_to(center)
+				if distance > radius:
+					continue
 				var influence: float = clampf(1.0 - distance / radius, 0.0, 1.0)
 				influence = influence * influence * (3.0 - 2.0 * influence)
-				plate_field += influence * float(plate["uplift"])
+				plate_field += influence * plate_uplifts[active_plate_index]
 				var boundary: float = 1.0 - absf(distance - radius * 0.66) / maxf(0.001, radius * 0.24)
-				ridge_field = maxf(ridge_field, clampf(boundary, 0.0, 1.0) * float(plate["ridge"]))
+				ridge_field = maxf(ridge_field, clampf(boundary, 0.0, 1.0) * plate_ridges[active_plate_index])
 			var edge_distance: float = minf(minf(nx, 1.0 - nx), minf(nz, 1.0 - nz))
 			var edge_falloff: float = smoothstep(0.0, 0.095, edge_distance)
 			var ridge_noise: float = 1.0 - absf(_octave_noise(float(x) + 700.0, float(z) + 1300.0, 4, 0.52, float(world_width) * 0.095))
@@ -587,9 +589,9 @@ func _generate_biomes() -> void:
 			var temperature: float = float(temperature_map[z][x])
 			var drainage: float = float(drainage_map[z][x])
 			var biome: String = BIOME_FALLBACK
-			if is_ocean(x, z):
+			if int(elevation_map[z][x]) <= sea_level_value:
 				biome = "ocean_deep" if int(elevation_map[z][x]) < sea_level_value - 9 else "ocean_shallow"
-			elif is_lake(x, z):
+			elif not lake_map.is_empty() and int(lake_map[z][x]) > 0:
 				biome = "lake"
 			elif int(elevation_map[z][x]) <= sea_level_value + 2:
 				biome = "beach" if rain < 0.65 else "swamp"
@@ -635,7 +637,7 @@ func _generate_vegetation() -> void:
 		var row := PackedFloat32Array()
 		row.resize(world_width)
 		for x in range(world_width):
-			var biome: String = get_biome(x, z)
+			var biome: String = str(biome_map[z][x])
 			var rain: float = float(rainfall_map[z][x])
 			var base: float
 			match biome:
@@ -748,7 +750,8 @@ func _generate_aquifers() -> void:
 			var drainage: float = float(drainage_map[z][x])
 			var profile: int = int(geological_map[z][x])
 			var suitable_rock: bool = profile in [0, 4]
-			row[x] = 1 if not is_ocean(x, z) and rain > 0.48 and drainage < 0.72 and (suitable_rock or rain > 0.76) else 0
+			var ocean_cell: bool = int(elevation_map[z][x]) <= sea_level_value
+			row[x] = 1 if not ocean_cell and rain > 0.48 and drainage < 0.72 and (suitable_rock or rain > 0.76) else 0
 		aquifer_map.append(row)
 
 func rebuild_civilized_world() -> void:
