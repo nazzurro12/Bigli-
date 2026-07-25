@@ -336,6 +336,10 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"mood": dwarf.mood,
 		"mood_counter": dwarf.mood_counter,
 		"tantrum_destruction": dwarf.tantrum_destruction,
+		"crisis_pressure": dwarf.crisis_pressure,
+		"last_crisis_evaluation_minute": dwarf.last_crisis_evaluation_minute,
+		"crisis_reason": dwarf.crisis_reason,
+		"berserk_bonus_applied": dwarf.berserk_bonus_applied,
 		"profession": dwarf.profession,
 		"appointed_position": dwarf.appointed_position,
 		"is_noble": dwarf.is_noble,
@@ -492,6 +496,10 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.mood = d.get("mood", 0)
 	df.mood_counter = d.get("mood_counter", 0)
 	df.tantrum_destruction = d.get("tantrum_destruction", 0)
+	df.crisis_pressure = d.get("crisis_pressure", 0.0)
+	df.last_crisis_evaluation_minute = d.get("last_crisis_evaluation_minute", -1)
+	df.crisis_reason = d.get("crisis_reason", "")
+	df.berserk_bonus_applied = d.get("berserk_bonus_applied", false)
 	df.profession = d.get("profession", 0)
 	df.appointed_position = d.get("appointed_position", "")
 	df.is_noble = d.get("is_noble", false)
