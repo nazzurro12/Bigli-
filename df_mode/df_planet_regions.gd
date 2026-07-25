@@ -1,21 +1,27 @@
 extends RefCounted
 class_name DFPlanetRegions
 
-## Conversión pura entre la cuadrícula global de regiones y sus mapas locales.
-## El eje este-oeste envuelve el planeta; los polos norte y sur son límites reales.
+## Conversión pura entre la frontera procedural y el atlas histórico.
+## Las coordenadas jugables son firmadas y no tienen borde. El atlas finito solo
+## aporta clima, geología e historia mediante una proyección periódica.
 
 static func normalize_region(region: Vector2i, planet_width: int, planet_depth: int) -> Vector2i:
 	if planet_width <= 0 or planet_depth <= 0:
 		return Vector2i.ZERO
-	return Vector2i(posmod(region.x, planet_width), clampi(region.y, 0, planet_depth - 1))
+	return region
+
+static func atlas_region(region: Vector2i, planet_width: int, planet_depth: int) -> Vector2i:
+	if planet_width <= 0 or planet_depth <= 0:
+		return Vector2i.ZERO
+	return Vector2i(posmod(region.x, planet_width), posmod(region.y, planet_depth))
 
 static func neighbor(region: Vector2i, direction: Vector2i, planet_width: int, planet_depth: int) -> Vector2i:
-	return normalize_region(region + direction, planet_width, planet_depth)
+	if planet_width <= 0 or planet_depth <= 0:
+		return region
+	return region + direction
 
 static func can_cross(region: Vector2i, direction: Vector2i, planet_depth: int) -> bool:
-	if direction.y < 0 and region.y <= 0:
-		return false
-	if direction.y > 0 and region.y >= planet_depth - 1:
+	if planet_depth <= 0:
 		return false
 	return direction != Vector2i.ZERO
 
