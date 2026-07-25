@@ -459,7 +459,9 @@ func _refresh_management_pages() -> void:
 		sick += 1 if int(dwarf.disease_phase) != 0 else 0
 		stressed += 1 if float(dwarf.stress) > 0.65 else 0
 		if inhabitant_lines.size() <= 24:
-			inhabitant_lines.append("%-18s  %-12s  ánimo %3d%%" % [str(dwarf.entity_name), str(dwarf.current_task), int((1.0 - float(dwarf.stress)) * 100.0)])
+			var inhabitant_name: String = str(dwarf.get_entity_name()) if dwarf.has_method("get_entity_name") else str(dwarf.get("name"))
+			var inhabitant_task: String = str(dwarf.get("current_task"))
+			inhabitant_lines.append("%-18s  %-12s  ánimo %3d%%" % [inhabitant_name, inhabitant_task, int((1.0 - float(dwarf.stress)) * 100.0)])
 	management_pages[0].text = "\n".join(inhabitant_lines) + "\n\nVivos: %d  Con hambre: %d  Con sed: %d" % [living, hungry, thirsty]
 	management_pages[1].text = "TRABAJOS\n\nActivos: %d\nPendientes: %d\n\nLa cola se actualiza sin recorrerla cada fotograma." % [_job_active, _job_pending]
 	var stored_items: int = 0
