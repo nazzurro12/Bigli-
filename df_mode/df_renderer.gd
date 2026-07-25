@@ -1431,7 +1431,8 @@ func _draw_sidebar(side_x: int) -> void:
 		draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.52,0.24,0.60), 1.0)
 		y += int(lh * 1.3)
 		var report_name: String = str(possession_report.get("actor_name", "Habitante"))
-		draw_string(_font, Vector2(x + 4, y + lh), "Después de controlar a %s:" % report_name, HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 8, Color(0.88,0.82,0.92))
+		var resolved_label: String = "OBJETIVO CUMPLIDO" if bool(possession_report.get("objective_resolved", false)) else "CONSECUENCIA ABIERTA"
+		draw_string(_font, Vector2(x + 4, y + lh), "%s · %s" % [report_name, resolved_label], HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 8, Color(0.88,0.82,0.92))
 		y += lh
 		var report_lines: Array = possession_report.get("consequences", [])
 		for report_line_value: Variant in report_lines.slice(0, 2):
@@ -1448,15 +1449,20 @@ func _draw_sidebar(side_x: int) -> void:
 		var story_name: String = str(story_hook.get("actor_name", "Habitante"))
 		var story_problem: String = str(story_hook.get("problem", ""))
 		var story_desire: String = str(story_hook.get("desire", ""))
+		var story_objective: String = str(story_hook.get("objective", "Intervén en su vida."))
 		if story_problem.length() > 31:
 			story_problem = story_problem.substr(0, 28) + "..."
 		if story_desire.length() > 31:
 			story_desire = story_desire.substr(0, 28) + "..."
+		if story_objective.length() > 31:
+			story_objective = story_objective.substr(0, 28) + "..."
 		draw_string(_font, Vector2(x + 4, y + lh), "★ %s" % story_name, HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 9, Color(1.0,0.82,0.40))
 		y += lh
 		draw_string(_font, Vector2(x + 8, y + lh), story_problem, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.82,0.78,0.68))
 		y += lh
 		draw_string(_font, Vector2(x + 8, y + lh), "Desea: " + story_desire, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.62,0.82,0.66))
+		y += lh
+		draw_string(_font, Vector2(x + 8, y + lh), "Objetivo: " + story_objective, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.90,0.78,0.45))
 		y += lh
 		draw_string(_font, Vector2(x + 8, y + lh), "Y: seguir · P: poseer", HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.95,0.72,0.35))
 		y += int(lh * 1.4)
@@ -3034,7 +3040,7 @@ func _draw_context_bar() -> void:
 	elif _dialogue_active:
 		controls = [["↑↓", "Tema"], ["ENTER", "Seleccionar"], ["T", "Cerrar"]]
 	elif is_possessed:
-		controls = [["WASD", "Mover enano"], ["L", "Liberar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
+		controls = [["WASD", "Mover"], ["E", "Actuar/usar"], ["R", "Soltar"], ["Q", "Liberar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
 	elif desg_mode != "" and desg_mode != "View" and desg_mode != "Vista":
 		controls = [["Clic", "Marcar"], ["ESC", "Cancelar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
 	else:
