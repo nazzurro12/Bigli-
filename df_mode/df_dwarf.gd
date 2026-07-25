@@ -268,6 +268,15 @@ var is_bleeding: bool = false
 var infection_chance: float = 0.0
 var has_infection: bool = false
 var rest_timer: float = 0.0
+enum DiseasePhase { HEALTHY, INCUBATING, SYMPTOMATIC, RECOVERING }
+var disease_phase: int = DiseasePhase.HEALTHY
+var disease_progress: float = 0.0
+var disease_severity: float = 0.0
+var pathogen_exposure: float = 0.0
+var immune_strength: float = 0.5
+var acquired_immunity: float = 0.0
+var recovery_streak: int = 0
+var fever: float = 0.0
 
 var nausea: float = 0.0
 var is_vomiting: bool = false
@@ -655,6 +664,9 @@ func get_full_description() -> String:
 	desc += "\nCondición: %.0f%% | Carga: %.1f/%.1f" % [
 		physical_condition * 100, get_carried_weight(), get_carrying_capacity()
 	]
+	desc += "\nSalud sistémica: %s | Inmunidad: %.0f%% | Exposición: %.0f%%" % [
+		get_disease_status(), immune_strength * 100.0, pathogen_exposure * 100.0
+	]
 	desc += "\nPersonalidad: %s" % get_personality_description()
 	return desc
 
@@ -737,9 +749,8 @@ func apply_bleeding(rate: float) -> void:
 	is_bleeding = true
 
 func apply_infection_risk(amount: float) -> void:
-	if randi() % 100 < int(amount):
-		has_infection = true
-		add_thought("La herida se ha infectado. Duele y huele mal.", -0.1)
+	pathogen_exposure = minf(2.0, pathogen_exposure + maxf(0.0, amount) * 0.01)
+	infection_chance = pathogen_exposure
 
 func rest_and_recover(delta: float) -> void:
 	if is_sleeping:
@@ -750,12 +761,6 @@ func rest_and_recover(delta: float) -> void:
 			if bleeding_rate < 0.01:
 				bleeding_rate = 0.0
 				is_bleeding = false
-		if has_infection:
-			infection_chance -= 0.01 * delta * 60
-			if infection_chance <= 0:
-				has_infection = false
-				stats_tracker["infections_survived"] += 1
-				add_thought("Su cuerpo venció la infección.", 0.05)
 		rest_timer += delta
 		if rest_timer > 100:
 			add_thought("Descansó y se siente mejor.", 0.03)
@@ -929,6 +934,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		update_pain_and_bleeding(delta_game_minute)
 		tick_metabolism(world)
 		tick_humanoid_physiology(world)
+		tick_health_cycle(world)
 		tick_grooming()
 		tick_hygiene(world)
 		tick_social(world)
@@ -954,7 +960,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 			world.deposit_footprint(tile_pos, standing)
 
 	# --- SISTEMA DE REPOSO MÉDICO ---
-	var is_injured_or_sick = health < 0.70 or has_infection or is_bleeding
+	var is_injured_or_sick = health < 0.70 or disease_severity >= 0.35 or is_bleeding
 	if is_injured_or_sick and not is_sleeping and not is_possessed:
 		is_resting_medical = true
 		current_task = "Descanso Médico"
@@ -973,6 +979,8 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 				return
 		
 		# Reposar en cama
+		is_sleeping = true
+		fatigue = maxf(fatigue, 0.35)
 		rest_and_recover(1.0)
 		return
 
@@ -1870,8 +1878,7 @@ func tick_metabolism(world: RefCounted) -> void:
 	var pathogen: float = body.ingested_substances.get("pathogen", 0.0)
 	if pathogen > 0.0:
 		var path_resist: float = genome.pathogen_resistance if genome else 1.0
-		if not has_infection and randf() < (0.01 * pathogen / path_resist):
-			has_infection = true
+		pathogen_exposure = minf(2.0, pathogen_exposure + 0.01 * pathogen / maxf(0.25, path_resist))
 		body.ingested_substances["pathogen"] = maxf(0.0, pathogen - 0.01)
 		if body.ingested_substances["pathogen"] <= 0.0:
 			body.ingested_substances.erase("pathogen")
@@ -1892,12 +1899,6 @@ func tick_metabolism(world: RefCounted) -> void:
 		body.ebriety = maxf(0.0, body.ebriety - 0.5)
 		body.is_vomiting = false
 
-	# Disease coughing: spread pathogen particles
-	if has_infection and randf() < 0.03:
-		var dirs = [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,0,1), Vector3i(0,0,-1), Vector3i(0,0,0)]
-		for d in dirs:
-			world.add_splatter_substance(tile_pos + d, "pathogen", 0.005)
-
 func record_consumption(item: DFItem) -> void:
 	if item == null:
 		return
@@ -1910,6 +1911,131 @@ func record_consumption(item: DFItem) -> void:
 		daily_micronutrients += item.micronutrient_value
 	if item.is_drink:
 		water_liters_today += maxf(0.0, item.hydration)
+
+## Salud sistémica evaluada una vez por minuto simulado. Evita búsquedas entre
+## entidades: el contagio usa la capa ambiental de patógenos ya indexada por tile.
+func tick_health_cycle(world: Object) -> void:
+	if body == null:
+		return
+
+	# Migración transparente de partidas que solo guardaban has_infection.
+	if has_infection and disease_phase == DiseasePhase.HEALTHY:
+		disease_phase = DiseasePhase.SYMPTOMATIC
+		disease_progress = 0.35
+		disease_severity = maxf(0.25, infection_chance)
+
+	var tile_substances: Dictionary = world.get_splatters_at(tile_pos)
+	var environmental_pathogen: float = float(tile_substances.get("pathogen", 0.0))
+	var miasma_load: float = float(tile_substances.get("miasma", 0.0))
+	var ingested_pathogen: float = float(body.ingested_substances.get("pathogen", 0.0))
+	var genetic_resistance: float = genome.pathogen_resistance if genome != null else 1.0
+	var resilience: float = maxf(0.25, genetic_resistance * (0.45 + chronic_health * 0.35 + nutrition_quality * 0.20))
+	var exposure_gain: float = (environmental_pathogen * 0.018 + miasma_load * 0.004 + ingested_pathogen * 0.025) / resilience
+	pathogen_exposure = clampf(pathogen_exposure + exposure_gain - 0.0007, 0.0, 2.0)
+	infection_chance = pathogen_exposure
+
+	var rest_support: float = 0.0
+	if is_sleeping:
+		rest_support += 0.45 + sleep_quality * 0.25
+	if is_resting_medical:
+		rest_support += 0.20
+	var hydration_support: float = clampf(1.0 - thirst, 0.0, 1.0)
+	immune_strength = clampf(
+		0.15
+		+ chronic_health * 0.25
+		+ nutrition_quality * 0.25
+		+ hydration_support * 0.15
+		+ rest_support * 0.20,
+		0.10,
+		1.25
+	)
+
+	if acquired_immunity > 0.0:
+		acquired_immunity = maxf(0.0, acquired_immunity - 1.0 / 10080.0)
+
+	match disease_phase:
+		DiseasePhase.HEALTHY:
+			has_infection = false
+			body.disease_type = ""
+			disease_severity = 0.0
+			fever = maxf(0.0, fever - 0.01)
+			# Una sola evaluación por hora y habitante reduce coste y oscilaciones.
+			if pathogen_exposure >= 0.12 and simulation_minute % 60 == id % 60:
+				var infection_risk: float = clampf(
+					(pathogen_exposure - acquired_immunity * 0.55) / maxf(0.25, immune_strength),
+					0.0,
+					0.85
+				)
+				if randf() < infection_risk:
+					disease_phase = DiseasePhase.INCUBATING
+					disease_progress = 0.0
+					body.disease_type = "environmental_infection"
+					add_thought("Nota un malestar después de exponerse a un ambiente insalubre.", -0.03)
+		DiseasePhase.INCUBATING:
+			has_infection = true
+			body.disease_type = "environmental_infection"
+			disease_progress += 1.0 / 360.0
+			disease_severity = lerpf(0.05, 0.30, disease_progress)
+			if disease_progress >= 1.0:
+				disease_phase = DiseasePhase.SYMPTOMATIC
+				disease_progress = 0.0
+				add_thought("Se siente enfermo y necesita descanso, agua y comida adecuada.", -0.08)
+		DiseasePhase.SYMPTOMATIC:
+			has_infection = true
+			body.disease_type = "environmental_infection"
+			var vulnerability: float = clampf(
+				(1.0 - immune_strength) * 0.55 + pathogen_exposure * 0.20 + stress * 0.10,
+				0.0,
+				0.85
+			)
+			var target_severity: float = clampf(0.28 + vulnerability - rest_support * 0.20, 0.15, 0.95)
+			disease_severity = move_toward(disease_severity, target_severity, 0.0025)
+			fever = move_toward(fever, disease_severity, 0.006)
+			fatigue = minf(1.25, fatigue + disease_severity * 0.0007)
+			if disease_severity > 0.70:
+				health = maxf(0.05, health - (disease_severity - 0.70) * 0.00012)
+			if is_sleeping and nutrition_quality >= 0.45 and thirst < 0.70:
+				recovery_streak += 1
+			else:
+				recovery_streak = maxi(0, recovery_streak - 1)
+			if recovery_streak >= 240 or (immune_strength >= 0.85 and recovery_streak >= 120):
+				disease_phase = DiseasePhase.RECOVERING
+				disease_progress = 0.0
+				add_thought("Su estado empieza a mejorar tras descansar y alimentarse.", 0.04)
+			if disease_severity >= 0.30 and simulation_minute % 20 == id % 20:
+				world.add_splatter_substance(tile_pos, "pathogen", 0.003 * disease_severity)
+		DiseasePhase.RECOVERING:
+			has_infection = true
+			body.disease_type = "recovering_infection"
+			disease_progress += immune_strength / 720.0
+			disease_severity = maxf(0.0, disease_severity - 0.0015 * immune_strength)
+			fever = maxf(0.0, fever - 0.003)
+			if disease_progress >= 1.0 or disease_severity <= 0.02:
+				disease_phase = DiseasePhase.HEALTHY
+				disease_progress = 0.0
+				disease_severity = 0.0
+				pathogen_exposure *= 0.20
+				infection_chance = pathogen_exposure
+				acquired_immunity = 1.0
+				recovery_streak = 0
+				has_infection = false
+				body.disease_type = ""
+				stats_tracker["infections_survived"] = stats_tracker.get("infections_survived", 0) + 1
+				add_thought("Se recuperó de la enfermedad y desarrolló resistencia temporal.", 0.08)
+
+func get_disease_status() -> String:
+	match disease_phase:
+		DiseasePhase.INCUBATING:
+			return "Incubando"
+		DiseasePhase.SYMPTOMATIC:
+			if disease_severity >= 0.70:
+				return "Enfermedad grave"
+			if disease_severity >= 0.40:
+				return "Enfermedad moderada"
+			return "Enfermedad leve"
+		DiseasePhase.RECOVERING:
+			return "Recuperándose"
+	return "Sano"
 
 func tick_humanoid_physiology(world: Object) -> void:
 	var day_index: int = floori(float(simulation_minute) / 1440.0)
@@ -2891,7 +3017,11 @@ func get_needs_string() -> String:
 	]
 	if is_pregnant:
 		result += "EMBARAZADA! "
-	if health_pct < 30:
+	if disease_phase == DiseasePhase.SYMPTOMATIC:
+		result += get_disease_status()
+	elif disease_phase == DiseasePhase.RECOVERING:
+		result += "Recuperándose"
+	elif health_pct < 30:
 		result += "MORIBUNDO!"
 	elif health_pct < 60:
 		result += "Herido grave"
