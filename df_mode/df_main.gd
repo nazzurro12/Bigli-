@@ -1867,6 +1867,17 @@ func _try_move_possessed(direction: Vector2i) -> bool:
 		return false
 	var target_position: Vector3i = _fix_surface(Vector3i(next_x, current_position.y, next_z))
 	if world.is_blocked(target_position):
+		# El relieve procedural puede formar una pared exactamente sobre el borde.
+		# Esa pared no debe convertir una región del planeta en una caja cerrada.
+		const BORDER_EXIT_MARGIN := 3
+		var leaving_through_border := (
+			(direction.x < 0 and current_position.x <= BORDER_EXIT_MARGIN)
+			or (direction.x > 0 and current_position.x >= world.width - BORDER_EXIT_MARGIN - 1)
+			or (direction.y < 0 and current_position.z <= BORDER_EXIT_MARGIN)
+			or (direction.y > 0 and current_position.z >= world.depth - BORDER_EXIT_MARGIN - 1)
+		)
+		if leaving_through_border:
+			_request_planet_transition(direction)
 		return false
 	possessed_dwarf.tile_pos = target_position
 	camera_pos = target_position
