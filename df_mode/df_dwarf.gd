@@ -4159,7 +4159,9 @@ func _find_material_on_ground(world, mat_id: String) -> Object:
 			var name_lower = e.name.to_lower()
 			var type_lower = e.item_type.to_lower()
 			var mat_lower = mat_id.to_lower()
-			var e_mat_name = e.get("material_name", "").to_lower()
+			# DFItem es un RefCounted, no un Dictionary: Object.get() solo recibe
+			# el nombre de la propiedad y no acepta un segundo valor por defecto.
+			var e_mat_name: String = e.material_name.to_lower()
 			if mat_lower in name_lower or mat_lower in type_lower or mat_lower == e_mat_name:
 				var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
 				if d < best_dist:
@@ -4240,7 +4242,7 @@ func _execute_hunt_job(world) -> bool:
 	if hunting_target != null and hunting_target.get("is_alive") == true:
 		var d = abs(tile_pos.x - hunting_target.tile_pos.x) + abs(tile_pos.z - hunting_target.tile_pos.z)
 		if d <= 30:
-			current_task = "Cazando " + hunting_target.get("name", "presa")
+			current_task = "Cazando " + str(hunting_target.get("name"))
 			needs_display_update = true
 			return true
 	var target_creature_id = current_job.get_meta("creature_id", -1)
@@ -4259,8 +4261,11 @@ func _execute_hunt_job(world) -> bool:
 	if target == null:
 		return false
 	hunting_target = target
-	current_task = "Saliendo a cazar " + target.get("name", "presa")
-	add_thought("Sali? a cazar " + target.get("name", "presa"), 0.05)
+	var target_name: String = str(target.get("name"))
+	if target_name.is_empty():
+		target_name = "presa"
+	current_task = "Saliendo a cazar " + target_name
+	add_thought("Salió a cazar " + target_name, 0.05)
 	needs_display_update = true
 	return true
 
