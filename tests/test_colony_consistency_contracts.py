@@ -492,10 +492,33 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("_move_planet_camera(direction, 2)", held)
 
     def test_renderer_never_exposes_the_gray_control_outside_a_region(self):
-        draw_loop = self.renderer.split("for z in range(vh):", 1)[1].split(
-            "if wx >= 0 and wx < world.width", 1
+        self.assertIn(
+            "Rect2(border_x, UI_CONTENT_TOP, vw * _char_size.x, vh * _char_size.y), Color.BLACK, true",
+            self.renderer,
+        )
+        draw_tile = self.renderer.split("func _draw_tile", 1)[1].split(
+            "func _process", 1
         )[0]
-        self.assertIn("draw_rect(Rect2(char_pos, _char_size), UI_CLASSIC_WORKSPACE, true)", draw_loop)
+        self.assertIn("if bg.a > 0.01:", draw_tile)
+        self.assertNotIn("bg != Color.BLACK", draw_tile)
+
+    def test_actor_movement_uses_the_spatial_grid(self):
+        self.assertIn("func is_actor_occupied", self.world)
+        self.assertIn("func move_entity", self.world)
+        movement = self.dwarf.split("func _move_toward", 1)[1].split(
+            "func get_display_char", 1
+        )[0]
+        self.assertIn("world.is_actor_occupied(next_step, self)", movement)
+        self.assertIn("world.move_entity(self, next_step)", movement)
+        self.assertNotIn("for e in world.entities:", movement)
+
+    def test_carpentry_project_is_unique_and_announced_once(self):
+        for token in (
+            "func _find_open_colony_project_job",
+            '_find_open_colony_project_job("carpentry_chain")',
+            '"carpentry_project_announced"',
+        ):
+            self.assertIn(token, self.main)
 
 
 if __name__ == "__main__":
