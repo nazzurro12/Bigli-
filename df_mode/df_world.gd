@@ -266,12 +266,14 @@ func get_material_density_at(pos: Vector3i) -> float:
 	return props.get("density", 2.5)
 const SUBSTANCE_COLORS = {
 	"beer": Color("#DAA520"), "blood": Color("#CC0000"), "vomit": Color("#8B8B00"),
+	"urine": Color("#D6C84A"), "feces": Color("#70502D"),
 	"water": Color("#4488FF"), "mud": Color("#8B6914"), "poison": Color("#AA00AA"),
 	"pathogen": Color("#00AA44"), "alcohol": Color("#DAA520"), "pus": Color("#88AA44"),
 	"miasma": Color("#8A2BE2") # Purple gas
 }
 const SUBSTANCE_NAMES = {
 	"beer": "Cerveza", "blood": "Sangre", "vomit": "Vómito",
+	"urine": "Orina", "feces": "Residuos orgánicos",
 	"water": "Agua", "mud": "Lodo", "poison": "Veneno",
 	"pathogen": "Patógeno", "alcohol": "Alcohol", "pus": "Pus",
 	"miasma": "Miasma"
@@ -1417,12 +1419,15 @@ func tick_splatters() -> void:
 			evap_rate = 0.005 * (1.0 + ambient_temperature)
 		
 		# Organic decomposition into miasma
-		if puddle.has("blood") or puddle.has("vomit"):
+		if puddle.has("blood") or puddle.has("vomit") or puddle.has("feces"):
 			var rot_chance = 0.05 if not is_outdoor(pos) else 0.01
 			if randf() < rot_chance:
 				var emit_vol = 0.05
 				if puddle.has("blood"): puddle["blood"] = maxf(0.0, puddle["blood"] - 0.005)
 				if puddle.has("vomit"): puddle["vomit"] = maxf(0.0, puddle["vomit"] - 0.01)
+				if puddle.has("feces"):
+					puddle["feces"] = maxf(0.0, puddle["feces"] - 0.003)
+					add_splatter_substance(pos, "pathogen", 0.003)
 				# 50% emit locally, 50% emit adjacent
 				var target_pos = pos
 				if randf() < 0.5:
