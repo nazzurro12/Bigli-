@@ -178,6 +178,8 @@ var wind_strength: float = 0.5
 var fog_density: float = 0.0
 var cloud_cover: float = 0.0
 var lightning_flash: bool = false
+var weather_surface_cursor: int = 0
+const WEATHER_SURFACE_BUDGET: int = 1024
 var lightning_timer: int = 0
 var ambient_temperature: float = 0.5
 var ground_temperature: float = 0.5
@@ -809,13 +811,14 @@ func _apply_weather_effects() -> void:
 	):
 		current_weather = WeatherType.RAIN if humidity >= 0.55 else WeatherType.CLOUDY
 		precipitation_intensity = 0.35 if current_weather == WeatherType.RAIN else 0.0
+	var surface_batch: Array = _take_weather_surface_batch()
 	if current_weather in [WeatherType.RAIN, WeatherType.HEAVY_RAIN, WeatherType.STORM]:
-		_apply_rain()
+		_apply_rain(surface_batch)
 		_rain_wash_splatters()
 	elif current_weather in [WeatherType.SNOW, WeatherType.BLIZZARD]:
-		_apply_snow()
+		_apply_snow(surface_batch)
 	if current_weather == WeatherType.DUST_STORM:
-		_apply_dust_storm()
+		_apply_dust_storm(surface_batch)
 	if current_weather == WeatherType.WINDY or current_weather == WeatherType.STORM:
 		_wind_spread_pathogens()
 	_wind_evaporate_splatters()
@@ -838,19 +841,32 @@ func reconcile_seasonal_weather() -> void:
 		seasonal_data.erase("snow_cover")
 		tile_data[position] = seasonal_data
 
-func _apply_rain() -> void:
-	for z in range(depth):
-		for x in range(width):
-			var pos = Vector3i(x, get_surface_height(x, z), z)
-			if get_tile(pos) not in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.SNOW]:
-				continue
-			if randi() % 100 < int(precipitation_intensity * 15):
-				var td = tile_data.get(pos, {})
-				td["wetness"] = td.get("wetness", 0.0) + precipitation_intensity * 0.1
-				tile_data[pos] = td
-				if td["wetness"] >= 1.0 and get_tile(pos) == TileType.GRASS:
-					if randi() % 200 == 0:
-						_spawn_item(pos, "Agua Estancada", "water", MatType.WATER, "~", Color("#4444FF"))
+func _take_weather_surface_batch() -> Array:
+	var result: Array = []
+	var total_cells: int = width * depth
+	if total_cells <= 0:
+		return result
+	var budget: int = mini(WEATHER_SURFACE_BUDGET, total_cells)
+	for _sample_index in range(budget):
+		var linear_index: int = weather_surface_cursor
+		var x: int = linear_index % width
+		var z: int = linear_index / width
+		result.append(Vector3i(x, get_surface_height(x, z), z))
+		weather_surface_cursor = (weather_surface_cursor + 1) % total_cells
+	return result
+
+func _apply_rain(surface_batch: Array) -> void:
+	for pos_value in surface_batch:
+		var pos: Vector3i = pos_value
+		if get_tile(pos) not in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.SNOW]:
+			continue
+		if randi() % 100 < int(precipitation_intensity * 15):
+			var td = tile_data.get(pos, {})
+			td["wetness"] = minf(1.5, td.get("wetness", 0.0) + precipitation_intensity * 0.25)
+			tile_data[pos] = td
+			if td["wetness"] >= 1.0 and get_tile(pos) == TileType.GRASS:
+				if randi() % 200 == 0:
+					_spawn_item(pos, "Agua Estancada", "water", MatType.WATER, "~", Color("#4444FF"))
 	var water_tiles_to_add = int(precipitation_intensity * 2)
 	for i in range(water_tiles_to_add):
 		var rx = randi() % width; var rz = randi() % depth
@@ -859,28 +875,25 @@ func _apply_rain() -> void:
 		if get_tile(rp) == TileType.MURKY_POOL:
 			_increase_fluid_level(rp, precipitation_intensity)
 
-func _apply_snow() -> void:
+func _apply_snow(surface_batch: Array) -> void:
 	if current_season != Season.WINTER or ambient_temperature > 0.42:
 		return
-	for z in range(depth):
-		for x in range(width):
-			if randi() % 30 < int(precipitation_intensity * 10):
-				var pos = Vector3i(x, get_surface_height(x, z), z)
-				if get_tile(pos) in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.FLOOR]:
-					var td = tile_data.get(pos, {})
-					td["snow_cover"] = minf(td.get("snow_cover", 0.0) + 0.1, 1.0)
-					tile_data[pos] = td
-					if td["snow_cover"] >= 0.8:
-						set_tile(pos, TileType.SNOW)
-						set_material(pos, MatType.WATER)
+	for pos_value in surface_batch:
+		var pos: Vector3i = pos_value
+		if randi() % 30 < int(precipitation_intensity * 10):
+			if get_tile(pos) in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.FLOOR]:
+				var td = tile_data.get(pos, {})
+				td["snow_cover"] = minf(td.get("snow_cover", 0.0) + 0.25, 1.0)
+				tile_data[pos] = td
+				if td["snow_cover"] >= 0.8:
+					set_tile(pos, TileType.SNOW)
+					set_material(pos, MatType.WATER)
 
-func _apply_dust_storm() -> void:
-	for z in range(depth):
-		for x in range(width):
-			if randi() % 50 == 0:
-				var pos = Vector3i(x, get_surface_height(x, z), z)
-				if get_tile(pos) == TileType.GRASS:
-					set_tile(pos, TileType.DIRT)
+func _apply_dust_storm(surface_batch: Array) -> void:
+	for pos_value in surface_batch:
+		var pos: Vector3i = pos_value
+		if randi() % 50 == 0 and get_tile(pos) == TileType.GRASS:
+			set_tile(pos, TileType.DIRT)
 
 func _apply_lightning_strike() -> void:
 	var lx = randi() % width; var lz = randi() % depth
