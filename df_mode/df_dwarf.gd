@@ -4028,8 +4028,14 @@ func _execute_store_in_container_job(world) -> bool:
 	var target_food = null
 	var best_dist = 999999
 	if carried_food == null:
+		var requested_item_id: int = int(current_job.get_meta("target_item_id", -1)) if current_job != null else -1
+		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
 		for ent in world.entities:
 			if ent is DFItem and (ent.is_food or ent.is_meat or ent.is_drink or ent.item_type == "fish") and not ent.is_inside_container and not ent.is_decayed:
+				if requested_item_id >= 0 and ent.id != requested_item_id:
+					continue
+				if ent.is_reserved_for_other(id, current_tick):
+					continue
 				var already_in_sp = false
 				for sp in world.stockpiles:
 					if sp.has_tile(ent.tile_pos):
@@ -4041,6 +4047,8 @@ func _execute_store_in_container_job(world) -> bool:
 				if d < best_dist:
 					best_dist = d
 					target_food = ent
+		if target_food != null:
+			target_food.reserve_for(id, current_tick + 600)
 	if carried_food == null and target_food != null:
 		var dist = abs(tile_pos.x - target_food.tile_pos.x) + abs(tile_pos.z - target_food.tile_pos.z)
 		if dist > 1:
@@ -4048,6 +4056,7 @@ func _execute_store_in_container_job(world) -> bool:
 			current_task = "Yendo a recoger comida"
 			if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
 			return false
+		_detach_item_from_container(world, target_food)
 		inventory.append(target_food)
 		target_food.carried_by_id = id
 		target_food.is_in_stockpile = false
@@ -4080,6 +4089,7 @@ func _execute_store_in_container_job(world) -> bool:
 	carried_food.tile_pos = best_fs_pos
 	carried_food.is_in_stockpile = true
 	carried_food.carried_by_id = -1
+	carried_food.release_reservation(id)
 	_put_item_in_container_at(world, carried_food, best_fs_pos)
 	world.add_entity(carried_food)
 	inventory.erase(carried_food)
@@ -4097,6 +4107,19 @@ func _find_container_at(world: Object, pos: Vector3i):
 		):
 			return entity
 	return null
+
+func _detach_item_from_container(world: Object, item: DFItem) -> void:
+	if not item.is_inside_container:
+		return
+	for entity in world.entities:
+		if entity is DFItem and entity.is_container and entity.id == item.container_id:
+			entity.container_contents.erase(item)
+			entity.contained_volume = maxf(
+				0.0,
+				entity.contained_volume - item.get_item_volume()
+			)
+			break
+	item.remove_from_container()
 
 func _put_item_in_container_at(world: Object, item: DFItem, pos: Vector3i) -> bool:
 	item.is_inside_container = false
