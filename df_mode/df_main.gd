@@ -2132,7 +2132,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 		for rel_j in range(embark_colonists.size()):
 			if rel_i != rel_j:
 				var other_id: int = embark_colonists[rel_j].id
-				embark_colonists[rel_i].relationships[other_id] = 60 + (randi() % 40)
+				embark_colonists[rel_i].relationships[other_id] = randf_range(0.60, 0.95)
 				if not other_id in embark_colonists[rel_i].friends:
 					embark_colonists[rel_i].friends.append(other_id)
 				
