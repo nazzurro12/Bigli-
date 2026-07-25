@@ -1659,3 +1659,7 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	w.combat_system = null
 	w.invasion_system = null
 	w.military_system = null
+	if main.has_method("_reconcile_storage_containers"):
+		main._reconcile_storage_containers()
+	if w.has_method("reconcile_seasonal_weather"):
+		w.reconcile_seasonal_weather()
