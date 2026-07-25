@@ -66,7 +66,9 @@ const SEASON_LIST: Array = ["Spring", "Summer", "Autumn", "Winter"]
 const SEASON_ENUM_MAP = {"Spring": DFWorld.Season.SPRING, "Summer": DFWorld.Season.SUMMER, "Autumn": DFWorld.Season.AUTUMN, "Winter": DFWorld.Season.WINTER}
 # Todos los residentes continúan existiendo y pensando fuera de cámara. Se reparten
 # entre varios ticks para evitar picos, sin convertirlos en estadísticas abstractas.
-const SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 4
+# Los residentes de ciudades lejanas conservan toda su lógica, pero se distribuyen
+# en fases para que una ciudad poblada no congele un fotograma completo.
+const SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 12
 
 const HOUSE_TEMPLATES = [
 	# Casa 0: Cabaña Estándar Cuadrada (3x3)
@@ -1532,7 +1534,7 @@ func _tick() -> void:
 		
 		var is_dwarf4: bool = e4.get("creature_type") == "dwarf"
 		var is_settlement_resident: bool = e4 is DFDwarf and bool(e4.get("is_world_settlement_resident"))
-		if is_dwarf4:
+		if is_dwarf4 and not is_settlement_resident:
 			# La existencia de la metadata no implica que el enano sea seguidor.
 			# Antes, is_follower=false también vaciaba su cola de trabajos.
 			var is_active_follower: bool = e4.has_meta("is_follower") and e4.get_meta("is_follower") == true
@@ -1556,11 +1558,16 @@ func _tick() -> void:
 
 		elif is_settlement_resident:
 			# Simulación temporal distribuida: cada residente ejecuta la misma IA y conserva
-			# inventario, necesidades, emociones, relaciones, rutas y profesión aunque no
-			# esté en cámara. Solo se reparten sus actualizaciones entre cuatro ticks.
+			# inventario, necesidades, emociones, relaciones, rutas y profesión. Los cambios
+			# de minuto se marcan como pendientes para no sincronizar toda la ciudad en un pico.
+			if minute_ticked:
+				e4.set_meta("settlement_minute_pending", true)
 			var resident_phase: int = posmod(int(e4.get("id")), SETTLEMENT_RESIDENT_TICK_BUCKETS)
-			if minute_ticked or posmod(_absolute_simulation_tick, SETTLEMENT_RESIDENT_TICK_BUCKETS) == resident_phase:
-				e4.tick(world, [], minute_ticked)
+			if posmod(_absolute_simulation_tick, SETTLEMENT_RESIDENT_TICK_BUCKETS) == resident_phase:
+				var resident_minute_due: bool = bool(e4.get_meta("settlement_minute_pending", false))
+				e4.tick(world, [], resident_minute_due)
+				if resident_minute_due:
+					e4.set_meta("settlement_minute_pending", false)
 
 		# Capture strange mood messages from dwarf
 		if is_dwarf4 and e4.get("mood") == DFDwarf.MoodState.STRANGE_MOOD and e4.get("strange_mood_phase") == DFDwarf.StrangeMoodPhase.SEEKING_WORKSHOP:
