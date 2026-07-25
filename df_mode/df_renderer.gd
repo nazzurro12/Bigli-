@@ -6,6 +6,16 @@ const DFWorld = preload("res://df_mode/df_world.gd")
 const DFDesignation = preload("res://df_mode/df_designation.gd")
 const DFTileset = preload("res://df_mode/df_tileset.gd")
 const DFJob = preload("res://df_mode/df_job.gd")
+const UI_CLASSIC_FACE := Color("#ECE9D8")
+const UI_CLASSIC_LIGHT := Color("#FFFFFF")
+const UI_CLASSIC_MID := Color("#ACA899")
+const UI_CLASSIC_SHADOW := Color("#716F64")
+const UI_CLASSIC_DARK := Color("#003C74")
+const UI_CLASSIC_TITLE := Color("#0A246A")
+const UI_CLASSIC_TITLE_LIGHT := Color("#3A6EA5")
+const UI_CLASSIC_TEXT := Color("#1A1A1A")
+const UI_CLASSIC_WORKSPACE := Color("#1B2430")
+const UI_CONTENT_TOP: int = 44
 const SUBSTANCE_COLORS: Dictionary = {
 	"blood":    Color(0.55, 0.0,  0.0,  1.0),
 	"beer":     Color(0.70, 0.55, 0.05, 1.0),
@@ -263,6 +273,7 @@ func _ready() -> void:
 	_tileset = DFTileset.new()
 	_font = ThemeDB.fallback_font
 	_char_size = Vector2(16, 16)
+	_apply_classic_control_theme()
 
 	# Creacion de Leyenda interactiva (Lado Izquierdo)
 	legend_panel = Panel.new()
@@ -302,6 +313,83 @@ func _ready() -> void:
 	legend_btn.offset_top = -60
 	legend_btn.offset_right = 26
 	legend_btn.offset_bottom = 60
+
+func _apply_classic_control_theme() -> void:
+	var classic_theme := Theme.new()
+	var panel_box := _make_classic_style(UI_CLASSIC_FACE, 2, false)
+	var button_box := _make_classic_style(UI_CLASSIC_FACE, 2, false)
+	var button_hover := _make_classic_style(Color("#F5F3E8"), 2, false)
+	var button_pressed := _make_classic_style(Color("#D6D2C7"), 2, true)
+	classic_theme.set_stylebox("panel", "Panel", panel_box)
+	classic_theme.set_stylebox("normal", "Button", button_box)
+	classic_theme.set_stylebox("hover", "Button", button_hover)
+	classic_theme.set_stylebox("pressed", "Button", button_pressed)
+	classic_theme.set_stylebox("focus", "Button", _make_classic_style(Color.TRANSPARENT, 1, true))
+	classic_theme.set_color("font_color", "Button", UI_CLASSIC_TEXT)
+	classic_theme.set_color("font_hover_color", "Button", Color.BLACK)
+	classic_theme.set_color("font_pressed_color", "Button", Color.BLACK)
+	classic_theme.set_color("font_color", "Label", UI_CLASSIC_TEXT)
+	theme = classic_theme
+
+func _make_classic_style(fill: Color, border_width: int, pressed: bool) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = fill
+	var top_left: Color = UI_CLASSIC_SHADOW if pressed else UI_CLASSIC_LIGHT
+	var bottom_right: Color = UI_CLASSIC_LIGHT if pressed else UI_CLASSIC_SHADOW
+	box.border_width_left = border_width
+	box.border_width_top = border_width
+	box.border_width_right = border_width
+	box.border_width_bottom = border_width
+	box.border_color = bottom_right
+	box.corner_radius_top_left = 0
+	box.corner_radius_top_right = 0
+	box.corner_radius_bottom_left = 0
+	box.corner_radius_bottom_right = 0
+	box.shadow_color = top_left
+	box.shadow_size = 1
+	return box
+
+func _draw_classic_bevel(rect: Rect2, fill: Color = UI_CLASSIC_FACE, sunken: bool = false) -> void:
+	draw_rect(rect, fill, true)
+	var top_left: Color = UI_CLASSIC_SHADOW if sunken else UI_CLASSIC_LIGHT
+	var bottom_right: Color = UI_CLASSIC_LIGHT if sunken else UI_CLASSIC_SHADOW
+	draw_line(rect.position, Vector2(rect.end.x, rect.position.y), top_left, 1.0)
+	draw_line(rect.position, Vector2(rect.position.x, rect.end.y), top_left, 1.0)
+	draw_line(Vector2(rect.position.x, rect.end.y - 1), rect.end - Vector2(0, 1), bottom_right, 1.0)
+	draw_line(Vector2(rect.end.x - 1, rect.position.y), rect.end - Vector2(1, 0), bottom_right, 1.0)
+
+func _draw_classic_titlebar(rect: Rect2, title: String, active: bool = true) -> void:
+	var title_color: Color = UI_CLASSIC_TITLE if active else UI_CLASSIC_MID
+	draw_rect(rect, title_color, true)
+	draw_rect(Rect2(rect.position, Vector2(rect.size.x, 2)), UI_CLASSIC_TITLE_LIGHT, true)
+	draw_string(_font, rect.position + Vector2(7, rect.size.y - 5), title,
+		HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 72, 11, Color.WHITE)
+	var button_size: float = maxf(12.0, rect.size.y - 6.0)
+	var button_y: float = rect.position.y + 3.0
+	for index in range(3):
+		var button_x: float = rect.end.x - (3 - index) * (button_size + 3.0)
+		var button_rect := Rect2(button_x, button_y, button_size, button_size)
+		_draw_classic_bevel(button_rect, UI_CLASSIC_FACE, false)
+		var symbol: String = "_" if index == 0 else "□" if index == 1 else "×"
+		draw_string(_font, button_rect.position + Vector2(1, button_size - 2), symbol,
+			HORIZONTAL_ALIGNMENT_CENTER, button_size - 2, 9, UI_CLASSIC_TEXT)
+
+func _draw_application_frame(rect: Rect2) -> void:
+	var outer := rect.grow(4)
+	# Solo se pinta el marco; rellenar todo el rectángulo ocultaría el mapa.
+	draw_rect(Rect2(outer.position, Vector2(outer.size.x, 4)), UI_CLASSIC_LIGHT, true)
+	draw_rect(Rect2(outer.position, Vector2(4, outer.size.y)), UI_CLASSIC_LIGHT, true)
+	draw_rect(Rect2(Vector2(outer.position.x, outer.end.y - 4), Vector2(outer.size.x, 4)), UI_CLASSIC_SHADOW, true)
+	draw_rect(Rect2(Vector2(outer.end.x - 4, outer.position.y), Vector2(4, outer.size.y)), UI_CLASSIC_SHADOW, true)
+	_draw_classic_titlebar(Rect2(outer.position + Vector2(3, 3), Vector2(outer.size.x - 6, 20)),
+		"Bigli World Simulator")
+	var menu_y: float = outer.position.y + 23
+	draw_rect(Rect2(outer.position.x + 3, menu_y, outer.size.x - 6, 18), UI_CLASSIC_FACE, true)
+	draw_string(_font, Vector2(outer.position.x + 10, menu_y + 13),
+		"Archivo   Ver   Simulación   Colonos   Ventana   Ayuda",
+		HORIZONTAL_ALIGNMENT_LEFT, outer.size.x - 20, 9, UI_CLASSIC_TEXT)
+	draw_line(Vector2(outer.position.x + 3, menu_y + 17), Vector2(outer.end.x - 3, menu_y + 17),
+		UI_CLASSIC_SHADOW, 1.0)
 
 func _apply_night_lighting(color: Color) -> Color:
 	# Sin filtro global de noche. La hora sigue visible en el HUD, pero los
@@ -383,7 +471,7 @@ func _process(delta: float) -> void:
 		var max_chars_x = int(viewport_size.x / cs_x)
 		var max_chars_y = int(viewport_size.y / cs_y)
 		var vw = max_chars_x - sidebar_width - 2 if max_chars_x > sidebar_width + 10 else 40
-		var vh = max_chars_y - 6 if max_chars_y > 8 else 20
+		var vh = max_chars_y - 9 if max_chars_y > 11 else 20
 		
 		var cam_x = camera_pos.x - vw / 2
 		var cam_z = camera_pos.z - vh / 2
@@ -391,7 +479,7 @@ func _process(delta: float) -> void:
 		var border_x = _draw_border(vw, vh)
 		
 		var vx_x = int((mouse_pos.x - border_x) / cs_x)
-		var vz_z = int(mouse_pos.y / cs_y)
+		var vz_z = int((mouse_pos.y - UI_CONTENT_TOP) / cs_y)
 		
 		if vx_x >= 0 and vx_x < vw and vz_z >= 0 and vz_z < vh:
 			_highlighted_tile = Vector3i(cam_x + vx_x, cam_y, cam_z + vz_z)
@@ -452,8 +540,8 @@ func _draw() -> void:
 	else:
 		view_width = 40
 		
-	if max_chars_y > 8:
-		view_height = max_chars_y - 6
+	if max_chars_y > 11:
+		view_height = max_chars_y - 9
 	else:
 		view_height = 20
 
@@ -538,7 +626,7 @@ func _draw() -> void:
 				var ch = " "
 				var fg = Color.WHITE
 				var bg = Color.BLACK
-				var char_pos = Vector2(border_x + x * _char_size.x, z * _char_size.y)
+				var char_pos = Vector2(border_x + x * _char_size.x, UI_CONTENT_TOP + z * _char_size.y)
 
 				if wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth:
 					var tile_type = world.get_tile(pos)
@@ -665,7 +753,7 @@ func _draw() -> void:
 
 				# Sin viñeta ni oscurecimiento artificial: colores completos en toda la vista.
 
-				char_pos = Vector2(border_x + x * _char_size.x, z * _char_size.y)
+				char_pos = Vector2(border_x + x * _char_size.x, UI_CONTENT_TOP + z * _char_size.y)
 				_draw_tile(char_pos, ch, fg, bg)
 
 				if performance_effects_enabled:
@@ -723,27 +811,16 @@ func _draw() -> void:
 	if performance_overlay_enabled:
 		_draw_performance_overlay()
 
-	# Draw glowing retro terminal outer border around the map + sidebar
+	# Marco de aplicación de escritorio clásico: la simulación se presenta
+	# como una herramienta de administración, no como un HUD flotante.
 	if world != null and not show_help:
 		var outline_w = vw * _char_size.x
 		if show_sidebar:
 			outline_w += sidebar_width * _char_size.x + 8
-		var outline_rect = Rect2(border_x - 4, 2, outline_w + 8, vh * _char_size.y + 4)
-		
-		# Draw top & bottom dashed lines
-		var ds_x = outline_rect.position.x
-		while ds_x < outline_rect.end.x:
-			draw_line(Vector2(ds_x, outline_rect.position.y), Vector2(minf(ds_x + 5, outline_rect.end.x), outline_rect.position.y), Color(0.0, 2.5, 0.0, 0.9), 1.5)
-			draw_line(Vector2(ds_x, outline_rect.end.y), Vector2(minf(ds_x + 5, outline_rect.end.x), outline_rect.end.y), Color(0.0, 2.5, 0.0, 0.9), 1.5)
-			ds_x += 10
-		# Draw left & right dashed lines
-		var ds_y = outline_rect.position.y
-		while ds_y < outline_rect.end.y:
-			draw_line(Vector2(outline_rect.position.x, ds_y), Vector2(outline_rect.position.x, minf(ds_y + 5, outline_rect.end.y)), Color(0.0, 2.5, 0.0, 0.9), 1.5)
-			draw_line(Vector2(outline_rect.end.x, ds_y), Vector2(outline_rect.end.x, minf(ds_y + 5, outline_rect.end.y)), Color(0.0, 2.5, 0.0, 0.9), 1.5)
-			ds_y += 10
+		var outline_rect = Rect2(border_x - 4, 2, outline_w + 8, UI_CONTENT_TOP + vh * _char_size.y + 2)
+		_draw_application_frame(outline_rect)
 
-	var msg_y = vh * _char_size.y + 4
+	var msg_y = UI_CONTENT_TOP + vh * _char_size.y + 4
 	_draw_message_log(msg_y)
 
 	# In-game tutorial overlay (first few minutes, for new players)
@@ -843,16 +920,12 @@ func _draw_sidebar(side_x: int) -> void:
 	var lh  = int(_char_size.y)
 	var x   = side_x
 	var mw  = sidebar_width * _char_size.x
-	var y   = 2
+	var y   = UI_CONTENT_TOP + 27
 	var sh = size.y
-	draw_rect(Rect2(x + 3, 3, mw, sh), Color(0.0, 0.0, 0.0, 0.2), true)
-	draw_rect(Rect2(x, 0, mw, sh), Color(0.01, 0.04, 0.01, 0.92), true)
-	
-	# Draw glowing dotted vertical separator
-	var sep_y = 0.0
-	while sep_y < sh:
-		draw_rect(Rect2(x - 2, sep_y, 2, 4), Color(0.0, 2.5, 0.0, 0.8), true)
-		sep_y += 8
+	_draw_classic_bevel(Rect2(x - 3, UI_CONTENT_TOP, mw + 3, sh - UI_CONTENT_TOP), UI_CLASSIC_FACE, false)
+	_draw_classic_titlebar(Rect2(x, UI_CONTENT_TOP + 3, mw - 3, 21), "Propiedades de la colonia")
+	draw_rect(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), UI_CLASSIC_WORKSPACE, true)
+	_draw_classic_bevel(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), Color.TRANSPARENT, true)
 
 	# ── helper: draw section header with underline ──────────────────────────
 	# (GDScript closures can't modify outer y; we handle y inline after each call)
@@ -863,17 +936,17 @@ func _draw_sidebar(side_x: int) -> void:
 	var title_col = Color(0.85, 0.72, 0.20)
 	if _designation_mode_name not in ["View","Vista",""]:
 		title_col = _designation_mode_color
-	draw_string(_font, Vector2(x, y + lh), "▓ BIGLI", HORIZONTAL_ALIGNMENT_LEFT, mw, 14, title_col)
+	draw_string(_font, Vector2(x + 7, y + lh), "BIGLI WORLD", HORIZONTAL_ALIGNMENT_LEFT, mw - 14, 12, title_col)
 	y += lh
-	draw_string(_font, Vector2(x, y + lh), "  World Creation", HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(0.50, 0.45, 0.65))
-	y += int(lh * 1.5)
+	draw_string(_font, Vector2(x + 7, y + lh), "Administrador de simulación", HORIZONTAL_ALIGNMENT_LEFT, mw - 14, 8, Color(0.68, 0.72, 0.78))
+	y += int(lh * 1.3)
 
 	# ═══════════════════════════════════════════════
 	# 2. PAUSE STATUS
 	# ═══════════════════════════════════════════════
 	var pause_col = Color(1.0, 0.85, 0.0) if paused else Color(0.3, 0.9, 0.4)
 	var pause_str = "■ PAUSADO" if paused else "▶ ACTIVO"
-	draw_rect(Rect2(x, y + 2, mw - 4, lh + 2), Color(0.06, 0.05, 0.12), true)
+	_draw_classic_bevel(Rect2(x + 5, y + 2, mw - 14, lh + 2), Color("#313A46"), true)
 	draw_string(_font, Vector2(x + 4, y + lh), pause_str, HORIZONTAL_ALIGNMENT_LEFT, mw, 10, pause_col)
 	y += int(lh * 1.6)
 
@@ -1315,7 +1388,7 @@ func _draw_sidebar(side_x: int) -> void:
 	# ═══════════════════════════════════════════════
 	# 9. INVASION ALERT (pinned near bottom)
 	# ═══════════════════════════════════════════════
-	var bottom_y = view_height * lh - int(lh * 5)
+	var bottom_y = UI_CONTENT_TOP + view_height * lh - int(lh * 5)
 	if _invasion_status.get("active", false):
 		draw_rect(Rect2(x, bottom_y - 4, mw - 4, lh + 6), Color(0.3,0.02,0.02), true)
 		draw_rect(Rect2(x, bottom_y - 4, mw - 4, lh + 6), Color(0.9,0.1,0.1), false, 1.5)
@@ -1367,9 +1440,11 @@ func _draw_sidebar(side_x: int) -> void:
 			bottom_y += lh
 
 	# Footer hint strip
-	draw_string(_font, Vector2(x, view_height * lh - 2),
-		"  H=Ayuda  F=Seguir  ESC=Menú",
-		HORIZONTAL_ALIGNMENT_LEFT, mw, 8, Color(0.30,0.28,0.42))
+	var footer_rect := Rect2(x + 3, UI_CONTENT_TOP + view_height * lh - 18, mw - 9, 18)
+	_draw_classic_bevel(footer_rect, UI_CLASSIC_FACE, true)
+	draw_string(_font, Vector2(x + 8, UI_CONTENT_TOP + view_height * lh - 5),
+		"H=Ayuda   F=Seguir   ESC=Menú",
+		HORIZONTAL_ALIGNMENT_LEFT, mw - 18, 8, UI_CLASSIC_TEXT)
 
 
 
@@ -1382,10 +1457,11 @@ func _draw_message_log(start_y: int) -> void:
 	var num = mini(5, _message_log.size())
 
 	var msg_h = num * int(lh * 1.18) + 6
-	_draw_rounded_rect(Rect2(bx, start_y - 2, mw, msg_h),
-		Color(0.02, 0.02, 0.06, 0.85), 4)
-	draw_line(Vector2(bx, start_y - 2), Vector2(bx + mw, start_y - 2),
-		Color(0.25, 0.22, 0.40), 1.0)
+	var log_rect := Rect2(bx, start_y - 22, mw, msg_h + 22)
+	_draw_classic_bevel(log_rect, UI_CLASSIC_FACE, false)
+	_draw_classic_titlebar(Rect2(bx + 2, start_y - 20, mw - 4, 18), "Registro de sucesos", false)
+	var output_rect := Rect2(bx + 5, start_y + 1, mw - 10, msg_h - 7)
+	_draw_classic_bevel(output_rect, Color("#FFFFFF"), true)
 
 	var y = start_y
 	for i in range(num):
@@ -1397,11 +1473,11 @@ func _draw_message_log(start_y: int) -> void:
 			msg = msg.substr(0, max_chars - 3) + "..."
 		# Older messages fade, newest is fully bright
 		var alpha = 0.45 + 0.55 * float(i + 1) / float(num)
-		var col = Color(0.82, 0.80, 0.65, alpha)
+		var col = Color(0.20, 0.20, 0.20, alpha)
 		if i == num - 1:
-			col = Color(1.0, 0.97, 0.80, 1.0)  # Most recent: full brightness
-		draw_string(_font, Vector2(bx + 4, y + lh), msg,
-			HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 10, col)
+			col = Color(0.0, 0.12, 0.35, 1.0)
+		draw_string(_font, Vector2(bx + 9, y + lh), msg,
+			HORIZONTAL_ALIGNMENT_LEFT, mw - 18, 10, col)
 		y += int(lh * 1.18)
 
 
