@@ -2396,7 +2396,11 @@ func _drink_from_splatters(world) -> bool:
 		if amount > 0.01:
 			var sip = minf(amount, 0.02)
 			body.ingested_substances[s] = body.ingested_substances.get(s, 0.0) + sip
-			world.add_splatter_substance(tile_pos, s, -sip)
+			world.absorb_from_tile(tile_pos, s, sip)
+			var water_contamination: float = world.get_water_contamination(tile_pos)
+			if s != "beer" and water_contamination > 0.0:
+				body.ingested_substances["pathogen"] = body.ingested_substances.get("pathogen", 0.0) + water_contamination * sip
+				pathogen_exposure = minf(2.0, pathogen_exposure + water_contamination * 0.02)
 			thirst = maxf(0.0, thirst - 0.1)
 			hunger = maxf(0.0, hunger - 0.03)
 			if s == "beer":
@@ -2404,7 +2408,10 @@ func _drink_from_splatters(world) -> bool:
 				stress *= 0.95
 				add_thought("Bebió un poco de cerveza del suelo. No es lo ideal, pero sirve.", 0.02)
 			else:
-				add_thought("Bebió del suelo para saciar la sed.", -0.01)
+				if water_contamination >= 0.20:
+					add_thought("Bebió agua de aspecto insalubre por necesidad.", -0.04)
+				else:
+					add_thought("Bebió del suelo para saciar la sed.", -0.01)
 			current_task = "Bebiendo del suelo"
 			needs_display_update = true
 			return true
@@ -2694,6 +2701,13 @@ func _execute_job(world) -> void:
 			success = _execute_hunt_job(world)
 		DFJob.JobType.STORE_IN_CONTAINER:
 			success = _execute_store_in_container_job(world)
+		DFJob.JobType.CLEAN:
+			success = world.clean_sanitary_tile(current_job.tile_pos, 0.18) > 0.0
+			if success:
+				current_task = "Limpiando contaminación"
+				stress = maxf(0.0, stress - 0.01)
+		DFJob.JobType.EMPTY_LATRINE:
+			success = _execute_empty_latrine_job(world)
 		DFJob.JobType.FARM_HARVEST:
 			if world.is_grown_crop(current_job.tile_pos):
 				var crop = world.growing_crops.get(current_job.tile_pos)
@@ -2735,7 +2749,8 @@ func _execute_job(world) -> void:
 					patient.is_bleeding = false
 					wounds_treated += 1
 				
-				# 2. Disinfecting infections using alcohol/beer
+				# 2. Los cuidados reducen exposición y gravedad; no borran una
+				# enfermedad sistémica de forma instantánea.
 				if patient.has_infection:
 					# Check if doctor has beer/alcohol in inventory
 					var has_alcohol = false
@@ -2744,16 +2759,14 @@ func _execute_job(world) -> void:
 							inventory.remove_at(i_2135)
 							has_alcohol = true
 							break
-					patient.has_infection = false
-					patient.infection_chance = 0.0
-					# Disinfection hurts! Pain spike + nausea (might vomit)
-					patient.inflict_pain(15.0)
-					patient.body.nausea = minf(1.0, patient.body.nausea + 0.4)
-					if patient.body.nausea >= 0.8:
-						# Spawn a vomit splatter on the bed!
-						world.add_splatter_substance(patient.tile_pos, "vomit", 0.08)
-						patient.add_thought("Sintió náuseas insoportables por el alcohol vertido en sus heridas.", -0.06)
-					patient.add_thought("Aulló de dolor cuando el doctor desinfectó sus heridas.", -0.05)
+					var treatment_quality: float = 0.08 + get_skill_level(DFDwarf.Skill.DOCTORING) * 0.025
+					if has_alcohol:
+						treatment_quality += 0.05
+					patient.pathogen_exposure = maxf(0.0, patient.pathogen_exposure - treatment_quality)
+					patient.infection_chance = patient.pathogen_exposure
+					patient.disease_severity = maxf(0.05, patient.disease_severity - treatment_quality * 0.50)
+					patient.recovery_streak += 30 + get_skill_level(DFDwarf.Skill.DOCTORING) * 10
+					patient.add_thought("Recibió cuidados que mejoraron sus posibilidades de recuperación.", 0.05)
 					wounds_treated += 1
 				
 				# Restore health partially
@@ -2761,7 +2774,7 @@ func _execute_job(world) -> void:
 				patient.needs_display_update = true
 				
 				# Clear medical rest if fully healed
-				var still_needs_attention = patient.health < 0.9 or patient.has_infection
+				var still_needs_attention = patient.health < 0.9 or patient.disease_severity >= 0.20
 				for wound_2158 in patient.wounds:
 					if not wound_2158.get("healed", false):
 						still_needs_attention = true
@@ -2790,6 +2803,26 @@ func _execute_job(world) -> void:
 			current_job.state = DFJob.JobState.CANCELLED
 			current_job = null
 			current_task = "idle"
+
+func _execute_empty_latrine_job(world: Object) -> bool:
+	var target_latrine = null
+	for building in world.buildings:
+		if building.type == DFBuilding.BuildingType.LATRINE and building.tile_pos == current_job.tile_pos:
+			target_latrine = building
+			break
+	if target_latrine == null:
+		return false
+	var removed: float = target_latrine.remove_sanitation_waste(4.0)
+	if removed <= 0.0:
+		return true
+	var disposal_pos: Vector3i = current_job.disposal_pos
+	if disposal_pos.x < 0:
+		disposal_pos = tile_pos
+	world.add_splatter_substance(disposal_pos, "compost", removed)
+	current_task = "Transportando residuos al compostaje"
+	fatigue = minf(1.0, fatigue + 0.01)
+	add_thought("Mantuvo utilizable una instalación sanitaria.", 0.03)
+	return true
 
 func _pick_up_job(world, jobs: Array) -> void:
 	var best_job: DFJob = null
