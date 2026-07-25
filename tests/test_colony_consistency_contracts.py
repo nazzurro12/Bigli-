@@ -520,6 +520,12 @@ class ColonyConsistencyContracts(unittest.TestCase):
         ):
             self.assertIn(token, self.main)
 
+    def test_refcounted_items_do_not_use_dictionary_default_get(self):
+        self.assertNotIn('e.get("material_name", "")', self.dwarf)
+        self.assertIn("e.material_name.to_lower()", self.dwarf)
+        self.assertNotIn('hunting_target.get("name", "presa")', self.dwarf)
+        self.assertNotIn('target.get("name", "presa")', self.dwarf)
+
 
 if __name__ == "__main__":
     unittest.main()
