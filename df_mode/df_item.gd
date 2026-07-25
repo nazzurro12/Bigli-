@@ -88,6 +88,11 @@ var is_organic: bool = false
 var is_edible: bool = false
 var nutrition: float = 0.3
 var hydration: float = 0.0
+var protein_value: float = 0.0
+var carbohydrate_value: float = 0.0
+var fat_value: float = 0.0
+var fiber_value: float = 0.0
+var micronutrient_value: float = 0.0
 
 # ---- OWNERSHIP / RESERVATIONS / EQUIPMENT TAGS ----
 # Los objetos en el suelo tienen carried_by_id = -1. Al entrar en un inventario,
@@ -184,6 +189,7 @@ func _apply_type_defaults(itype: String) -> void:
 		"food":
 			is_food = true; is_edible = true; is_organic = true
 			nutrition = 0.4; hydration = 0.03; item_category = ItemCategory.FOOD
+			carbohydrate_value = 0.45; fiber_value = 0.25; micronutrient_value = 0.25
 			decay_time = DECAY_TIMES.get("food", 200)
 		"drink":
 			# Una bebida no debe entrar por la rama de comida.
@@ -192,6 +198,7 @@ func _apply_type_defaults(itype: String) -> void:
 		"meat":
 			is_meat = true; is_food = true; is_edible = true; is_organic = true
 			nutrition = 0.6; hydration = 0.05; item_category = ItemCategory.MEAT
+			protein_value = 0.65; fat_value = 0.30; micronutrient_value = 0.15
 			decay_time = DECAY_TIMES.get("meat", 150)
 		"corpse":
 			is_corpse = true; is_organic = true; is_edible = false
