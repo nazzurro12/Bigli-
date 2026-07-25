@@ -568,6 +568,20 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("▲  afloramiento de roca minable", self.renderer)
         self.assertIn("EDIFICIOS", self.renderer)
 
+    def test_constructed_walls_autoconnect_and_items_have_distinct_glyphs(self):
+        self.assertIn("func _connected_wall_char", self.world)
+        for glyph in ("\\u250C", "\\u2510", "\\u2514", "\\u2518", "\\u253C"):
+            self.assertIn(glyph, self.world)
+        for item_rule in (
+            'if item_type == "door": return "+"',
+            'if is_bed: return "="',
+            'if item_type in ["stone", "ore", "bar"]: return "*"',
+            'if item_type == "wood": return "|"',
+            'if item_type == "seed": return ";"',
+        ):
+            self.assertIn(item_rule, self.item)
+        self.assertIn("muros construidos conectados", self.renderer)
+
 
 if __name__ == "__main__":
     unittest.main()
