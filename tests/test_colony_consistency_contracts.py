@@ -437,6 +437,36 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("restored_world.stockpiles.append", restore)
         self.assertIn("restored_designation.job_queue.append", restore)
 
+    def test_streamed_regions_receive_biome_fauna_and_history_once(self):
+        for token in (
+            "func _populate_region_fauna",
+            "func _populate_streamed_planet_region",
+            "history_gen.materialize_near_embark(target_world, world_gen, region)",
+            'target_world.set_meta("regional_population_complete", true)',
+            'target_world.get_meta("regional_population_complete", false)',
+        ):
+            self.assertIn(token, self.main)
+        fauna = self.main.split("func _populate_region_fauna", 1)[1].split(
+            "func _populate_streamed_planet_region", 1
+        )[0]
+        self.assertIn("desired_count", fauna)
+        self.assertIn("attempt_budget", fauna)
+        self.assertNotIn("for z in range(target_world.depth)", fauna)
+
+    def test_region_population_marker_survives_both_save_formats(self):
+        self.assertGreaterEqual(
+            self.save.count('"regional_population_complete"'),
+            6,
+        )
+        self.assertEqual(
+            self.save.count('data["world"]["regional_population_complete"]'),
+            2,
+        )
+        self.assertEqual(
+            self.save.count('w.set_meta("regional_population_complete"'),
+            2,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
