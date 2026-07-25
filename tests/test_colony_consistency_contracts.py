@@ -309,6 +309,30 @@ class ColonyConsistencyContracts(unittest.TestCase):
         )[0]
         self.assertNotIn("_draw_classic_bevel(outer", frame)
 
+    def test_weather_effects_use_a_fixed_surface_budget(self):
+        self.assertIn("WEATHER_SURFACE_BUDGET: int = 1024", self.world)
+        self.assertIn("func _take_weather_surface_batch", self.world)
+        rain = self.world.split("func _apply_rain", 1)[1].split(
+            "func _apply_snow", 1
+        )[0]
+        self.assertNotIn("for z in range(depth)", rain)
+        self.assertIn("for pos_value in surface_batch", rain)
+
+    def test_job_housekeeping_is_not_repeated_every_simulation_tick(self):
+        tick = self.main.split("func _tick()", 1)[1].split(
+            "func _recover_orphaned_jobs", 1
+        )[0]
+        housekeeping = tick.split("_recover_orphaned_jobs()", 1)[0]
+        self.assertIn("_simulation_tick_clock % 10 == 0", housekeeping)
+        self.assertIn("if minute_ticked and e4.get(\"is_resting_medical\")", tick)
+
+    def test_every_pregame_screen_receives_obvious_classic_chrome(self):
+        self.assertIn("func _draw_fullscreen_desktop_shell", self.renderer)
+        self.assertEqual(
+            self.renderer.count("_draw_fullscreen_desktop_shell("),
+            7,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
