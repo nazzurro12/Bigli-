@@ -126,6 +126,16 @@ func add_sanitation_waste(amount: float) -> bool:
 	sanitation_load += maxf(0.0, amount)
 	return true
 
+func remove_sanitation_waste(max_amount: float) -> float:
+	if type != BuildingType.LATRINE or max_amount <= 0.0:
+		return 0.0
+	var removed: float = minf(sanitation_load, max_amount)
+	sanitation_load = maxf(0.0, sanitation_load - removed)
+	return removed
+
+func get_sanitation_fill_ratio() -> float:
+	return sanitation_load / maxf(0.01, sanitation_capacity)
+
 func _init(b_type: int, pos: Vector3i):
 	type = b_type
 	tile_pos = pos
