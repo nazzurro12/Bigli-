@@ -2379,6 +2379,7 @@ func _build_initial_settlement(center: Vector3i) -> void:
 	if not warehouse_built:
 		add_message("ADVERTENCIA: no se encontró una zona plana para el almacén 20x20.")
 	_ensure_basic_sanitation()
+	_ensure_basic_water_supply()
 
 	# --- Templo religioso completo (3x3), también validado como una sola pieza ---
 	var temple_pos := _find_safe_house_origin(Vector3i(hx, sy, hz + 12), utility_template, used_house_origins)
@@ -2737,6 +2738,36 @@ func _ensure_basic_sanitation() -> void:
 		latrine.sanitation_capacity = 20.0
 		world.buildings.append(latrine)
 		existing_latrines += 1
+
+func _ensure_basic_water_supply() -> void:
+	if world == null:
+		return
+	var existing_wells: int = 0
+	for building_value: Variant in world.buildings:
+		if building_value is DFBuilding and building_value.type == DFBuilding.BuildingType.WATER_WELL:
+			existing_wells += 1
+	if existing_wells >= 2:
+		return
+	var center_value: Variant = world.get_meta("settlement_center", settlement_center)
+	var center: Vector3i = center_value if center_value is Vector3i else settlement_center
+	for offset: Vector2i in [Vector2i(-4, 0), Vector2i(4, 0), Vector2i(0, -5), Vector2i(0, 5)]:
+		if existing_wells >= 2:
+			break
+		var well_x: int = center.x + offset.x
+		var well_z: int = center.z + offset.y
+		if well_x < 2 or well_x >= world.width - 2 or well_z < 2 or well_z >= world.depth - 2:
+			continue
+		var well_y: int = world.get_surface_height(well_x, well_z)
+		var well_position := Vector3i(well_x, well_y, well_z)
+		if world.is_water(well_position) or world.is_blocked(well_position):
+			continue
+		world.set_tile(well_position, DFWorld.TileType.CONSTRUCTED_FLOOR)
+		world.set_material(well_position, DFWorld.MatType.STONE)
+		var well := DFBuilding.new(DFBuilding.BuildingType.WATER_WELL, well_position)
+		well.water_capacity = 80.0
+		well.water_volume = 60.0
+		world.buildings.append(well)
+		existing_wells += 1
 
 func _find_safe_settlement_center(preferred: Vector2i) -> Vector3i:
 	if world == null:
@@ -3115,6 +3146,7 @@ func _maintain_autonomous_economy() -> void:
 	_queue_harvest_jobs(8)
 	_queue_colony_production_jobs(alive_dwarves, food_count, drink_count)
 	_queue_sanitation_jobs(alive_dwarves)
+	_tick_water_infrastructure()
 
 	# Caza moderada cuando la reserva alimentaria baja.
 	if food_count < alive_dwarves * 3 and _count_open_jobs(DFJob.JobType.HUNT) < 2:
@@ -3190,6 +3222,18 @@ func _queue_sanitation_jobs(alive_dwarves: int) -> void:
 			var empty_job: DFJob = designation.job_queue.back()
 			empty_job.disposal_pos = disposal_position
 			open_empty += 1
+
+func _tick_water_infrastructure() -> void:
+	for building_value: Variant in world.buildings:
+		if not (building_value is DFBuilding):
+			continue
+		var well: DFBuilding = building_value
+		if well.type != DFBuilding.BuildingType.WATER_WELL:
+			continue
+		var local_contamination: float = world.get_water_contamination(well.tile_pos)
+		# Aproximadamente 0.12 L por cada planificación de dos minutos.
+		# Una fuente limpia se depura lentamente; una fuga cercana la contamina.
+		well.recharge_water(0.12, local_contamination)
 
 func _find_sanitary_disposal_position() -> Vector3i:
 	for radius in range(22, 37):
