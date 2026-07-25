@@ -1247,7 +1247,15 @@ func _draw_sidebar(side_x: int) -> void:
 			var badges: Array = []
 			if dwarf.get("is_bleeding") == true:  badges.append(["SANGRA", Color(0.9,0.2,0.2)])
 			if dwarf.get("is_in_pain") == true:   badges.append(["DOLOR",  Color(0.9,0.5,0.1)])
-			if dwarf.get("has_infection") == true: badges.append(["INFEC",  Color(0.2,0.9,0.3)])
+			var disease_phase = int(dwarf.get("disease_phase")) if dwarf.get("disease_phase") != null else 0
+			var disease_severity = float(dwarf.get("disease_severity")) if dwarf.get("disease_severity") != null else 0.0
+			if disease_phase == 1:
+				badges.append(["INCUBA", Color(0.75,0.75,0.25)])
+			elif disease_phase == 2:
+				var disease_color = Color(0.95,0.25,0.18) if disease_severity >= 0.70 else Color(0.95,0.65,0.15)
+				badges.append(["ENFERM %d%%" % int(disease_severity * 100.0), disease_color])
+			elif disease_phase == 3:
+				badges.append(["RECUP", Color(0.20,0.80,0.55)])
 			var dwarf_mood = dwarf.get("mood") if dwarf.get("mood") != null else 0
 			var dwarf_sm_phase = dwarf.get("strange_mood_phase") if dwarf.get("strange_mood_phase") != null else 0
 			if dwarf_mood >= 7 and dwarf_mood <= 10:
@@ -1259,7 +1267,6 @@ func _draw_sidebar(side_x: int) -> void:
 				var ebr = bref.get("ebriety") if bref.get("ebriety") != null else 0.0
 				if ebr > 0.5: badges.append(["EBRIO", Color(1.0,0.80,0.0)])
 				if bref.get("is_vomiting") == true: badges.append(["VOMITO", Color(0.5,0.65,0.1)])
-				if bref.get("disease_type") not in [null,""]: badges.append(["ENFERM", Color(0.2,0.85,0.3)])
 				var ing = bref.get("ingested_substances")
 				if ing and ing.has("poison") and ing["poison"] > 0.0:
 					badges.append(["VENENO", Color(0.6,0.1,0.8)])
