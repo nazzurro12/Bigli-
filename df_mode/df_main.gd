@@ -1221,6 +1221,7 @@ func _process(delta: float) -> void:
 		renderer._legend_mode = 0
 		renderer._family_tree_data = {}
 
+	_clamp_camera_to_region_view()
 	renderer.camera_pos = camera_pos
 	if dialogue != null:
 		renderer._dialogue_active = dialogue.is_active()
@@ -1871,6 +1872,43 @@ func _planet_dimensions() -> Vector2i:
 		return Vector2i.ONE
 	return Vector2i(maxi(1, int(world_gen.world_width)), maxi(1, int(world_gen.world_depth)))
 
+func _region_is_habitable(candidate: Vector2i) -> bool:
+	if world_gen == null or world_gen.is_ocean(candidate.x, candidate.y) or world_gen.is_lake(candidate.x, candidate.y):
+		return false
+	var land_samples: int = 0
+	var total_samples: int = 0
+	for sample_z in range(-2, 3):
+		for sample_x in range(-2, 3):
+			var check_x: int = posmod(candidate.x + sample_x, int(world_gen.world_width))
+			var check_z: int = candidate.y + sample_z
+			if check_z < 0 or check_z >= int(world_gen.world_depth):
+				continue
+			total_samples += 1
+			if not world_gen.is_ocean(check_x, check_z) and not world_gen.is_lake(check_x, check_z):
+				land_samples += 1
+	return total_samples > 0 and float(land_samples) / float(total_samples) >= 0.72
+
+func _resolve_habitable_embark_region(requested: Vector2i) -> Vector2i:
+	if world_gen == null:
+		return requested
+	var planet_size := _planet_dimensions()
+	var normalized := DFPlanetRegions.normalize_region(requested, planet_size.x, planet_size.y)
+	if _region_is_habitable(normalized):
+		return normalized
+	for radius in range(1, 97):
+		for offset_z in range(-radius, radius + 1):
+			for offset_x in range(-radius, radius + 1):
+				if abs(offset_x) != radius and abs(offset_z) != radius:
+					continue
+				var candidate := DFPlanetRegions.normalize_region(
+					normalized + Vector2i(offset_x, offset_z),
+					planet_size.x,
+					planet_size.y
+				)
+				if _region_is_habitable(candidate):
+					return candidate
+	return normalized
+
 func _request_planet_transition(direction: Vector2i) -> void:
 	if _planet_transition_in_progress or world == null or world_gen == null:
 		return
@@ -1997,12 +2035,7 @@ func _process_held_movement(delta: float) -> void:
 	else:
 		# En modo cámara, mantener WASD desplaza continuamente y deja de seguir.
 		renderer.follow_dwarf = -1
-		camera_pos.x = camera_pos.x + direction.x * 2
-		camera_pos.z = camera_pos.z + direction.y * 2
-		if camera_pos.x < 0 or camera_pos.x >= world.width or camera_pos.z < 0 or camera_pos.z >= world.depth:
-			camera_pos.x = clampi(camera_pos.x, 0, world.width - 1)
-			camera_pos.z = clampi(camera_pos.z, 0, world.depth - 1)
-			_request_planet_transition(direction)
+		_move_planet_camera(direction, 2)
 	_held_move_timer = HELD_MOVE_REPEAT_INTERVAL
 
 func _move_planet_camera(direction: Vector2i, step: int = 2) -> void:
@@ -2010,11 +2043,30 @@ func _move_planet_camera(direction: Vector2i, step: int = 2) -> void:
 		return
 	var next_x: int = camera_pos.x + direction.x * step
 	var next_z: int = camera_pos.z + direction.y * step
-	if next_x < 0 or next_x >= world.width or next_z < 0 or next_z >= world.depth:
+	var limits: Rect2i = _camera_region_limits()
+	if next_x < limits.position.x or next_x > limits.end.x or next_z < limits.position.y or next_z > limits.end.y:
 		_request_planet_transition(direction)
 		return
 	camera_pos.x = next_x
 	camera_pos.z = next_z
+
+func _camera_region_limits() -> Rect2i:
+	if world == null:
+		return Rect2i(0, 0, 1, 1)
+	var visible_width: int = maxi(1, renderer.view_width if renderer != null else 80)
+	var visible_depth: int = maxi(1, renderer.view_height if renderer != null else 25)
+	var min_x: int = mini(world.width / 2, visible_width / 2)
+	var min_z: int = mini(world.depth / 2, visible_depth / 2)
+	var max_x: int = maxi(min_x, world.width - (visible_width - visible_width / 2))
+	var max_z: int = maxi(min_z, world.depth - (visible_depth - visible_depth / 2))
+	return Rect2i(min_x, min_z, max_x - min_x, max_z - min_z)
+
+func _clamp_camera_to_region_view() -> void:
+	if world == null:
+		return
+	var limits: Rect2i = _camera_region_limits()
+	camera_pos.x = clampi(camera_pos.x, limits.position.x, limits.end.x)
+	camera_pos.z = clampi(camera_pos.z, limits.position.y, limits.end.y)
 
 func _handle_escape() -> void:
 	# ESC actúa sobre una sola capa, de la más específica a la más general.
@@ -2205,6 +2257,12 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	# Step 1
 	load_status = "Generando relieve, biomas y asentamientos locales"
 	await get_tree().process_frame
+	var resolved_embark_region := _resolve_habitable_embark_region(embark_cursor)
+	if resolved_embark_region != embark_cursor:
+		add_message("La zona elegida era oceánica. La expedición llegó a tierra firme en %d,%d." % [
+			resolved_embark_region.x, resolved_embark_region.y
+		])
+		embark_cursor = resolved_embark_region
 	# Una región local puede reutilizar el mismo objeto World. Limpiar antes de
 	# materializar impide duplicar edificios, residentes y almacenes.
 	world.entities.clear()
@@ -2968,8 +3026,9 @@ func _find_safe_settlement_center(preferred: Vector2i) -> Vector3i:
 			for dx in range(-radius, radius + 1, 3):
 				if radius > 0 and abs(dx) != radius and abs(dz) != radius:
 					continue
-				var x: int = clampi(preferred.x + dx, 18, world.width - 19)
-				var z: int = clampi(preferred.y + dz, 18, world.depth - 19)
+				var safe_margin: int = 48
+				var x: int = clampi(preferred.x + dx, safe_margin, world.width - safe_margin - 1)
+				var z: int = clampi(preferred.y + dz, safe_margin, world.depth - safe_margin - 1)
 				var y: int = world.get_surface_height(x, z)
 				var center_pos := Vector3i(x, y, z)
 				if world.is_water(center_pos) or world.is_blocked(center_pos):
