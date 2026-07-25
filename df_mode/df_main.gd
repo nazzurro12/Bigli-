@@ -1888,6 +1888,86 @@ func _focus_story_hook() -> void:
 	camera_pos = actor.tile_pos
 	add_message("Siguiendo: %s. Pulsa P para poseerlo." % str(active_story_hook.get("title", actor.name)))
 
+func _possessed_context_action() -> void:
+	if possessed_dwarf == null or world == null:
+		return
+	var minute: int = int(world.get_meta("simulation_minute", 0))
+	var need_action: Dictionary = _consume_possessed_need_item()
+	if bool(need_action.get("success", false)):
+		var need_message: String = str(need_action.get("message", "Consumió un recurso."))
+		story_director.record_action(str(need_action.get("type", "consume")), need_message, minute, possessed_dwarf.tile_pos)
+		add_message(need_message)
+		return
+
+	var candidates: Array[Vector3i] = [possessed_dwarf.tile_pos]
+	var preferred_direction: Vector2i = _held_move_direction
+	if preferred_direction != Vector2i.ZERO:
+		candidates.push_front(possessed_dwarf.tile_pos + Vector3i(preferred_direction.x, 0, preferred_direction.y))
+	for direction: Vector3i in [Vector3i(-1,0,0), Vector3i(1,0,0), Vector3i(0,0,-1), Vector3i(0,0,1)]:
+		var adjacent: Vector3i = possessed_dwarf.tile_pos + direction
+		if not candidates.has(adjacent):
+			candidates.append(adjacent)
+	for target: Vector3i in candidates:
+		if target.x < 0 or target.x >= world.width or target.z < 0 or target.z >= world.depth:
+			continue
+		var result: Dictionary = DFActorActionExecutor.contextual_action(possessed_dwarf, world, target)
+		if bool(result.get("success", false)):
+			var action_message: String = str(result.get("message", "Realizó una acción."))
+			story_director.record_action("interact", action_message, minute, target)
+			add_message(action_message)
+			return
+	add_message("No hay comida, bebida, objeto, árbol o roca utilizable al alcance.")
+
+func _consume_possessed_need_item() -> Dictionary:
+	if possessed_dwarf == null:
+		return {"success": false}
+	var wants_drink: bool = float(possessed_dwarf.thirst) >= 0.25
+	var wants_food: bool = float(possessed_dwarf.hunger) >= 0.25
+	for item_index: int in range(possessed_dwarf.inventory.size()):
+		var item: Variant = possessed_dwarf.inventory[item_index]
+		var consume_type: String = ""
+		var relief: float = 0.0
+		if wants_drink and item.get("is_drink") == true:
+			consume_type = "drink"
+			relief = maxf(0.35, float(item.get("hydration")))
+			possessed_dwarf.thirst = maxf(0.0, possessed_dwarf.thirst - relief)
+			if possessed_dwarf.needs is Dictionary:
+				possessed_dwarf.needs[DFDwarf.Need.DRINK] = maxf(0.0, float(possessed_dwarf.needs.get(DFDwarf.Need.DRINK, 0.0)) - relief)
+		elif wants_food and item.get("is_edible") == true:
+			consume_type = "eat"
+			relief = maxf(0.20, float(item.get("nutrition")))
+			possessed_dwarf.hunger = maxf(0.0, possessed_dwarf.hunger - relief)
+			if possessed_dwarf.needs is Dictionary:
+				possessed_dwarf.needs[DFDwarf.Need.FOOD] = maxf(0.0, float(possessed_dwarf.needs.get(DFDwarf.Need.FOOD, 0.0)) - relief)
+		if consume_type.is_empty():
+			continue
+		if possessed_dwarf.has_method("record_consumption"):
+			possessed_dwarf.record_consumption(item)
+		var item_name: String = str(item.get("name"))
+		var stack_size: int = maxi(1, int(item.get("stack_size")))
+		if stack_size > 1:
+			item.set("stack_size", stack_size - 1)
+		else:
+			possessed_dwarf.inventory.remove_at(item_index)
+		possessed_dwarf.needs_display_update = true
+		var verb: String = "Bebió" if consume_type == "drink" else "Comió"
+		return {"success": true, "type": consume_type, "message": "%s %s." % [verb, item_name]}
+	return {"success": false}
+
+func _possessed_drop_item() -> void:
+	if possessed_dwarf == null or world == null:
+		return
+	var result: Dictionary = DFActorActionExecutor.execute(
+		possessed_dwarf,
+		world,
+		DFActorActionExecutor.ActionType.DROP,
+		possessed_dwarf.tile_pos
+	)
+	var message: String = str(result.get("message", "No pudo soltar el objeto."))
+	if bool(result.get("success", false)):
+		story_director.record_action("drop", message, int(world.get_meta("simulation_minute", 0)), possessed_dwarf.tile_pos)
+	add_message(message)
+
 func _try_move_possessed(direction: Vector2i) -> bool:
 	if possessed_dwarf == null or world == null or direction == Vector2i.ZERO:
 		return false
@@ -4473,6 +4553,10 @@ func _handle_key(event: InputEvent) -> void:
 				_possess_dwarf(renderer.follow_dwarf)
 			KEY_Y:
 				_focus_story_hook()
+			KEY_E:
+				_possessed_context_action()
+			KEY_R:
+				_possessed_drop_item()
 			KEY_V:
 				if possessed_dwarf != null and fast_travel != null:
 					fast_travel.start_fast_travel(camera_pos.x, camera_pos.z)
