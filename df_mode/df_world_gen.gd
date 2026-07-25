@@ -73,7 +73,8 @@ var lore_seed: int = 0
 var civ_lineages: Dictionary = {}
 var world_alignment: String = "Neutral"
 var setting_beast_density: int = 1
-var embark_pos: Vector2i = Vector2i(-1, -1)
+const NO_EMBARK_REGION := Vector2i(2147483647, 2147483647)
+var embark_pos: Vector2i = NO_EMBARK_REGION
 var setting_civ_density: int = 1
 
 var config_tree_density: float = 1.0
@@ -146,11 +147,11 @@ func generate(world: Object, seed_value: int = -1, build_local_map_immediately: 
 func _get_world_sample(x: int, z: int, local_w: int, local_d: int) -> Vector2:
 	var safe_w: float = maxf(1.0, float(local_w))
 	var safe_d: float = maxf(1.0, float(local_d))
-	if embark_pos.x >= 0:
+	if embark_pos != NO_EMBARK_REGION:
 		var half_span: float = local_region_span * 0.5
 		var gx: float = float(embark_pos.x) - half_span + ((float(x) + 0.5) / safe_w) * local_region_span
 		var gz: float = float(embark_pos.y) - half_span + ((float(z) + 0.5) / safe_d) * local_region_span
-		return Vector2(clampf(gx, 0.0, float(world_width - 1)), clampf(gz, 0.0, float(world_depth - 1)))
+		return Vector2(fposmod(gx, float(world_width)), fposmod(gz, float(world_depth)))
 	var gx_full: float = ((float(x) + 0.5) / safe_w) * float(world_width - 1)
 	var gz_full: float = ((float(z) + 0.5) / safe_d) * float(world_depth - 1)
 	return Vector2(clampf(gx_full, 0.0, float(world_width - 1)), clampf(gz_full, 0.0, float(world_depth - 1)))
@@ -164,7 +165,7 @@ func _get_global_tile_sample(x: int, z: int, local_w: int, local_d: int) -> Vect
 	# locales, no vuelven a cero al entrar en la región vecina.
 	var safe_w: float = maxf(1.0, float(local_w))
 	var safe_d: float = maxf(1.0, float(local_d))
-	if embark_pos.x >= 0:
+	if embark_pos != NO_EMBARK_REGION:
 		return Vector2(
 			(float(embark_pos.x) + (float(x) + 0.5) / safe_w) * float(STREAMED_REGION_TILES),
 			(float(embark_pos.y) + (float(z) + 0.5) / safe_d) * float(STREAMED_REGION_TILES)
@@ -235,7 +236,7 @@ func _is_local_lake(x: int, z: int, local_w: int, local_d: int) -> bool:
 	var edge_noise: float = _octave_noise(global_tile.x, global_tile.y, 2, 0.5, 18.0) * 0.5 + 0.5
 	return edge_noise > 0.18
 
-func generate_local_map(world: Object, embark_pt: Vector2i = Vector2i(-1, -1)) -> void:
+func generate_local_map(world: Object, embark_pt: Vector2i = NO_EMBARK_REGION) -> void:
 	embark_pos = embark_pt
 	world.tiles.clear()
 	world.tile_data.clear()
@@ -256,8 +257,9 @@ func generate_local_map(world: Object, embark_pt: Vector2i = Vector2i(-1, -1)) -
 	_generate_creatures()
 	# Los asentamientos se materializan al final para que árboles, flora y vetas
 	# no reaparezcan dentro de calles, paredes, habitaciones o campos.
-	if embark_pos.x >= 0 and not sites.is_empty():
-		DFWorldSites.materialize_nearby_sites(world, self, embark_pos)
+	if embark_pos != NO_EMBARK_REGION and not sites.is_empty():
+		var site_region := Vector2i(posmod(embark_pos.x, world_width), posmod(embark_pos.y, world_depth))
+		DFWorldSites.materialize_nearby_sites(world, self, site_region)
 
 func _generate_name() -> String:
 	var prefixes = ["Ara", "Bel", "Cal", "Dor", "Ere", "Fal", "Gar", "Hal", "Ith", "Kel",
@@ -1148,7 +1150,7 @@ func _place_ore_in_local(world) -> void:
 
 func _generate_creatures() -> void:
 	creatures.clear()
-	if embark_pos.x < 0:
+	if embark_pos == NO_EMBARK_REGION:
 		return
 	var data := DFData.new(rng.seed)
 	var all_creatures: Array = data.creatures
@@ -1158,8 +1160,8 @@ func _generate_creatures() -> void:
 	# El mundo gigantesco no mantiene millones de animales activos.
 	var attempts: int = clampi(18 * setting_beast_density, 12, 72)
 	for attempt in range(attempts):
-		var wx: int = clampi(embark_pos.x + rng.randi_range(-4, 4), 0, world_width - 1)
-		var wz: int = clampi(embark_pos.y + rng.randi_range(-4, 4), 0, world_depth - 1)
+		var wx: int = posmod(embark_pos.x + rng.randi_range(-4, 4), world_width)
+		var wz: int = posmod(embark_pos.y + rng.randi_range(-4, 4), world_depth)
 		if is_ocean(wx, wz) or is_lake(wx, wz):
 			continue
 		var creature_variant: Variant = all_creatures[rng.randi() % all_creatures.size()]
