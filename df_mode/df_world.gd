@@ -32,14 +32,14 @@ enum Season { SPRING, SUMMER, AUTUMN, WINTER }
 enum DisasterType { NONE, CAVE_IN, FLOOD, FIRE, EARTHQUAKE, MAGMA_FLOOD, TORNADO }
 
 const TILE_CHARS = {
-	TileType.FLOOR: ".", TileType.WALL: "#", TileType.WATER_DEEP: "~",
-	TileType.WATER_SHALLOW: "=", TileType.TREE: "\u25A3", TileType.RAMP: "\u25B2",
+	TileType.FLOOR: "\u00B7", TileType.WALL: "#", TileType.WATER_DEEP: "~",
+	TileType.WATER_SHALLOW: "\u2248", TileType.TREE: "\u2663", TileType.RAMP: "\u25B2",
 	TileType.STAIRS_UP: "<", TileType.STAIRS_DOWN: ">",
-	TileType.STAIRS_UPDOWN: "\u25A1", TileType.CAVE_FLOOR: ".",
+	TileType.STAIRS_UPDOWN: "\u25A1", TileType.CAVE_FLOOR: ",",
 	TileType.CAVE_WALL: "#", TileType.MAGMA: "\u2588", TileType.BRIDGE: "=",
-	TileType.GRASS: "\"", TileType.DIRT: ".", TileType.SAND: "\u2022",
+	TileType.GRASS: ",", TileType.DIRT: "\u00B7", TileType.SAND: "\u2022",
 	TileType.SNOW: "\u2219", TileType.ICE: "\u2591", TileType.STONE_FLOOR: "\u2591",
-	TileType.SOIL: "\u2591", TileType.FARM_SOIL: "\u2592",
+	TileType.SOIL: ":", TileType.FARM_SOIL: "\u2592",
 	TileType.MURKY_POOL: "o", TileType.BROOK: "\u2581",
 	TileType.FORTIFICATION: "%", TileType.CONSTRUCTED_WALL: "\u2588",
 	TileType.CONSTRUCTED_FLOOR: "\u2593", TileType.PATH: "\u2591"
@@ -48,11 +48,11 @@ const TILE_CHARS = {
 const TILE_COLORS = {
 	TileType.FLOOR: Color("#808080"), TileType.WALL: Color("#A0A0A0"),
 	TileType.WATER_DEEP: Color("#0000AA"), TileType.WATER_SHALLOW: Color("#4444FF"),
-	TileType.TREE: Color("#008000"), TileType.RAMP: Color("#8B4513"),
+	TileType.TREE: Color("#35B84A"), TileType.RAMP: Color("#A06F3C"),
 	TileType.STAIRS_UP: Color("#FFFFFF"), TileType.STAIRS_DOWN: Color("#FFFFFF"),
 	TileType.STAIRS_UPDOWN: Color("#FFFFFF"), TileType.CAVE_FLOOR: Color("#505050"),
 	TileType.CAVE_WALL: Color("#606060"), TileType.MAGMA: Color("#FF4400"),
-	TileType.BRIDGE: Color("#8B7355"), TileType.GRASS: Color("#00AA00"),
+	TileType.BRIDGE: Color("#8B7355"), TileType.GRASS: Color("#3D8F45"),
 	TileType.DIRT: Color("#8B6914"), TileType.SAND: Color("#DDCC55"),
 	TileType.SNOW: Color("#FFFFFF"), TileType.ICE: Color("#CCFFFF"),
 	TileType.STONE_FLOOR: Color("#707070"), TileType.SOIL: Color("#6B4226"),
@@ -1392,6 +1392,8 @@ func get_tile_name(pos: Vector3i) -> String:
 func get_tile_char(pos: Vector3i) -> String:
 	var t = get_tile(pos)
 	if fire_tiles.has(pos): return "\u2588"
+	if t in [TileType.WALL, TileType.CAVE_WALL] and bool(tile_data.get(pos, {}).get("natural_outcrop", false)):
+		return "\u25B2"
 	return TILE_CHARS.get(t, " ")
 
 func get_tile_color(pos: Vector3i) -> Color:
