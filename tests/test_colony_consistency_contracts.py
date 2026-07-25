@@ -544,6 +544,20 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("Planetario (771²)", self.renderer)
         self.assertIn("197.376 casillas por eje", self.renderer)
 
+    def test_surface_geology_creates_visible_mineable_outcrops(self):
+        self.assertIn("_place_surface_rock_outcrops(world)", self.world_gen)
+        outcrops = self.world_gen.split(
+            "func _place_surface_rock_outcrops", 1
+        )[1].split("func _place_trees_in_local", 1)[0]
+        self.assertIn("DFWorld.TileType.WALL", outcrops)
+        self.assertIn('"natural_outcrop": true', outcrops)
+        self.assertIn("_geo_to_material(rock_layer)", outcrops)
+
+    def test_expensive_autonomous_decisions_are_distributed(self):
+        self.assertIn("posmod(simulation_tick + id, 12) == 0", self.dwarf)
+        self.assertIn("if autonomous_decision_due:", self.dwarf)
+        self.assertIn("_move_toward(world, path.back())", self.dwarf)
+
 
 if __name__ == "__main__":
     unittest.main()
