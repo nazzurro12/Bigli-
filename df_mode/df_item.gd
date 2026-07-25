@@ -464,9 +464,17 @@ func get_item_volume() -> float:
 	return 1.0
 
 func put_in_container(container) -> void:
+	if container == null or container == self:
+		return
+	if is_inside_container and container_id == container.id:
+		if not container.container_contents.has(self):
+			container.container_contents.append(self)
+			container.contained_volume += get_item_volume()
+		return
 	is_inside_container = true
 	container_id = container.id
-	container.container_contents.append(self)
+	if not container.container_contents.has(self):
+		container.container_contents.append(self)
 	container.contained_volume += get_item_volume()
 
 func remove_from_container() -> void:
