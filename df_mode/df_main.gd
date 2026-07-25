@@ -26,6 +26,7 @@ const DFFastTravel = preload("res://df_mode/df_fast_travel.gd")
 const DFQuestSystem = preload("res://df_mode/df_quest.gd")
 const DFSaveLoad = preload("res://df_mode/df_save_load.gd")
 const DFPlanetRegions = preload("res://df_mode/df_planet_regions.gd")
+const DFStoryDirector = preload("res://df_mode/df_story_director.gd")
 const DFWorldSimulationScript = preload("res://df_mode/core/simulation/world_simulation.gd")
 const WorldGenerationSettings = preload("res://world/world_generation_settings.gd")
 
@@ -43,6 +44,9 @@ var _planet_transition_in_progress: bool = false
 var _planet_transition_direction: Vector2i = Vector2i.ZERO
 var _planet_transition_target: Vector2i = Vector2i.ZERO
 var _planet_transition_was_paused: bool = false
+var story_director: DFStoryDirector = DFStoryDirector.new()
+var active_story_hook: Dictionary = {}
+var last_possession_report: Dictionary = {}
 
 var paused: bool = false
 var tick_interval: float = 0.1
@@ -1397,6 +1401,10 @@ func _tick() -> void:
 		minute_ticked = true
 		_game_minute += 1
 		world.set_meta("simulation_minute", int(world.get_meta("simulation_minute", 0)) + 1)
+		var story_minute_now: int = int(world.get_meta("simulation_minute", 0))
+		active_story_hook = story_director.refresh(world, story_minute_now)
+		if not last_possession_report.is_empty() and story_minute_now - int(last_possession_report.get("minute", story_minute_now)) >= 60:
+			last_possession_report = {}
 		if _game_minute >= 60:
 			_game_minute = 0
 			_game_hour += 1
@@ -1845,16 +1853,40 @@ func _possess_dwarf(id: int) -> void:
 			possessed_dwarf = e
 			last_possessed_dwarf = e
 			possessed_dwarf.is_possessed = true
+			var story_minute: int = int(world.get_meta("simulation_minute", 0))
+			story_director.begin_possession(possessed_dwarf, story_minute)
+			last_possession_report = {}
+			active_story_hook = story_director.refresh(world, story_minute, true)
 			add_message("! POSESION INICIADA ! (WASD para mover)")
 			renderer.follow_dwarf = -1
 			return
 			
 func _exit_possession() -> void:
 	if possessed_dwarf != null:
+		var released_dwarf = possessed_dwarf
+		var story_minute: int = int(world.get_meta("simulation_minute", 0))
+		last_possession_report = story_director.end_possession(released_dwarf, story_minute)
 		possessed_dwarf.is_possessed = false
 		possessed_dwarf = null
-		add_message("Posesion terminada. (L para volver)")
+		renderer.follow_dwarf = released_dwarf.id
+		active_story_hook = story_director.refresh(world, story_minute, true)
+		add_message("Posesion terminada: ahora observa las consecuencias. (F sigue al habitante)")
+		if not last_possession_report.is_empty():
+			add_message(str(last_possession_report.get("interpretation", "")))
 		follow_time = 0.0
+
+func _focus_story_hook() -> void:
+	if world == null or active_story_hook.is_empty():
+		add_message("No hay una historia personal disponible todavía.")
+		return
+	var actor_id: int = int(active_story_hook.get("actor_id", -1))
+	var actor = world.get_dwarf_by_id(actor_id)
+	if actor == null or actor.get("is_alive") == false:
+		active_story_hook = story_director.refresh(world, int(world.get_meta("simulation_minute", 0)), true)
+		return
+	renderer.follow_dwarf = actor_id
+	camera_pos = actor.tile_pos
+	add_message("Siguiendo: %s. Pulsa P para poseerlo." % str(active_story_hook.get("title", actor.name)))
 
 func _try_move_possessed(direction: Vector2i) -> bool:
 	if possessed_dwarf == null or world == null or direction == Vector2i.ZERO:
@@ -4439,6 +4471,8 @@ func _handle_key(event: InputEvent) -> void:
 				_cycle_follow()
 			KEY_P:
 				_possess_dwarf(renderer.follow_dwarf)
+			KEY_Y:
+				_focus_story_hook()
 			KEY_V:
 				if possessed_dwarf != null and fast_travel != null:
 					fast_travel.start_fast_travel(camera_pos.x, camera_pos.z)
