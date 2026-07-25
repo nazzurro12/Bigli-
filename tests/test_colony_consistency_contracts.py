@@ -18,6 +18,9 @@ class ColonyConsistencyContracts(unittest.TestCase):
         cls.renderer = (ROOT / "df_mode/df_renderer.gd").read_text(encoding="utf-8")
         cls.job = (ROOT / "df_mode/df_job.gd").read_text(encoding="utf-8")
         cls.planet = (ROOT / "df_mode/df_planet_regions.gd").read_text(encoding="utf-8")
+        cls.pathfinding = (ROOT / "df_mode/df_pathfinding.gd").read_text(
+            encoding="utf-8"
+        )
 
     def test_crises_require_time_and_sustained_pressure(self):
         self.assertIn("CRISIS_GRACE_MINUTES: int = 1440", self.dwarf)
@@ -403,6 +406,19 @@ class ColonyConsistencyContracts(unittest.TestCase):
             "func _planet_dimensions", 1
         )[0]
         self.assertIn("_request_planet_transition(direction)", movement)
+        self.assertIn("BORDER_EXIT_MARGIN", movement)
+        self.assertIn("leaving_through_border", movement)
+
+    def test_blocked_work_targets_choose_a_reachable_same_level_neighbor(self):
+        blocked_target = self.pathfinding.split("if target_blocked:", 1)[1].split(
+            "var key = _cache_key", 1
+        )[0]
+        self.assertIn("var candidates: Array[Vector3i]", blocked_target)
+        self.assertIn("for candidate in candidates:", blocked_target)
+        self.assertIn("_find_path_internal(world, from, candidate", blocked_target)
+        self.assertIn("return shortest_path", blocked_target)
+        self.assertNotIn("Vector3i(0,1,0)", blocked_target)
+        self.assertNotIn("Vector3i(0,-1,0)", blocked_target)
 
     def test_planet_region_is_visible_and_saved(self):
         self.assertIn('"active_planet_region"', self.save)
