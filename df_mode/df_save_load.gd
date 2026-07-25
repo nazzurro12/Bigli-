@@ -384,6 +384,14 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"infection_chance": dwarf.infection_chance,
 		"has_infection": dwarf.has_infection,
 		"rest_timer": dwarf.rest_timer,
+		"disease_phase": dwarf.disease_phase,
+		"disease_progress": dwarf.disease_progress,
+		"disease_severity": dwarf.disease_severity,
+		"pathogen_exposure": dwarf.pathogen_exposure,
+		"immune_strength": dwarf.immune_strength,
+		"acquired_immunity": dwarf.acquired_immunity,
+		"recovery_streak": dwarf.recovery_streak,
+		"fever": dwarf.fever,
 		"nausea": dwarf.nausea,
 		"is_vomiting": dwarf.is_vomiting,
 		"dizziness": dwarf.dizziness,
@@ -559,6 +567,14 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.infection_chance = d.get("infection_chance", 0.0)
 	df.has_infection = d.get("has_infection", false)
 	df.rest_timer = d.get("rest_timer", 0.0)
+	df.disease_phase = d.get("disease_phase", 0)
+	df.disease_progress = d.get("disease_progress", 0.0)
+	df.disease_severity = d.get("disease_severity", 0.0)
+	df.pathogen_exposure = d.get("pathogen_exposure", df.infection_chance)
+	df.immune_strength = d.get("immune_strength", 0.5)
+	df.acquired_immunity = d.get("acquired_immunity", 0.0)
+	df.recovery_streak = d.get("recovery_streak", 0)
+	df.fever = d.get("fever", 0.0)
 	df.nausea = d.get("nausea", 0.0)
 	df.is_vomiting = d.get("is_vomiting", false)
 	df.dizziness = d.get("dizziness", 0.0)
