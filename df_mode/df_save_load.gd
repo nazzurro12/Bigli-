@@ -903,7 +903,10 @@ static func _building_to_dict(b) -> Dictionary:
 		"is_constructed": b.is_constructed,
 		"name": b.name,
 		"sanitation_load": b.sanitation_load,
-		"sanitation_capacity": b.sanitation_capacity
+		"sanitation_capacity": b.sanitation_capacity,
+		"water_volume": b.water_volume,
+		"water_capacity": b.water_capacity,
+		"water_contamination": b.water_contamination
 	}
 
 static func _dict_to_building(d: Dictionary):
@@ -914,6 +917,9 @@ static func _dict_to_building(d: Dictionary):
 	b.name = d.get("name", b.name)
 	b.sanitation_load = d.get("sanitation_load", 0.0)
 	b.sanitation_capacity = d.get("sanitation_capacity", 20.0)
+	b.water_volume = d.get("water_volume", 0.0)
+	b.water_capacity = d.get("water_capacity", 80.0)
+	b.water_contamination = d.get("water_contamination", 0.0)
 	return b
 
 static func serialize_entity(entity) -> Dictionary:
@@ -1727,5 +1733,7 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 		main._reconcile_storage_containers()
 	if main.has_method("_ensure_basic_sanitation"):
 		main._ensure_basic_sanitation()
+	if main.has_method("_ensure_basic_water_supply"):
+		main._ensure_basic_water_supply()
 	if w.has_method("reconcile_seasonal_weather"):
 		w.reconcile_seasonal_weather()
