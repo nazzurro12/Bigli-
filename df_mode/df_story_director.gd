@@ -60,21 +60,33 @@ func _build_hook(actor: Object) -> Dictionary:
 
 	var problem := "Su vida parece estable, pero busca un propósito propio."
 	var stakes := "Sin intervención continuará siguiendo su rutina."
+	var objective := "Intervén en su rutina y deja una consecuencia observable."
+	var objective_type := "act"
 	if thirst >= 0.65:
 		problem = "Tiene sed y todavía no ha asegurado agua."
 		stakes = "Su salud y su capacidad de trabajar empeorarán."
+		objective = "Consigue una bebida y pulsa E para beber."
+		objective_type = "drink"
 	elif hunger >= 0.65:
 		problem = "Tiene hambre y no sabe cuándo conseguirá su próxima comida."
 		stakes = "Podría abandonar sus obligaciones para sobrevivir."
+		objective = "Consigue alimento y pulsa E para comer."
+		objective_type = "eat"
 	elif health <= 0.70:
 		problem = "Su salud está deteriorada y necesita recuperarse."
 		stakes = "Una jornada exigente puede prolongar su recuperación."
+		objective = "Evita esfuerzos y busca recursos útiles."
+		objective_type = "act"
 	elif stress >= 0.65:
 		problem = "La presión acumulada está alterando sus decisiones."
 		stakes = "Sus relaciones y su trabajo pueden deteriorarse."
+		objective = "Cambia su rutina sin empeorar sus necesidades."
+		objective_type = "act"
 	elif not rivals.is_empty():
 		problem = "Mantiene un conflicto sin resolver con otro habitante."
 		stakes = "La rivalidad puede dividir a sus conocidos."
+		objective = "Acércate a otras personas y decide dónde intervenir."
+		objective_type = "act"
 	elif current_task != "idle" and not current_task.is_empty():
 		problem = "Está dedicando su día a: %s." % current_task
 		stakes = "El resultado afectará los recursos y planes de la colonia."
@@ -101,13 +113,30 @@ func _build_hook(actor: Object) -> Dictionary:
 		"desire": desire,
 		"problem": problem,
 		"stakes": stakes,
+		"objective": objective,
+		"objective_type": objective_type,
 		"score": score,
 	}
 
 func begin_possession(actor: Object, minute: int) -> Dictionary:
 	possession_session = _snapshot(actor, minute)
+	possession_session["actions"] = []
 	last_consequence_report = {}
 	return possession_session
+
+func record_action(action_type: String, message: String, minute: int, target: Vector3i) -> void:
+	if possession_session.is_empty():
+		return
+	var actions: Array = possession_session.get("actions", [])
+	actions.append({
+		"type": action_type,
+		"message": message,
+		"minute": minute,
+		"target": target,
+	})
+	if actions.size() > 24:
+		actions.pop_front()
+	possession_session["actions"] = actions
 
 func end_possession(actor: Object, minute: int) -> Dictionary:
 	if possession_session.is_empty() or int(possession_session.get("actor_id", -1)) != int(actor.get("id")):
@@ -124,7 +153,13 @@ func end_possession(actor: Object, minute: int) -> Dictionary:
 		- float(after.get("hunger", 0.0)) - float(after.get("thirst", 0.0))
 	)
 	var interpretation := _interpret_possession(actor, distance, inventory_delta, relationship_changes)
+	var recorded_actions: Array = possession_session.get("actions", [])
+	var objective_type: String = str(active_hook.get("objective_type", "act"))
+	var objective_resolved: bool = _objective_was_resolved(objective_type, recorded_actions, need_change)
 	var consequences: Array[String] = []
+	for action_value: Variant in recorded_actions.slice(-3):
+		if action_value is Dictionary:
+			consequences.append(str(action_value.get("message", "Realizó una acción.")))
 	if distance > 0:
 		consequences.append("Recorrió %d casillas bajo tu control." % distance)
 	if inventory_delta > 0:
@@ -147,11 +182,26 @@ func end_possession(actor: Object, minute: int) -> Dictionary:
 		"duration": duration,
 		"interpretation": interpretation,
 		"consequences": consequences,
+		"actions_count": recorded_actions.size(),
+		"objective_resolved": objective_resolved,
 	}
 	if actor.has_method("add_memory"):
 		actor.call("add_memory", "possession", interpretation, 0.65)
 	possession_session = {}
 	return last_consequence_report
+
+func _objective_was_resolved(objective_type: String, actions: Array, need_change: float) -> bool:
+	for action_value: Variant in actions:
+		if not (action_value is Dictionary):
+			continue
+		var action_type: String = str(action_value.get("type", ""))
+		if objective_type == "drink" and action_type == "drink":
+			return true
+		if objective_type == "eat" and action_type == "eat":
+			return true
+	if objective_type == "act":
+		return not actions.is_empty()
+	return need_change > 0.15
 
 func _snapshot(actor: Object, minute: int) -> Dictionary:
 	var inventory_value: Variant = actor.get("inventory")
