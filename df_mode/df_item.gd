@@ -423,11 +423,16 @@ func get_full_name() -> String:
 func get_display_char() -> String:
 	if is_broken: return "x"
 	if is_corpse: return "%"
+	if item_type == "door": return "+"
+	if is_bed: return "="
 	if is_food: return "%"
 	if is_drink: return "~"
 	if is_container: return "O"
 	if is_weapon: return "/"
 	if is_armor: return "["
+	if item_type in ["stone", "ore", "bar"]: return "*"
+	if item_type == "wood": return "|"
+	if item_type == "seed": return ";"
 	return glyph
 
 func get_display_color() -> Color:
