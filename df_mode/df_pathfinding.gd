@@ -27,9 +27,11 @@ static func find_path(world, from: Vector3i, to: Vector3i, use_dwarf_rules: bool
 		target_blocked = true
 		
 	if target_blocked:
-		var dirs = [Vector3i(-1,0,0), Vector3i(1,0,0), Vector3i(0,0,-1), Vector3i(0,0,1), Vector3i(0,1,0), Vector3i(0,-1,0)]
-		var best_n = to
-		var best_dist = 999999.0
+		# Los trabajos sobre sólidos (excavar, talar, construir) se realizan desde
+		# una casilla cardinal del MISMO nivel. Elegir arriba/abajo dejaba al
+		# trabajador eternamente junto al objetivo sin poder completar la tarea.
+		var dirs = [Vector3i(-1,0,0), Vector3i(1,0,0), Vector3i(0,0,-1), Vector3i(0,0,1)]
+		var candidates: Array[Vector3i] = []
 		for d in dirs:
 			var n = to + d
 			if n.x < 0 or n.x >= world.width or n.z < 0 or n.z >= world.depth:
@@ -43,13 +45,29 @@ static func find_path(world, from: Vector3i, to: Vector3i, use_dwarf_rules: bool
 				passable = not world.is_blocked(n)
 				
 			if passable:
-				var dist = _heuristic(from, n)
-				if dist < best_dist:
-					best_dist = dist
-					best_n = n
-		actual_to = best_n
-		if from == actual_to:
-			return [from]
+				candidates.append(n)
+		if candidates.is_empty():
+			return []
+		candidates.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+			return _heuristic(from, a) < _heuristic(from, b)
+		)
+		# La casilla más cercana por Manhattan puede estar tras una pared.
+		# Probar las cuatro alternativas evita falsos "Excavando" inmóviles.
+		var shortest_path: Array = []
+		for candidate in candidates:
+			if from == candidate:
+				return [from]
+			var candidate_key = _cache_key(from, candidate, use_dwarf_rules)
+			var candidate_cached = _path_cache.get(candidate_key)
+			var candidate_path: Array
+			if candidate_cached != null and candidate_cached.has("version") and candidate_cached["version"] == _world_version:
+				candidate_path = candidate_cached["path"].duplicate()
+			else:
+				candidate_path = _find_path_internal(world, from, candidate, use_dwarf_rules)
+				_store_cached_path(candidate_key, candidate_path)
+			if not candidate_path.is_empty() and (shortest_path.is_empty() or candidate_path.size() < shortest_path.size()):
+				shortest_path = candidate_path
+		return shortest_path
 
 	var key = _cache_key(from, actual_to, use_dwarf_rules)
 	var cached = _path_cache.get(key)
@@ -57,13 +75,15 @@ static func find_path(world, from: Vector3i, to: Vector3i, use_dwarf_rules: bool
 		return cached["path"].duplicate()
 
 	var path = _find_path_internal(world, from, actual_to, use_dwarf_rules)
+	_store_cached_path(key, path)
+	return path
 
+static func _store_cached_path(key: String, path: Array) -> void:
 	if _path_cache.size() >= _cache_max_size:
 		var keys = _path_cache.keys()
 		for i in range(_cache_max_size / 4):
 			_path_cache.erase(keys[i])
 	_path_cache[key] = {"path": path.duplicate(), "version": _world_version}
-	return path
 
 static func _find_path_internal(world, from: Vector3i, to: Vector3i, use_dwarf_rules: bool) -> Array:
 	var open_heap: Array = []
