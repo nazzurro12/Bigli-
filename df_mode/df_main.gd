@@ -37,6 +37,7 @@ var designation: DFDesignation = null
 
 var paused: bool = false
 var tick_interval: float = 0.1
+const MAX_CATCHUP_TICKS_PER_FRAME: int = 2
 var generation_seed: int = -1
 var minimap_open: bool = false
 var lore: DFLore = null
@@ -1134,9 +1135,13 @@ func _process(delta: float) -> void:
 	# El mundo debe continuar aunque el jugador posea o siga a un enano.
 	if not paused:
 		_time_accum += minf(delta, 0.1)
-		while _time_accum >= tick_interval:
+		var catchup_ticks := 0
+		while _time_accum >= tick_interval and catchup_ticks < MAX_CATCHUP_TICKS_PER_FRAME:
 			_time_accum -= tick_interval
 			_tick()
+			catchup_ticks += 1
+		if catchup_ticks >= MAX_CATCHUP_TICKS_PER_FRAME:
+			_time_accum = minf(_time_accum, tick_interval)
 
 	# F solo sigue con la cámara. La posesión se inicia únicamente con P.
 	follow_time = 0.0
@@ -1353,7 +1358,7 @@ func _tick() -> void:
 		for e in world.items:
 			_fortress_wealth_calc += 1.0
 
-	if minute_ticked:
+	if _simulation_tick_clock == 6 and _game_minute % 2 == 0:
 		_maintain_autonomous_economy()
 
 	if world.invasion_system != null and minute_ticked and _game_minute % 10 == 0:
@@ -1585,9 +1590,18 @@ func _tick() -> void:
 		world.set_meta("_pending_births", null)
 
 	if _simulation_tick_clock % 4 == 0:
+		var simulation_minute_now := int(world.get_meta("simulation_minute", 0))
+		var creature_minute_bucket := floori(float(_simulation_tick_clock) / 4.0)
 		for e6 in world.creatures.duplicate():
 			if e6.get("is_alive") == true:
-				e6.tick(world, minute_ticked or _simulation_tick_clock % 20 == 0)
+				var last_creature_minute := int(e6.get_meta("last_simulated_minute", -1))
+				var creature_minute_due := (
+					last_creature_minute < simulation_minute_now
+					and posmod(int(e6.id), 7) == creature_minute_bucket
+				)
+				e6.tick(world, creature_minute_due)
+				if creature_minute_due:
+					e6.set_meta("last_simulated_minute", simulation_minute_now)
 
 	if minute_ticked:
 		for e_corpse in world.creatures:
