@@ -3155,17 +3155,9 @@ func _move_toward(world, target: Vector3i) -> void:
 			return
 
 	if next_step != tile_pos:
-		# Entity collision avoidance: check if another entity is on the target tile
-		var blocked_by_entity = false
-		for e in world.entities:
-			if e == self: continue
-			if e is DFItem: continue
-			var is_alive_check = e.get("is_alive")
-			if is_alive_check == null: is_alive_check = true
-			if is_alive_check == false: continue
-			if e.tile_pos == next_step:
-				blocked_by_entity = true
-				break
+		# Consulta espacial O(1). El barrido anterior de todas las entidades por
+		# cada paso convertía una aldea concurrida en trabajo cuadrático.
+		var blocked_by_entity: bool = world.is_actor_occupied(next_step, self)
 		if blocked_by_entity:
 			# Try to find adjacent free tile instead
 			var dirs = [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1),
@@ -3177,24 +3169,15 @@ func _move_toward(world, target: Vector3i) -> void:
 				if alt.x < 0 or alt.x >= world.width or alt.z < 0 or alt.z >= world.depth:
 					continue
 				if world.is_blocked(alt): continue
-				var alt_blocked = false
-				for e_2341 in world.entities:
-					if e_2341 == self: continue
-					if e_2341 is DFItem: continue
-					var is_alive_check2 = e_2341.get("is_alive")
-					if is_alive_check2 == null: is_alive_check2 = true
-					if is_alive_check2 == false: continue
-					if e_2341.tile_pos == alt:
-						alt_blocked = true
-						break
+				var alt_blocked: bool = world.is_actor_occupied(alt, self)
 				if not alt_blocked:
-					tile_pos = alt
+					world.move_entity(self, alt)
 					found_alt = true
 					break
 			if not found_alt:
 				return
 		else:
-			tile_pos = next_step
+			world.move_entity(self, next_step)
 			# Fatigue from movement
 			fatigue_level = minf(1.0, fatigue_level + 0.002)
 		path_index += 1
