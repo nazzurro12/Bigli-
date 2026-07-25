@@ -2831,26 +2831,33 @@ func _execute_job(world) -> void:
 			success = world.chop_tree(current_job.tile_pos, tile_pos)
 		DFJob.JobType.BUILD_WALL:
 			var mat_id = 11
+			var wall_material_index: int = -1
 			for i in range(inventory.size()):
 				if inventory[i].item_type == "stone" or inventory[i].item_type == "wood":
 					mat_id = inventory[i].material
-					inventory.remove_at(i)
+					wall_material_index = i
 					break
 			success = world.build_wall(current_job.tile_pos, mat_id)
+			if success and wall_material_index >= 0:
+				inventory.remove_at(wall_material_index)
 		DFJob.JobType.BUILD_FLOOR:
 			var mat_id_2026 = 11
+			var floor_material_index: int = -1
 			for i_2027 in range(inventory.size()):
 				if inventory[i_2027].item_type == "stone" or inventory[i_2027].item_type == "wood":
 					mat_id_2026 = inventory[i_2027].material
-					inventory.remove_at(i_2027)
+					floor_material_index = i_2027
 					break
 			success = world.build_floor(current_job.tile_pos, mat_id_2026)
+			if success and floor_material_index >= 0:
+				inventory.remove_at(floor_material_index)
 		DFJob.JobType.BUILD_WORKSHOP:
 			var mat_id_2034 = 11
+			var workshop_material_index: int = -1
 			for i_2035 in range(inventory.size()):
 				if inventory[i_2035].item_type == "stone" or inventory[i_2035].item_type == "wood":
 					mat_id_2034 = inventory[i_2035].material
-					inventory.remove_at(i_2035)
+					workshop_material_index = i_2035
 					break
 			for b in world.buildings:
 				if b.tile_pos == current_job.tile_pos and not b.is_constructed:
@@ -2858,6 +2865,8 @@ func _execute_job(world) -> void:
 					success = true
 					world.create_workshop(b.type, b.tile_pos)
 					break
+			if success and workshop_material_index >= 0:
+				inventory.remove_at(workshop_material_index)
 		DFJob.JobType.WORKSHOP_REACTION:
 			var reaction_id = current_job.reaction_id
 			if reaction_id == "": reaction_id = "smelt_iron"
