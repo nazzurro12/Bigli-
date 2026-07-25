@@ -367,6 +367,10 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"social_timer": dwarf.social_timer,
 		"last_social_interaction": dwarf.last_social_interaction,
 		"loneliness": dwarf.loneliness,
+		"social_beliefs": dwarf.social_beliefs.duplicate(true),
+		"social_reputation": dwarf.social_reputation.duplicate(),
+		"last_belief_decay_day": dwarf.last_belief_decay_day,
+		"conversations_held": dwarf.conversations_held,
 		"prayer_timer": dwarf.prayer_timer,
 		"favored_deity": dwarf.favored_deity,
 		"religious_fervor": dwarf.religious_fervor,
@@ -550,6 +554,10 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.social_timer = d.get("social_timer", 0.0)
 	df.last_social_interaction = d.get("last_social_interaction", 0)
 	df.loneliness = d.get("loneliness", 0.0)
+	df.social_beliefs = d.get("social_beliefs", []).duplicate(true)
+	df.social_reputation = d.get("social_reputation", {}).duplicate()
+	df.last_belief_decay_day = d.get("last_belief_decay_day", -1)
+	df.conversations_held = d.get("conversations_held", 0)
 	df.prayer_timer = d.get("prayer_timer", 0.0)
 	df.favored_deity = d.get("favored_deity", "")
 	df.religious_fervor = d.get("religious_fervor", 0.5)
