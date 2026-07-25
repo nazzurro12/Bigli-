@@ -123,7 +123,7 @@ var _biome_map_cache: Dictionary = {}
 var _last_biome_refresh: int = 0
 
 # ---- CACHÉ DEL MAPA MUNDIAL ----
-# Un mundo de 1024² contiene más de un millón de regiones. Dibujarlas como
+# Un mundo de 1542² contiene más de dos millones de regiones. Dibujarlas como
 # rectángulos cada frame bloquearía la interfaz, así que el minimapa global se
 # rasteriza una sola vez a una textura compacta y luego se reutiliza.
 const WORLD_MINIMAP_CACHE_RESOLUTION: int = 192
@@ -2334,7 +2334,7 @@ func _draw_settings_menu() -> void:
 
 	var options = [
 		["Semilla del Mundo",     "%s" % ("Aleatoria" if main_node.generation_seed == -1 else str(main_node.generation_seed))],
-		["Tamaño del Continente", ["Pequeño (128²)", "Estándar (256²)", "Grande (512²)", "Gigantesco (1024²)"][clampi(main_node.setting_size, 0, 3)]],
+		["Tamaño del Continente", ["Pequeño (128²)", "Estándar (256²)", "Grande (512²)", "Planetario (1542²)"][clampi(main_node.setting_size, 0, 3)]],
 		["Duración de Historia",  "%d años" % main_node.setting_history_options[main_node.setting_history_idx]],
 		["Civilizaciones",        ["Baja", "Media", "Alta"][main_node.setting_civ_density]],
 		["Megabestias",           ["Pocas", "Moderadas", "Abundantes"][main_node.setting_beast_density]],
@@ -2367,7 +2367,7 @@ func _draw_settings_menu() -> void:
 	var s_desc = ""
 	match main_node.setting_selected_index:
 		0: s_desc = "Semilla del Mundo: Establece el valor inicial generador. Si es aleatorio, cada partida generará un continente totalmente diferente."
-		1: s_desc = "Tamaño del Continente: Controla el ancho del mapa. El modo Gigantesco contiene 1.048.576 regiones globales. Usa simulación abstracta y solo materializa en detalle la zona jugada; tarda más al crear el mundo."
+		1: s_desc = "Tamaño del Continente: Planetario contiene 2.377.764 regiones transmitidas y 197.376 casillas por eje, equivalente al mundo Large de DF. Solo materializa en detalle la zona jugada."
 		2: s_desc = "Duración de Historia: Años simulados antes de jugar. A mayor historia, habrá más ruinas, reyes muertos, reliquias y megabestias."
 		3: s_desc = "Civilizaciones: Determina la densidad de reinos de enanos, elfos, humanos y goblins en el continente."
 		4: s_desc = "Megabestias: Cantidad de dragones y monstruos gigantescos iniciales. Afecta los ataques históricos a aldeas."
