@@ -267,6 +267,14 @@ const TUTORIAL_STEPS: Array = [
 
 var legend_panel: Panel = null
 var legend_btn: Button = null
+var reference_tabs: TabContainer = null
+var management_panel: PanelContainer = null
+var management_tabs: TabContainer = null
+var management_pages: Array[RichTextLabel] = []
+var management_context_menu: PopupMenu = null
+var quit_confirmation: ConfirmationDialog = null
+var load_confirmation: ConfirmationDialog = null
+var _management_refresh_elapsed: float = 0.0
 var classic_title_label: Label = null
 var classic_menu_buttons: Array[MenuButton] = []
 var classic_window_buttons: Array[Button] = []
@@ -278,47 +286,192 @@ func _ready() -> void:
 	_char_size = Vector2(16, 16)
 	_apply_classic_control_theme()
 	_create_functional_classic_chrome()
+	_create_reference_window()
+	_create_management_window()
+	_create_confirmation_dialogs()
 
-	# Creacion de Leyenda interactiva (Lado Izquierdo)
+func _create_reference_window() -> void:
 	legend_panel = Panel.new()
-	legend_panel.name = "LegendPanel"
+	legend_panel.name = "ReferenceWindow"
 	legend_panel.anchor_left = 0.0
-	legend_panel.anchor_top = 0.1
-	legend_panel.anchor_right = 0.0
-	legend_panel.anchor_bottom = 0.9
-	legend_panel.offset_right = 325
+	legend_panel.anchor_top = 0.12
+	legend_panel.anchor_bottom = 0.88
+	legend_panel.offset_left = 8
+	legend_panel.offset_right = 390
 	legend_panel.visible = false
 	add_child(legend_panel)
-	
-	var legend_lbl = Label.new()
-	legend_lbl.text = _build_current_legend_text()
-	legend_lbl.position = Vector2(10, 10)
-	legend_lbl.size = Vector2(300, 680)
-	legend_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	legend_panel.add_child(legend_lbl)
-	
+
+	var layout := VBoxContainer.new()
+	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 8)
+	legend_panel.add_child(layout)
+	var title_row := HBoxContainer.new()
+	layout.add_child(title_row)
+	var title := Label.new()
+	title.text = "Referencia de Bigli"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "×"
+	close_button.tooltip_text = "Cerrar referencia"
+	close_button.pressed.connect(func(): legend_panel.hide())
+	title_row.add_child(close_button)
+	reference_tabs = TabContainer.new()
+	reference_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(reference_tabs)
+	_add_reference_tab("Símbolos", _build_current_legend_text())
+	_add_reference_tab("Controles", """MOVIMIENTO
+WASD / Flechas   Mover cámara o habitante poseído
+F                Seguir habitante
+P / Q            Poseer / abandonar
+
+SIMULACIÓN
+Espacio          Pausar o continuar
+F3               Diagnóstico de rendimiento
+F5 / F9          Guardar / cargar
+J / L            Misiones / crónicas
+H                Ayuda completa""")
+	_add_reference_tab("Sistemas", """NECESIDADES
+Los habitantes organizan comida, agua, sueño, higiene y salud.
+
+ECONOMÍA
+Los recursos deben recogerse, transportarse y almacenarse.
+
+SOCIEDAD
+Relaciones, memoria, rumores, creencias y conflictos tienen consecuencias.
+
+CLIMA
+La estación limita el clima posible; la nieve requiere suficiente frío.""")
+
 	legend_btn = Button.new()
-	legend_btn.name = "LegendBtn"
-	legend_btn.text = "|||"
-	legend_btn.anchor_left = 0.0
+	legend_btn.name = "ReferenceBtn"
+	legend_btn.text = "Referencia"
+	legend_btn.tooltip_text = "Abrir símbolos, controles y explicación de sistemas"
 	legend_btn.anchor_top = 0.5
 	legend_btn.anchor_bottom = 0.5
-	legend_btn.offset_left = 0
-	legend_btn.offset_top = -40
-	legend_btn.offset_right = 30
-	legend_btn.offset_bottom = 40
+	legend_btn.offset_left = 4
+	legend_btn.offset_top = -14
+	legend_btn.offset_right = 88
+	legend_btn.offset_bottom = 14
 	legend_btn.pressed.connect(func(): legend_panel.visible = not legend_panel.visible)
 	add_child(legend_btn)
 
-	# Arreglar el boton: darle tamano fijo con anchor correcto
-	legend_btn.anchor_left = 0.0
-	legend_btn.anchor_top = 0.5
-	legend_btn.anchor_right = 0.0
-	legend_btn.anchor_bottom = 0.5
-	legend_btn.offset_left = 0
-	legend_btn.offset_top = -60
-	legend_btn.offset_right = 26
-	legend_btn.offset_bottom = 60
+func _add_reference_tab(tab_name: String, contents: String) -> void:
+	var page := RichTextLabel.new()
+	page.name = tab_name
+	page.bbcode_enabled = false
+	page.fit_content = false
+	page.scroll_active = true
+	page.text = contents
+	page.tooltip_text = "Desplaza la rueda para leer toda la sección"
+	reference_tabs.add_child(page)
+
+func _create_management_window() -> void:
+	management_panel = PanelContainer.new()
+	management_panel.name = "ManagementCenter"
+	management_panel.anchor_left = 0.18
+	management_panel.anchor_top = 0.14
+	management_panel.anchor_right = 0.82
+	management_panel.anchor_bottom = 0.86
+	management_panel.visible = false
+	management_panel.gui_input.connect(_on_management_gui_input)
+	add_child(management_panel)
+	var layout := VBoxContainer.new()
+	management_panel.add_child(layout)
+	var title_row := HBoxContainer.new()
+	layout.add_child(title_row)
+	var title := Label.new()
+	title.text = "Centro de gestión de la colonia"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(title)
+	var refresh_button := Button.new()
+	refresh_button.text = "Actualizar"
+	refresh_button.tooltip_text = "Actualizar ahora los datos de gestión"
+	refresh_button.pressed.connect(_refresh_management_pages)
+	title_row.add_child(refresh_button)
+	var close_button := Button.new()
+	close_button.text = "×"
+	close_button.tooltip_text = "Cerrar centro de gestión"
+	close_button.pressed.connect(func(): management_panel.hide())
+	title_row.add_child(close_button)
+	management_tabs = TabContainer.new()
+	management_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(management_tabs)
+	for page_name in ["Habitantes", "Trabajos", "Almacenes", "Salud", "Economía"]:
+		var page := RichTextLabel.new()
+		page.name = page_name
+		page.scroll_active = true
+		page.selection_enabled = true
+		page.tooltip_text = "Clic derecho para opciones; rueda para desplazarte"
+		management_tabs.add_child(page)
+		management_pages.append(page)
+	management_context_menu = PopupMenu.new()
+	management_context_menu.add_item("Actualizar información", 0)
+	management_context_menu.add_item("Cerrar ventana", 1)
+	management_context_menu.id_pressed.connect(_on_management_context_action)
+	add_child(management_context_menu)
+
+func _create_confirmation_dialogs() -> void:
+	quit_confirmation = ConfirmationDialog.new()
+	quit_confirmation.title = "Salir de Bigli"
+	quit_confirmation.dialog_text = "¿Deseas salir? Guarda la partida antes si quieres conservar el progreso."
+	quit_confirmation.ok_button_text = "Salir"
+	quit_confirmation.confirmed.connect(func(): get_tree().quit())
+	add_child(quit_confirmation)
+	load_confirmation = ConfirmationDialog.new()
+	load_confirmation.title = "Cargar partida"
+	load_confirmation.dialog_text = "Cargar reemplazará el mundo actual no guardado. ¿Continuar?"
+	load_confirmation.ok_button_text = "Cargar"
+	load_confirmation.confirmed.connect(func(): _dispatch_main_key(KEY_F9))
+	add_child(load_confirmation)
+
+func _open_management_tab(tab_index: int = 0) -> void:
+	management_panel.show()
+	management_tabs.current_tab = clampi(tab_index, 0, management_tabs.get_tab_count() - 1)
+	_refresh_management_pages()
+
+func _on_management_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		management_context_menu.position = Vector2i(get_global_mouse_position())
+		management_context_menu.popup()
+
+func _on_management_context_action(item_id: int) -> void:
+	if item_id == 0:
+		_refresh_management_pages()
+	else:
+		management_panel.hide()
+
+func _refresh_management_pages() -> void:
+	if world == null or management_pages.size() < 5:
+		return
+	var living: int = 0
+	var hungry: int = 0
+	var thirsty: int = 0
+	var sick: int = 0
+	var stressed: int = 0
+	var inhabitant_lines: Array[String] = ["HABITANTES"]
+	for dwarf_value in world.dwarves:
+		var dwarf = dwarf_value
+		if not dwarf.is_alive:
+			continue
+		living += 1
+		hungry += 1 if float(dwarf.hunger) > 0.65 else 0
+		thirsty += 1 if float(dwarf.thirst) > 0.65 else 0
+		sick += 1 if int(dwarf.disease_phase) != 0 else 0
+		stressed += 1 if float(dwarf.stress) > 0.65 else 0
+		if inhabitant_lines.size() <= 24:
+			inhabitant_lines.append("%-18s  %-12s  ánimo %3d%%" % [str(dwarf.entity_name), str(dwarf.current_task), int((1.0 - float(dwarf.stress)) * 100.0)])
+	management_pages[0].text = "\n".join(inhabitant_lines) + "\n\nVivos: %d  Con hambre: %d  Con sed: %d" % [living, hungry, thirsty]
+	management_pages[1].text = "TRABAJOS\n\nActivos: %d\nPendientes: %d\n\nLa cola se actualiza sin recorrerla cada fotograma." % [_job_active, _job_pending]
+	var stored_items: int = 0
+	var loose_items: int = 0
+	for item_value in world.items:
+		if item_value.container_id >= 0:
+			stored_items += 1
+		else:
+			loose_items += 1
+	management_pages[2].text = "ALMACENES\n\nObjetos guardados: %d\nObjetos sin almacenar: %d\nEdificios: %d" % [stored_items, loose_items, world.buildings.size()]
+	management_pages[3].text = "SALUD\n\nEnfermos: %d\nCon estrés alto: %d\nHabitantes estables: %d" % [sick, stressed, maxi(0, living - sick - stressed)]
+	management_pages[4].text = "ECONOMÍA\n\nPoblación activa: %d\nObjetos totales: %d\nInfraestructura: %d\n\nEl inventario distingue recursos almacenados y abandonados." % [living, world.items.size(), world.buildings.size()]
 
 func _build_current_legend_text() -> String:
 	return """LEYENDA ACTUAL
@@ -378,7 +531,7 @@ func _create_functional_classic_chrome() -> void:
 		["Archivo", ["Guardar|0", "Cargar|1", "-|99", "Salir|2"]],
 		["Ver", ["Leyenda actual|0", "Ayuda completa|1", "Rendimiento (F3)|2"]],
 		["Simulación", ["Pausar/Reanudar|0", "Velocidad lenta|1", "Velocidad normal|2", "Velocidad rápida|3"]],
-		["Herramientas", ["Misiones|0", "Crónicas|1", "Hablar con entidad|2"]],
+		["Gestión", ["Habitantes|0", "Trabajos|1", "Almacenes|2", "Salud|3", "Economía|4", "-|99", "Misiones|10", "Crónicas|11", "Hablar|12"]],
 		["Ayuda", ["Controles|0", "Leyenda de símbolos|1"]],
 	]
 	var menu_x: float = 8.0
@@ -430,9 +583,9 @@ func _on_classic_menu_pressed(menu_index: int, item_id: int) -> void:
 			if item_id == 0:
 				_dispatch_main_key(KEY_F5)
 			elif item_id == 1:
-				_dispatch_main_key(KEY_F9)
+				load_confirmation.popup_centered()
 			elif item_id == 2:
-				get_tree().quit()
+				quit_confirmation.popup_centered()
 		1:
 			if item_id == 0:
 				legend_panel.visible = not legend_panel.visible
@@ -447,7 +600,10 @@ func _on_classic_menu_pressed(menu_index: int, item_id: int) -> void:
 			elif main_node != null and "tick_interval" in main_node:
 				main_node.tick_interval = 0.20 if item_id == 1 else 0.10 if item_id == 2 else 0.05
 		3:
-			_dispatch_main_key(KEY_J if item_id == 0 else KEY_L if item_id == 1 else KEY_T)
+			if item_id <= 4:
+				_open_management_tab(item_id)
+			else:
+				_dispatch_main_key(KEY_J if item_id == 10 else KEY_L if item_id == 11 else KEY_T)
 		4:
 			if item_id == 0:
 				_dispatch_main_key(KEY_H)
@@ -475,7 +631,7 @@ func _on_classic_window_button(action_id: int) -> void:
 			else DisplayServer.WINDOW_MODE_MAXIMIZED
 		)
 	else:
-		get_tree().quit()
+		quit_confirmation.popup_centered()
 
 func _apply_classic_control_theme() -> void:
 	var classic_theme := Theme.new()
@@ -484,6 +640,14 @@ func _apply_classic_control_theme() -> void:
 	var button_hover := _make_classic_style(Color("#F5F3E8"), 2, false)
 	var button_pressed := _make_classic_style(Color("#D6D2C7"), 2, true)
 	classic_theme.set_stylebox("panel", "Panel", panel_box)
+	classic_theme.set_stylebox("panel", "PanelContainer", panel_box)
+	classic_theme.set_stylebox("panel", "PopupMenu", panel_box)
+	classic_theme.set_stylebox("panel", "Tree", _make_classic_style(Color.WHITE, 2, true))
+	classic_theme.set_stylebox("normal", "RichTextLabel", _make_classic_style(Color.WHITE, 2, true))
+	classic_theme.set_stylebox("panel", "TabContainer", _make_classic_style(UI_CLASSIC_FACE, 2, true))
+	classic_theme.set_stylebox("tab_unselected", "TabBar", button_box)
+	classic_theme.set_stylebox("tab_hovered", "TabBar", button_hover)
+	classic_theme.set_stylebox("tab_selected", "TabBar", button_pressed)
 	classic_theme.set_stylebox("normal", "Button", button_box)
 	classic_theme.set_stylebox("hover", "Button", button_hover)
 	classic_theme.set_stylebox("pressed", "Button", button_pressed)
@@ -492,6 +656,9 @@ func _apply_classic_control_theme() -> void:
 	classic_theme.set_color("font_hover_color", "Button", Color.BLACK)
 	classic_theme.set_color("font_pressed_color", "Button", Color.BLACK)
 	classic_theme.set_color("font_color", "Label", UI_CLASSIC_TEXT)
+	classic_theme.set_color("default_color", "RichTextLabel", UI_CLASSIC_TEXT)
+	classic_theme.set_color("font_selected_color", "TabBar", UI_CLASSIC_TEXT)
+	classic_theme.set_color("font_unselected_color", "TabBar", UI_CLASSIC_TEXT)
 	theme = classic_theme
 
 func _make_classic_style(fill: Color, border_width: int, pressed: bool) -> StyleBoxFlat:
@@ -607,6 +774,11 @@ func _process(delta: float) -> void:
 	# materializar aldeas con muchas casas, muebles y residentes.
 	_map_redraw_accumulator += delta
 	_renderer_logic_accumulator += delta
+	if management_panel != null and management_panel.visible:
+		_management_refresh_elapsed += delta
+		if _management_refresh_elapsed >= 1.0:
+			_management_refresh_elapsed = 0.0
+			_refresh_management_pages()
 	_sync_classic_control_availability()
 	if _map_redraw_accumulator >= MAP_REDRAW_INTERVAL:
 		_map_redraw_accumulator = fmod(_map_redraw_accumulator, MAP_REDRAW_INTERVAL)
@@ -1300,8 +1472,8 @@ func _draw_sidebar(side_x: int) -> void:
 
 		# Items at cursor (compact)
 		var items_here: Array = []
-		for ent in world.entities:
-			if ent is DFItem and ent.tile_pos == _highlighted_tile and not ent.is_decayed:
+		for ent in world.items:
+			if ent.tile_pos == _highlighted_tile and not ent.is_decayed:
 				items_here.append(ent)
 		if not items_here.is_empty():
 			draw_string(_font, Vector2(x + 4, y + lh),
@@ -1335,7 +1507,7 @@ func _draw_sidebar(side_x: int) -> void:
 	# ═══════════════════════════════════════════════
 	var followed_entity: Variant = null
 	if follow_dwarf >= 0:
-		for followed_candidate: Variant in world.entities:
+		for followed_candidate: Variant in world.dwarves:
 			if followed_candidate is DFItem:
 				continue
 			var followed_type_value: Variant = followed_candidate.get("creature_type")
@@ -2234,13 +2406,13 @@ func _draw_generating_screen() -> void:
 	var box_y: float = (size.y - float(box_h)) / 2.0
 	var building_terrain: bool = int(main_node.gen_year) <= 0 and float(main_node.load_progress) < 0.18
 
-	draw_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.0, 0.04, 0.01, 0.9), true)
-	_draw_dashed_border(Rect2(box_x, box_y, box_w, box_h), Color(0.0, 2.5, 0.0), 4.0)
+	_draw_classic_bevel(Rect2(box_x, box_y, box_w, box_h), UI_CLASSIC_FACE, false)
+	_draw_classic_titlebar(Rect2(box_x + 3, box_y + 3, box_w - 6, 24), "Generación de mundo")
 
 	var y: float = box_y + 35.0
 	var pulse: float = 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.005)
 	var phase_title: String = "GENERANDO MUNDO FÍSICO" if building_terrain else "SIMULANDO HISTORIA Y CIVILIZACIONES"
-	draw_string(_font, Vector2(center_x, y), "◆ %s: %s ◆" % [phase_title, str(main_node.world_name).to_upper()], HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color(0.0, 2.5 * pulse, 0.0))
+	draw_string(_font, Vector2(center_x, y), "%s: %s" % [phase_title, str(main_node.world_name).to_upper()], HORIZONTAL_ALIGNMENT_CENTER, -1, 14, UI_CLASSIC_TITLE_LIGHT.lightened(0.15 * pulse))
 	y += float(line_h) * 2.0
 
 	var pct: float = clampf(float(main_node.load_progress), 0.0, 1.0)
@@ -2249,16 +2421,15 @@ func _draw_generating_screen() -> void:
 	var bar_w: int = 520
 	var bar_h: int = 18
 	var bar_x: float = center_x - float(bar_w) / 2.0
-	draw_rect(Rect2(bar_x, y, bar_w, bar_h), Color(0.0, 0.1, 0.02), true)
-	draw_rect(Rect2(bar_x, y, bar_w, bar_h), Color(0.0, 1.2, 0.0), false, 1.0)
+	_draw_classic_bevel(Rect2(bar_x, y, bar_w, bar_h), Color.WHITE, true)
 	if pct > 0.0:
-		draw_rect(Rect2(bar_x + 2.0, y + 2.0, float(bar_w - 4) * pct, bar_h - 4), Color(0.0, 2.5, 0.0), true)
+		draw_rect(Rect2(bar_x + 2.0, y + 2.0, float(bar_w - 4) * pct, bar_h - 4), UI_CLASSIC_TITLE_LIGHT, true)
 	var pct_str: String = "%d%%" % int(pct * 100.0)
-	draw_string(_font, Vector2(center_x, y + 14.0), pct_str, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color.BLACK if pct > 0.5 else Color(0.0, 2.5, 0.0))
+	draw_string(_font, Vector2(center_x, y + 14.0), pct_str, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color.WHITE if pct > 0.5 else UI_CLASSIC_TEXT)
 	y += float(line_h) * 2.1
 
 	var status_text: String = str(main_node.load_status)
-	draw_string(_font, Vector2(center_x, y), status_text, HORIZONTAL_ALIGNMENT_CENTER, box_w - 70, 10, Color(0.65, 1.0, 0.68))
+	draw_string(_font, Vector2(center_x, y), status_text, HORIZONTAL_ALIGNMENT_CENTER, box_w - 70, 10, UI_CLASSIC_TEXT)
 	y += float(line_h) * 1.8
 
 	var world_width: int = 0
@@ -2284,23 +2455,22 @@ func _draw_generating_screen() -> void:
 		var stat: Array = stats[stat_index]
 		var sx: float = col_x1 if stat_index % 2 == 0 else col_x2
 		var sy: float = y + float(int(stat_index / 2)) * float(line_h) * 1.5
-		draw_string(_font, Vector2(sx, sy), str(stat[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.0, 1.2, 0.0, 0.7))
-		draw_string(_font, Vector2(sx + col_w, sy), str(stat[1]), HORIZONTAL_ALIGNMENT_RIGHT, -1, 10, Color(0.0, 2.5, 0.0))
+		draw_string(_font, Vector2(sx, sy), str(stat[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UI_CLASSIC_SHADOW)
+		draw_string(_font, Vector2(sx + col_w, sy), str(stat[1]), HORIZONTAL_ALIGNMENT_RIGHT, -1, 10, UI_CLASSIC_DARK)
 	y += float(int((stats.size() + 1) / 2) + 1) * float(line_h) * 1.5
 
-	draw_string(_font, Vector2(box_x + 40.0, y), "❯ CRÓNICA CAUSAL DEL MUNDO:", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.0, 2.0, 0.0))
+	draw_string(_font, Vector2(box_x + 40.0, y), "CRÓNICA CAUSAL DEL MUNDO:", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UI_CLASSIC_DARK)
 	y += float(line_h) * 1.2
 	var ev_box_h: int = 105
-	draw_rect(Rect2(box_x + 40.0, y, box_w - 80, ev_box_h), Color(0.0, 0.02, 0.0, 0.95), true)
-	draw_rect(Rect2(box_x + 40.0, y, box_w - 80, ev_box_h), Color(0.0, 1.5, 0.0), false, 1.0)
+	_draw_classic_bevel(Rect2(box_x + 40.0, y, box_w - 80, ev_box_h), Color.WHITE, true)
 	var ev_y: float = y + 18.0
 	if main_node.gen_rolling_events.is_empty():
-		draw_string(_font, Vector2(box_x + 50.0, ev_y), "░ Preparando topografía, cuencas y civilizaciones...", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.0, 1.8, 0.0, 0.95))
+		draw_string(_font, Vector2(box_x + 50.0, ev_y), "Preparando topografía, cuencas y civilizaciones...", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, UI_CLASSIC_TEXT)
 	else:
 		for event_variant in main_node.gen_rolling_events:
 			var event_text: String = str(event_variant)
 			var display_event: String = event_text if event_text.length() <= 72 else event_text.substr(0, 69) + "..."
-			draw_string(_font, Vector2(box_x + 50.0, ev_y), "░ " + display_event, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.0, 1.8, 0.0, 0.95))
+			draw_string(_font, Vector2(box_x + 50.0, ev_y), "• " + display_event, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, UI_CLASSIC_TEXT)
 			ev_y += float(line_h) * 0.82
 
 	var spinner: String = ["|", "/", "-", "\\"][int(Time.get_ticks_msec() / 150) % 4]
@@ -3235,9 +3405,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _draw_performance_overlay() -> void:
 	var total_entities: int = world.entities.size() if world != null else 0
+	var main_node = get_parent()
+	var metrics: Dictionary = main_node.performance_metrics if main_node != null and "performance_metrics" in main_node else {}
 	var lines: Array[String] = [
 		"FPS: %d" % Engine.get_frames_per_second(),
 		"Entidades visibles: %d / %d" % [_last_visible_entity_count, total_entities],
+		"Tick promedio: %.2f ms" % float(metrics.get("tick_ms", 0.0)),
+		"IA habitantes: %.2f ms" % float(metrics.get("citizens_ms", 0.0)),
+		"Otros sistemas: %.2f ms" % float(metrics.get("other_systems_ms", 0.0)),
+		"Pico reciente: %.2f ms" % float(metrics.get("tick_max_ms", 0.0)),
 		"Efectos costosos: %s" % ("ACTIVOS" if performance_effects_enabled else "DESACTIVADOS"),
 		"F3: cerrar diagnóstico"
 	]
