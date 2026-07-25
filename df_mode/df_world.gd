@@ -1394,7 +1394,30 @@ func get_tile_char(pos: Vector3i) -> String:
 	if fire_tiles.has(pos): return "\u2588"
 	if t in [TileType.WALL, TileType.CAVE_WALL] and bool(tile_data.get(pos, {}).get("natural_outcrop", false)):
 		return "\u25B2"
+	if t in [TileType.CONSTRUCTED_WALL, TileType.FORTIFICATION]:
+		return _connected_wall_char(pos)
 	return TILE_CHARS.get(t, " ")
+
+func _connected_wall_char(pos: Vector3i) -> String:
+	var mask: int = 0
+	var directions: Array[Vector3i] = [
+		Vector3i(0, 0, -1),
+		Vector3i(1, 0, 0),
+		Vector3i(0, 0, 1),
+		Vector3i(-1, 0, 0),
+	]
+	for direction_index in range(directions.size()):
+		var neighbor_type: int = get_tile(pos + directions[direction_index])
+		if neighbor_type in [TileType.CONSTRUCTED_WALL, TileType.FORTIFICATION]:
+			mask |= 1 << direction_index
+	var connected: Dictionary = {
+		1: "\u2502", 4: "\u2502", 5: "\u2502",
+		2: "\u2500", 8: "\u2500", 10: "\u2500",
+		3: "\u2514", 6: "\u250C", 9: "\u2518", 12: "\u2510",
+		7: "\u251C", 11: "\u2534", 13: "\u2524", 14: "\u252C",
+		15: "\u253C",
+	}
+	return str(connected.get(mask, "#"))
 
 func get_tile_color(pos: Vector3i) -> Color:
 	var t = get_tile(pos)
