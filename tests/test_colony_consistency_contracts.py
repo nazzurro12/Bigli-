@@ -13,6 +13,8 @@ class ColonyConsistencyContracts(unittest.TestCase):
         cls.main = (ROOT / "df_mode/df_main.gd").read_text(encoding="utf-8")
         cls.save = (ROOT / "df_mode/df_save_load.gd").read_text(encoding="utf-8")
         cls.item = (ROOT / "df_mode/df_item.gd").read_text(encoding="utf-8")
+        cls.building = (ROOT / "df_mode/df_building.gd").read_text(encoding="utf-8")
+        cls.renderer = (ROOT / "df_mode/df_renderer.gd").read_text(encoding="utf-8")
 
     def test_crises_require_time_and_sustained_pressure(self):
         self.assertIn("CRISIS_GRACE_MINUTES: int = 1440", self.dwarf)
@@ -88,8 +90,8 @@ class ColonyConsistencyContracts(unittest.TestCase):
     def test_digestion_generates_waste_needs(self):
         self.assertIn("bladder_fill = minf", self.dwarf)
         self.assertIn("bowel_fill = minf", self.dwarf)
-        self.assertIn('add_splatter_substance(tile_pos, "urine"', self.dwarf)
-        self.assertIn('add_splatter_substance(tile_pos, "feces"', self.dwarf)
+        self.assertIn('var waste_type: String = "urine"', self.dwarf)
+        self.assertIn('else "feces"', self.dwarf)
 
     def test_food_has_balanced_nutrition_dimensions(self):
         for field in (
@@ -106,6 +108,28 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("func get_carrying_capacity()", self.dwarf)
         self.assertIn("physical_condition", self.dwarf)
         self.assertIn("carried_ratio > 1.0", self.dwarf)
+
+    def test_latrines_are_physical_capacity_limited_buildings(self):
+        self.assertIn("LATRINE", self.building)
+        self.assertIn("sanitation_capacity", self.building)
+        self.assertIn("func _ensure_basic_sanitation()", self.main)
+        self.assertIn("existing_latrines >= 4", self.main)
+
+    def test_old_saves_receive_sanitation_and_preserve_fill(self):
+        self.assertIn("main._ensure_basic_sanitation()", self.save)
+        self.assertGreaterEqual(self.save.count("sanitation_load"), 2)
+        self.assertGreaterEqual(self.save.count("sanitation_capacity"), 2)
+
+    def test_humanoids_seek_latrines_before_emergency(self):
+        self.assertIn('current_task = "Yendo a la letrina"', self.dwarf)
+        self.assertIn("var emergency: bool", self.dwarf)
+        self.assertIn("nearest_latrine.add_sanitation_waste", self.dwarf)
+
+    def test_uncontained_waste_has_environmental_consequences(self):
+        self.assertIn('add_splatter_substance(tile_pos, "pathogen"', self.dwarf)
+        self.assertIn('puddle.has("feces")', self.world)
+        self.assertIn('"urine":', self.renderer)
+        self.assertIn('"feces":', self.renderer)
 
 
 if __name__ == "__main__":
