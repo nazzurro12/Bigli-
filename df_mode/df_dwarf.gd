@@ -3193,13 +3193,15 @@ func _move_toward(world, target: Vector3i) -> void:
 		stats_tracker["distance_traveled"] += 1
 
 func get_display_char() -> String:
+	if is_possessed:
+		return "@"
 	if current_job != null and task_progress > 0:
-		return "W"
+		return "&"
 	if is_sleeping:
 		return "z"
 	if mood == MoodState.BESERK or mood == MoodState.TANTRUM:
-		return "Y"
-	return "d" if gender == "Male" else "w"
+		return "!"
+	return "@"
 
 func get_display_color() -> Color:
 	if not is_alive:
