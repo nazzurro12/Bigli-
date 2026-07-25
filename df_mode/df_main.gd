@@ -2646,6 +2646,64 @@ func _build_large_initial_warehouse(settlement_pos: Vector3i, _rng: RandomNumber
 	add_message("Gran almacén construido: 20x20 interiores, dos puertas y %d cofres utilizables." % shelf_tiles.size())
 	return true
 
+func _reconcile_storage_containers() -> void:
+	if world == null:
+		return
+	var containers_by_position: Dictionary = {}
+	var containers_by_id: Dictionary = {}
+	for entity_value: Variant in world.entities:
+		if entity_value is DFItem and entity_value.is_container:
+			var existing_container: DFItem = entity_value
+			existing_container.container_contents.clear()
+			existing_container.contained_volume = 0.0
+			containers_by_position[existing_container.tile_pos] = existing_container
+			containers_by_id[existing_container.id] = existing_container
+
+	# Las partidas anteriores ya tienen estantes FOOD_STORE, pero no cofres
+	# físicos. Esta migración es idempotente y conserva la partida.
+	for building_value: Variant in world.buildings:
+		if not (building_value is DFBuilding):
+			continue
+		var storage_building: DFBuilding = building_value
+		if storage_building.type != DFBuilding.BuildingType.FOOD_STORE:
+			continue
+		if containers_by_position.has(storage_building.tile_pos):
+			continue
+		var chest: DFItem = world._spawn_item(
+			storage_building.tile_pos,
+			"Cofre de Almacén",
+			"storage_chest",
+			DFWorld.MatType.WOOD,
+			"□",
+			Color("#B8793C")
+		)
+		if chest == null:
+			continue
+		chest.is_container = true
+		chest.container_volume = 32.0
+		chest.max_stack = 1
+		chest.is_in_stockpile = true
+		containers_by_position[chest.tile_pos] = chest
+		containers_by_id[chest.id] = chest
+
+	# Reconstruir las relaciones que el formato de guardado representa mediante
+	# container_id y reparar referencias a cofres antiguos inexistentes.
+	for stored_value: Variant in world.entities:
+		if not (stored_value is DFItem):
+			continue
+		var stored_item: DFItem = stored_value
+		if stored_item.is_container:
+			continue
+		var target_container: DFItem = containers_by_id.get(stored_item.container_id, null)
+		if target_container == null and stored_item.is_inside_container:
+			target_container = containers_by_position.get(stored_item.tile_pos, null)
+		if target_container == null or not target_container.has_container_space(stored_item):
+			stored_item.is_inside_container = false
+			stored_item.container_id = -1
+			continue
+		stored_item.is_in_stockpile = true
+		stored_item.put_in_container(target_container)
+
 func _find_safe_settlement_center(preferred: Vector2i) -> Vector3i:
 	if world == null:
 		return Vector3i(preferred.x, 3, preferred.y)
