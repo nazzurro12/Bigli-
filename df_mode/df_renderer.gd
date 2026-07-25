@@ -607,6 +607,7 @@ func _process(delta: float) -> void:
 	# materializar aldeas con muchas casas, muebles y residentes.
 	_map_redraw_accumulator += delta
 	_renderer_logic_accumulator += delta
+	_sync_classic_control_availability()
 	if _map_redraw_accumulator >= MAP_REDRAW_INTERVAL:
 		_map_redraw_accumulator = fmod(_map_redraw_accumulator, MAP_REDRAW_INTERVAL)
 		queue_redraw()
@@ -634,6 +635,31 @@ func _process(delta: float) -> void:
 		_temperature = world.ambient_temperature
 		_wind_strength = world.wind_strength
 		_is_daytime = world.is_daytime
+
+func _sync_classic_control_availability() -> void:
+	if classic_menu_buttons.size() < 5:
+		return
+	var main_node = get_parent()
+	var state: int = int(main_node.get("current_state")) if main_node != null else -1
+	var playing: bool = state == 5
+	var generating: bool = state in [1, 6]
+	classic_menu_buttons[2].disabled = not playing
+	classic_menu_buttons[3].disabled = not playing
+	var file_popup: PopupMenu = classic_menu_buttons[0].get_popup()
+	file_popup.set_item_disabled(0, not playing)
+	file_popup.set_item_disabled(1, not playing)
+	var state_titles: Dictionary = {
+		0: "Bigli - Crear un mundo",
+		1: "Bigli - Generador de mundos",
+		2: "Bigli - Seleccionar modo",
+		3: "Bigli - Ubicación de expedición",
+		4: "Bigli - Preparar expedición",
+		5: "Bigli - Simulador de colonia",
+		6: "Bigli - Cargando colonia",
+	}
+	classic_title_label.text = str(state_titles.get(state, "Bigli - Simulador de mundo"))
+	if generating:
+		classic_title_label.text += " (procesando)"
 		
 		# Animacion: alternar fase cada ~0.5 segundos
 		_dwarf_animation_tick += 1
