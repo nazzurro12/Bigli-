@@ -747,17 +747,13 @@ func tick_weather() -> void:
 func _change_weather() -> void:
 	var weather_weights = {}
 	for wt in WeatherType.values():
-		weather_weights[wt] = 1.0
+		weather_weights[wt] = 0.0
 	weather_weights[WeatherType.CLEAR] = 25.0
 	weather_weights[WeatherType.CLOUDY] = 20.0
 	weather_weights[WeatherType.RAIN] = 10.0
 	weather_weights[WeatherType.DRIZZLE] = 8.0
 	weather_weights[WeatherType.FOG] = 5.0
 	weather_weights[WeatherType.WINDY] = 5.0
-	if ambient_temperature < 0.3:
-		weather_weights[WeatherType.SNOW] = 12.0
-		weather_weights[WeatherType.BLIZZARD] = 3.0
-		weather_weights[WeatherType.RAIN] = 2.0
 	if ambient_temperature > 0.7 and humidity < 0.3:
 		weather_weights[WeatherType.DUST_STORM] = 2.0
 	if humidity > 0.7:
@@ -766,8 +762,10 @@ func _change_weather() -> void:
 		weather_weights[WeatherType.STORM] = 5.0
 	if current_season == Season.WINTER:
 		weather_weights[WeatherType.CLEAR] = 10.0
-		weather_weights[WeatherType.SNOW] = 18.0
 		weather_weights[WeatherType.RAIN] = 2.0
+		if ambient_temperature <= 0.42:
+			weather_weights[WeatherType.SNOW] = 18.0
+			weather_weights[WeatherType.BLIZZARD] = 3.0
 	elif current_season == Season.SUMMER:
 		weather_weights[WeatherType.RAIN] = 12.0
 		weather_weights[WeatherType.HEAVY_RAIN] = 8.0
@@ -777,7 +775,7 @@ func _change_weather() -> void:
 	var roll = randf() * total
 	var cumulative = 0.0
 	for wt2 in WeatherType.values():
-		cumulative += weather_weights.get(wt2, 1.0)
+		cumulative += weather_weights.get(wt2, 0.0)
 		if roll <= cumulative:
 			current_weather = wt2
 			break
@@ -803,6 +801,12 @@ func _change_weather() -> void:
 		wind_strength *= 0.8 + randf() * 0.4
 
 func _apply_weather_effects() -> void:
+	if (
+		current_weather in [WeatherType.SNOW, WeatherType.BLIZZARD]
+		and (current_season != Season.WINTER or ambient_temperature > 0.42)
+	):
+		current_weather = WeatherType.RAIN if humidity >= 0.55 else WeatherType.CLOUDY
+		precipitation_intensity = 0.35 if current_weather == WeatherType.RAIN else 0.0
 	if current_weather in [WeatherType.RAIN, WeatherType.HEAVY_RAIN, WeatherType.STORM]:
 		_apply_rain()
 		_rain_wash_splatters()
@@ -836,6 +840,8 @@ func _apply_rain() -> void:
 			_increase_fluid_level(rp, precipitation_intensity)
 
 func _apply_snow() -> void:
+	if current_season != Season.WINTER or ambient_temperature > 0.42:
+		return
 	for z in range(depth):
 		for x in range(width):
 			if randi() % 30 < int(precipitation_intensity * 10):
