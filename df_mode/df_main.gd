@@ -1576,7 +1576,7 @@ func _tick() -> void:
 				var move_z = signi(dist_z)
 				var new_follower_pos = e4.tile_pos + Vector3i(move_x, 0, move_z)
 				if not world.is_blocked(new_follower_pos):
-					e4.tile_pos = _fix_surface(new_follower_pos)
+					world.move_entity(e4, _fix_surface(new_follower_pos))
 		
 		var is_dwarf4: bool = e4.get("creature_type") == "dwarf"
 		var is_settlement_resident: bool = e4 is DFDwarf and bool(e4.get("is_world_settlement_resident"))
@@ -1623,6 +1623,10 @@ func _tick() -> void:
 				var mn = mood_names.get(mt, "Extraño")
 				if _game_minute % 30 == 0:
 					add_message("  [ %s ] %s busca desesperadamente un taller..." % [mn, e4.name])
+
+	# Esta métrica debe terminar con la IA. Antes incluía clima, reproducción,
+	# fauna, crónica y limpieza, y el diagnóstico culpaba a los habitantes.
+	profile_citizens_ms = float(Time.get_ticks_usec() - profile_citizens_start) / 1000.0
 
 	# --- APAGADO DE FOGATAS DE FORMA SISTÉMICA ---
 	var campfires_to_remove = []
@@ -1763,7 +1767,6 @@ func _tick() -> void:
 							"battle_site": "las tierras de la fortaleza"
 						})
 					add_message("¡La figura histórica '%s' ha muerto! Las crónicas recordarán su fin." % e_dead.name)
-	profile_citizens_ms = float(Time.get_ticks_usec() - profile_citizens_start) / 1000.0
 	_record_performance_sample(profile_tick_start, profile_citizens_ms)
 
 func _record_performance_sample(tick_start_usec: int, citizens_ms: float) -> void:
@@ -3144,6 +3147,19 @@ func _find_pending_workshop_building(building_type: int) -> DFBuilding:
 				return building
 	return null
 
+func _find_open_colony_project_job(project_id: String) -> DFJob:
+	if designation == null:
+		return null
+	for job_value: Variant in designation.job_queue:
+		if not (job_value is DFJob):
+			continue
+		var project_job: DFJob = job_value
+		if str(project_job.get_meta("colony_project", "")) != project_id:
+			continue
+		if project_job.state in [DFJob.JobState.UNASSIGNED, DFJob.JobState.ASSIGNED, DFJob.JobState.IN_PROGRESS]:
+			return project_job
+	return null
+
 func _autonomous_workshop_site_is_clear(position: Vector3i) -> bool:
 	if world == null:
 		return false
@@ -3190,15 +3206,19 @@ func _find_autonomous_workshop_site() -> Vector3i:
 func _ensure_carpentry_workshop() -> DFWorkshop:
 	var existing: DFWorkshop = _find_workshop_by_type(DFWorkshop.WorkshopType.CARPENTRY)
 	if existing != null:
+		world.set_meta("carpentry_project_announced", true)
 		return existing
 	var pending_building: DFBuilding = _find_pending_workshop_building(DFBuilding.BuildingType.CARPENTRY)
+	var pending_job: DFJob = _find_open_colony_project_job("carpentry_chain")
 	if pending_building != null:
-		if designation != null and not designation.has_job_at(pending_building.tile_pos, DFJob.JobType.BUILD_WORKSHOP):
+		if designation != null and pending_job == null and not designation.has_job_at(pending_building.tile_pos, DFJob.JobType.BUILD_WORKSHOP):
 			var continued_job: DFJob = DFJob.new(DFJob.JobType.BUILD_WORKSHOP, pending_building.tile_pos, 9)
 			continued_job.result_tile_type = DFBuilding.BuildingType.CARPENTRY
 			continued_job.set_meta("required_material_type", "wood")
 			continued_job.set_meta("colony_project", "carpentry_chain")
 			designation.job_queue.append(continued_job)
+		return null
+	if pending_job != null:
 		return null
 	if designation == null:
 		return null
@@ -3213,7 +3233,9 @@ func _ensure_carpentry_workshop() -> DFWorkshop:
 	build_job.set_meta("required_material_type", "wood")
 	build_job.set_meta("colony_project", "carpentry_chain")
 	designation.job_queue.append(build_job)
-	add_message("La colonia inició el proyecto persistente de una carpintería.")
+	if not bool(world.get_meta("carpentry_project_announced", false)):
+		add_message("La colonia inició el proyecto persistente de una carpintería.")
+		world.set_meta("carpentry_project_announced", true)
 	return null
 
 func _queue_workshop_recipe_once(workshop: DFWorkshop, recipe_id: String) -> bool:
