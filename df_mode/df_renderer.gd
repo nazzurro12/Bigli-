@@ -491,6 +491,7 @@ TERRENO
 :  tierra
 ▒  parcela cultivable
 █  magma, fuego o muro construido
+─ │ ┌ ┐ └ ┘ ┼  muros construidos conectados
 < > □  escaleras
 
 HABITANTES Y ANIMALES
@@ -513,6 +514,11 @@ OBJETOS
 O  cofre o contenedor
 /  arma o herramienta
 [  armadura
++  puerta
+=  cama
+*  piedra, mineral o lingote
+|  madera
+;  semilla
 x  objeto roto
 
 CONTROLES PRINCIPALES
