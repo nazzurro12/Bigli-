@@ -676,6 +676,14 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertNotIn("world.entities.erase(found)", actions)
         self.assertNotIn("world.entities.append(item)", actions)
 
+    def test_management_window_uses_the_real_inhabitant_name_api(self):
+        management = self.renderer.split("func _refresh_management_pages", 1)[1].split(
+            "func _build_current_legend_text", 1
+        )[0]
+        self.assertIn('dwarf.has_method("get_entity_name")', management)
+        self.assertIn('dwarf.get("name")', management)
+        self.assertNotIn("dwarf.entity_name", management)
+
 
 if __name__ == "__main__":
     unittest.main()
