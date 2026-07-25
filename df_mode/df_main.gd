@@ -25,6 +25,7 @@ const DFDialogue = preload("res://df_mode/df_dialogue.gd")
 const DFFastTravel = preload("res://df_mode/df_fast_travel.gd")
 const DFQuestSystem = preload("res://df_mode/df_quest.gd")
 const DFSaveLoad = preload("res://df_mode/df_save_load.gd")
+const DFPlanetRegions = preload("res://df_mode/df_planet_regions.gd")
 const DFWorldSimulationScript = preload("res://df_mode/core/simulation/world_simulation.gd")
 const WorldGenerationSettings = preload("res://world/world_generation_settings.gd")
 
@@ -34,6 +35,14 @@ var world_gen = null
 var history_gen = null
 var renderer: DFRenderer = null
 var designation: DFDesignation = null
+var active_planet_region: Vector2i = Vector2i.ZERO
+var planet_region_cache: Dictionary = {}
+var planet_designation_cache: Dictionary = {}
+var _planet_transition_thread: Thread = null
+var _planet_transition_in_progress: bool = false
+var _planet_transition_direction: Vector2i = Vector2i.ZERO
+var _planet_transition_target: Vector2i = Vector2i.ZERO
+var _planet_transition_was_paused: bool = false
 
 var paused: bool = false
 var tick_interval: float = 0.1
@@ -1056,6 +1065,7 @@ func _populate_creatures_local() -> void:
 			world.add_entity(creature)
 
 func _process(delta: float) -> void:
+	_poll_planet_transition()
 	if renderer == null:
 		return
 	if current_state == GameState.LOADING_PLAYING:
@@ -1812,6 +1822,7 @@ func _try_move_possessed(direction: Vector2i) -> bool:
 	var next_x: int = current_position.x + direction.x
 	var next_z: int = current_position.z + direction.y
 	if next_x < 0 or next_x >= world.width or next_z < 0 or next_z >= world.depth:
+		_request_planet_transition(direction)
 		return false
 	var target_position: Vector3i = _fix_surface(Vector3i(next_x, current_position.y, next_z))
 	if world.is_blocked(target_position):
@@ -1819,6 +1830,95 @@ func _try_move_possessed(direction: Vector2i) -> bool:
 	possessed_dwarf.tile_pos = target_position
 	camera_pos = target_position
 	return true
+
+func _planet_dimensions() -> Vector2i:
+	if world_gen == null:
+		return Vector2i.ONE
+	return Vector2i(maxi(1, int(world_gen.world_width)), maxi(1, int(world_gen.world_depth)))
+
+func _request_planet_transition(direction: Vector2i) -> void:
+	if _planet_transition_in_progress or world == null or world_gen == null:
+		return
+	var planet_size := _planet_dimensions()
+	if not DFPlanetRegions.can_cross(active_planet_region, direction, planet_size.y):
+		add_message("Has alcanzado una región polar.")
+		return
+	_planet_transition_direction = direction
+	_planet_transition_target = DFPlanetRegions.neighbor(active_planet_region, direction, planet_size.x, planet_size.y)
+	var target_key: String = DFPlanetRegions.region_key(_planet_transition_target)
+	_planet_transition_in_progress = true
+	_planet_transition_was_paused = paused
+	paused = true
+	if planet_region_cache.has(target_key):
+		_activate_planet_region(planet_region_cache[target_key])
+		return
+	add_message("Cargando región planetaria %s..." % target_key)
+	_planet_transition_thread = Thread.new()
+	_planet_transition_thread.start(_build_planet_region.bind(_planet_transition_target))
+
+func _build_planet_region(region: Vector2i):
+	var generated_world = DFWorld.new(256, 256, 16)
+	generated_world.world_name = world_name
+	generated_world.geology_seed = generation_seed
+	generated_world.set_meta("active_world_region", [region.x, region.y])
+	world_gen.generate_local_map(generated_world, region)
+	return generated_world
+
+func _poll_planet_transition() -> void:
+	if not _planet_transition_in_progress or _planet_transition_thread == null:
+		return
+	if _planet_transition_thread.is_alive():
+		return
+	var generated_world = _planet_transition_thread.wait_to_finish()
+	_planet_transition_thread = null
+	if generated_world == null:
+		_planet_transition_in_progress = false
+		paused = _planet_transition_was_paused
+		add_message("No se pudo cargar la región vecina.")
+		return
+	_activate_planet_region(generated_world)
+
+func _activate_planet_region(target_world) -> void:
+	if world == null or target_world == null:
+		_planet_transition_in_progress = false
+		return
+	var old_key: String = DFPlanetRegions.region_key(active_planet_region)
+	var traveler = possessed_dwarf
+	if traveler != null:
+		world.remove_entity(traveler)
+	planet_region_cache[old_key] = world
+	planet_designation_cache[old_key] = designation
+	world = target_world
+	active_planet_region = _planet_transition_target
+	var entry_2d: Vector2i = DFPlanetRegions.entry_tile(
+		_planet_transition_direction, world.width, world.depth
+	)
+	var entry_position := _fix_surface(Vector3i(entry_2d.x, 3, entry_2d.y))
+	if traveler != null:
+		traveler.tile_pos = entry_position
+		world.add_entity(traveler)
+		possessed_dwarf = traveler
+	camera_pos = entry_position
+	var target_key: String = DFPlanetRegions.region_key(active_planet_region)
+	designation = planet_designation_cache.get(target_key, null)
+	if designation == null:
+		designation = DFDesignation.new(world)
+	else:
+		designation.world = world
+	renderer.set_world(world)
+	renderer.designation = designation
+	renderer.camera_pos = camera_pos
+	if dialogue != null:
+		dialogue.world_ref = world
+	if fast_travel != null:
+		fast_travel.world_ref = world
+	if quest_system != null:
+		quest_system.world_ref = world
+	world.set_meta("active_world_region", [active_planet_region.x, active_planet_region.y])
+	_planet_transition_in_progress = false
+	paused = _planet_transition_was_paused
+	renderer.paused = paused
+	add_message("Entraste en la región planetaria %s." % DFPlanetRegions.region_key(active_planet_region))
 
 func _get_held_move_direction() -> Vector2i:
 	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
@@ -1861,9 +1961,24 @@ func _process_held_movement(delta: float) -> void:
 	else:
 		# En modo cámara, mantener WASD desplaza continuamente y deja de seguir.
 		renderer.follow_dwarf = -1
-		camera_pos.x = clampi(camera_pos.x + direction.x * 2, 0, world.width - 1)
-		camera_pos.z = clampi(camera_pos.z + direction.y * 2, 0, world.depth - 1)
+		camera_pos.x = camera_pos.x + direction.x * 2
+		camera_pos.z = camera_pos.z + direction.y * 2
+		if camera_pos.x < 0 or camera_pos.x >= world.width or camera_pos.z < 0 or camera_pos.z >= world.depth:
+			camera_pos.x = clampi(camera_pos.x, 0, world.width - 1)
+			camera_pos.z = clampi(camera_pos.z, 0, world.depth - 1)
+			_request_planet_transition(direction)
 	_held_move_timer = HELD_MOVE_REPEAT_INTERVAL
+
+func _move_planet_camera(direction: Vector2i, step: int = 2) -> void:
+	if world == null or direction == Vector2i.ZERO:
+		return
+	var next_x: int = camera_pos.x + direction.x * step
+	var next_z: int = camera_pos.z + direction.y * step
+	if next_x < 0 or next_x >= world.width or next_z < 0 or next_z >= world.depth:
+		_request_planet_transition(direction)
+		return
+	camera_pos.x = next_x
+	camera_pos.z = next_z
 
 func _handle_escape() -> void:
 	# ESC actúa sobre una sola capa, de la más específica a la más general.
@@ -2065,6 +2180,9 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	world.growing_crops.clear()
 	world.set_meta("generated_world_sites", [])
 	world.set_meta("active_world_region", [embark_cursor.x, embark_cursor.y])
+	active_planet_region = embark_cursor
+	planet_region_cache.clear()
+	planet_designation_cache.clear()
 	world_gen.generate_local_map(world, embark_cursor)
 	# El centro debe calcularse después de crear el terreno. Antes podía quedar dentro del agua.
 	local_center_surface = _find_safe_settlement_center(Vector2i(128, 128))
@@ -4128,7 +4246,7 @@ func _handle_key(event: InputEvent) -> void:
 					_held_move_direction = Vector2i(0, -1)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
 				else:
-					camera_pos.z = clampi(camera_pos.z - 2, 0, world.depth - 1)
+					_move_planet_camera(Vector2i(0, -1), 2)
 					renderer.follow_dwarf = -1
 					_held_move_direction = Vector2i(0, -1)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
@@ -4138,7 +4256,7 @@ func _handle_key(event: InputEvent) -> void:
 					_held_move_direction = Vector2i(0, 1)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
 				else:
-					camera_pos.z = clampi(camera_pos.z + 2, 0, world.depth - 1)
+					_move_planet_camera(Vector2i(0, 1), 2)
 					renderer.follow_dwarf = -1
 					_held_move_direction = Vector2i(0, 1)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
@@ -4148,7 +4266,7 @@ func _handle_key(event: InputEvent) -> void:
 					_held_move_direction = Vector2i(-1, 0)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
 				else:
-					camera_pos.x = clampi(camera_pos.x - 2, 0, world.width - 1)
+					_move_planet_camera(Vector2i(-1, 0), 2)
 					renderer.follow_dwarf = -1
 					_held_move_direction = Vector2i(-1, 0)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
@@ -4158,7 +4276,7 @@ func _handle_key(event: InputEvent) -> void:
 					_held_move_direction = Vector2i(1, 0)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
 				else:
-					camera_pos.x = clampi(camera_pos.x + 2, 0, world.width - 1)
+					_move_planet_camera(Vector2i(1, 0), 2)
 					renderer.follow_dwarf = -1
 					_held_move_direction = Vector2i(1, 0)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
