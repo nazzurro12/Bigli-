@@ -333,6 +333,28 @@ class ColonyConsistencyContracts(unittest.TestCase):
             7,
         )
 
+    def test_classic_chrome_uses_real_interactive_controls(self):
+        for token in (
+            "func _create_functional_classic_chrome",
+            "MenuButton.new()",
+            "popup.id_pressed.connect",
+            "window_button.pressed.connect",
+            "DisplayServer.window_set_mode",
+            "get_tree().quit()",
+        ):
+            self.assertIn(token, self.renderer)
+
+    def test_classic_menus_dispatch_existing_game_actions(self):
+        for key in ("KEY_F5", "KEY_F9", "KEY_SPACE", "KEY_H", "KEY_J", "KEY_L", "KEY_T"):
+            self.assertIn(key, self.renderer)
+        self.assertIn("main_node._handle_key(event)", self.renderer)
+
+    def test_legend_matches_current_runtime_symbols(self):
+        self.assertIn("func _build_current_legend_text", self.renderer)
+        for current_symbol in ('▣  árbol', 'd / w  habitante', 'O  cofre', 'F3            diagnóstico'):
+            self.assertIn(current_symbol, self.renderer)
+        self.assertNotIn("T : Arbol", self.renderer)
+
 
 if __name__ == "__main__":
     unittest.main()
