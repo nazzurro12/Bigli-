@@ -10,6 +10,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
     def setUpClass(cls):
         cls.dwarf = (ROOT / "df_mode/df_dwarf.gd").read_text(encoding="utf-8")
         cls.world = (ROOT / "df_mode/df_world.gd").read_text(encoding="utf-8")
+        cls.world_gen = (ROOT / "df_mode/df_world_gen.gd").read_text(encoding="utf-8")
         cls.main = (ROOT / "df_mode/df_main.gd").read_text(encoding="utf-8")
         cls.save = (ROOT / "df_mode/df_save_load.gd").read_text(encoding="utf-8")
         cls.item = (ROOT / "df_mode/df_item.gd").read_text(encoding="utf-8")
@@ -525,6 +526,23 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("e.material_name.to_lower()", self.dwarf)
         self.assertNotIn('hunting_target.get("name", "presa")', self.dwarf)
         self.assertNotIn('target.get("name", "presa")', self.dwarf)
+
+    def test_planetary_size_matches_the_largest_df_horizontal_scale(self):
+        for token in (
+            "DF_LARGE_MACRO_REGIONS: int = 257",
+            "DF_BLOCKS_PER_MACRO_REGION: int = 16",
+            "DF_TILES_PER_BLOCK: int = 48",
+            "STREAMED_REGION_TILES: int = 128",
+            "MAX_PLANET_REGIONS_PER_AXIS",
+            "MAX_PLANET_TILES_PER_AXIS",
+        ):
+            self.assertIn(token, self.world_gen)
+        self.assertIn(
+            "DFWorldGen.MAX_PLANET_REGIONS_PER_AXIS",
+            self.main,
+        )
+        self.assertIn("Planetario (1542²)", self.renderer)
+        self.assertIn("197.376 casillas por eje", self.renderer)
 
 
 if __name__ == "__main__":
