@@ -646,6 +646,36 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("KEY_Y", self.main)
         self.assertIn('"CONSECUENCIAS"', self.renderer)
 
+    def test_possession_supports_actions_and_resolvable_objectives(self):
+        for token in (
+            '"objective"',
+            '"objective_type"',
+            "func record_action",
+            "func _objective_was_resolved",
+            '"objective_resolved"',
+        ):
+            self.assertIn(token, self.story_director)
+        for token in (
+            "func _possessed_context_action",
+            "func _consume_possessed_need_item",
+            "func _possessed_drop_item",
+            "KEY_E",
+            "KEY_R",
+            "story_director.record_action",
+        ):
+            self.assertIn(token, self.main)
+        self.assertIn('"E", "Actuar/usar"', self.renderer)
+        self.assertIn('"OBJETIVO CUMPLIDO"', self.renderer)
+
+    def test_manual_pickup_and_drop_keep_world_indexes_consistent(self):
+        actions = (ROOT / "core/actions/df_actor_action_executor.gd").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("world.remove_entity(found)", actions)
+        self.assertIn("world.add_entity(item)", actions)
+        self.assertNotIn("world.entities.erase(found)", actions)
+        self.assertNotIn("world.entities.append(item)", actions)
+
 
 if __name__ == "__main__":
     unittest.main()
