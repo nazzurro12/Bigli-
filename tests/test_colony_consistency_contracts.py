@@ -532,7 +532,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
             "DF_LARGE_MACRO_REGIONS: int = 257",
             "DF_BLOCKS_PER_MACRO_REGION: int = 16",
             "DF_TILES_PER_BLOCK: int = 48",
-            "STREAMED_REGION_TILES: int = 128",
+            "STREAMED_REGION_TILES: int = 256",
             "MAX_PLANET_REGIONS_PER_AXIS",
             "MAX_PLANET_TILES_PER_AXIS",
         ):
@@ -541,7 +541,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
             "DFWorldGen.MAX_PLANET_REGIONS_PER_AXIS",
             self.main,
         )
-        self.assertIn("Planetario (1542²)", self.renderer)
+        self.assertIn("Planetario (771²)", self.renderer)
         self.assertIn("197.376 casillas por eje", self.renderer)
 
 
