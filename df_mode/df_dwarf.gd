@@ -2324,6 +2324,9 @@ func _satisfy_needs(world) -> bool:
 	if ate or drank:
 		return true
 
+	if thirst > drink_threshold and _drink_from_water_well(world):
+		return true
+
 	if _drink_from_splatters(world):
 		return true
 
@@ -2387,6 +2390,45 @@ func _satisfy_needs(world) -> bool:
 			return true
 
 	return false
+
+func _drink_from_water_well(world: Object) -> bool:
+	var nearest_well = null
+	var nearest_distance: int = 2147483647
+	for building_value: Variant in world.buildings:
+		if not (building_value is DFBuilding):
+			continue
+		var well: DFBuilding = building_value
+		if well.type != DFBuilding.BuildingType.WATER_WELL or well.water_volume < 0.10:
+			continue
+		var distance: int = abs(well.tile_pos.x - tile_pos.x) + abs(well.tile_pos.z - tile_pos.z)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_well = well
+	if nearest_well == null:
+		return false
+	if nearest_distance > 0:
+		current_task = "Yendo al pozo"
+		_move_toward(world, nearest_well.tile_pos)
+		return true
+	var serving: Dictionary = nearest_well.draw_water(0.35)
+	var amount: float = float(serving.get("amount", 0.0))
+	if amount <= 0.0:
+		return false
+	var contamination: float = float(serving.get("contamination", 0.0))
+	body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + amount
+	water_liters_today += amount
+	thirst = maxf(0.0, thirst - amount * 1.40)
+	needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - amount)
+	if contamination > 0.0:
+		body.ingested_substances["pathogen"] = body.ingested_substances.get("pathogen", 0.0) + contamination * amount
+		pathogen_exposure = minf(2.0, pathogen_exposure + contamination * 0.04)
+	current_task = "Bebiendo del pozo"
+	needs_display_update = true
+	if contamination >= 0.20:
+		add_thought("El agua del pozo tenía olor y sabor desagradables.", -0.05)
+	else:
+		add_thought("Bebió agua fresca del pozo comunal.", 0.03)
+	return true
 
 func _drink_from_splatters(world) -> bool:
 	var here = world.get_splatters_at(tile_pos)
