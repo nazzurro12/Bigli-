@@ -1422,7 +1422,47 @@ func _draw_sidebar(side_x: int) -> void:
 	y += int(lh * 1.2)
 
 	# ═══════════════════════════════════════════════
-	# 5. DESIGNATION MODE (only if active)
+	# 5. HISTORIA EMERGENTE: el gancho visible de la simulación
+	# ═══════════════════════════════════════════════
+	var story_hook: Dictionary = main_node.active_story_hook if main_node != null and "active_story_hook" in main_node else {}
+	var possession_report: Dictionary = main_node.last_possession_report if main_node != null and "last_possession_report" in main_node else {}
+	if not possession_report.is_empty():
+		draw_string(_font, Vector2(x, y + lh), "CONSECUENCIAS", HORIZONTAL_ALIGNMENT_LEFT, mw, 10, Color(0.90,0.58,0.95))
+		draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.52,0.24,0.60), 1.0)
+		y += int(lh * 1.3)
+		var report_name: String = str(possession_report.get("actor_name", "Habitante"))
+		draw_string(_font, Vector2(x + 4, y + lh), "Después de controlar a %s:" % report_name, HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 8, Color(0.88,0.82,0.92))
+		y += lh
+		var report_lines: Array = possession_report.get("consequences", [])
+		for report_line_value: Variant in report_lines.slice(0, 2):
+			var report_line: String = str(report_line_value)
+			if report_line.length() > 30:
+				report_line = report_line.substr(0, 27) + "..."
+			draw_string(_font, Vector2(x + 8, y + lh), "• " + report_line, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.76,0.68,0.82))
+			y += lh
+		y += int(lh * 0.4)
+	elif not story_hook.is_empty():
+		draw_string(_font, Vector2(x, y + lh), "HISTORIA EN CURSO", HORIZONTAL_ALIGNMENT_LEFT, mw, 10, Color(0.95,0.68,0.28))
+		draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.55,0.36,0.12), 1.0)
+		y += int(lh * 1.3)
+		var story_name: String = str(story_hook.get("actor_name", "Habitante"))
+		var story_problem: String = str(story_hook.get("problem", ""))
+		var story_desire: String = str(story_hook.get("desire", ""))
+		if story_problem.length() > 31:
+			story_problem = story_problem.substr(0, 28) + "..."
+		if story_desire.length() > 31:
+			story_desire = story_desire.substr(0, 28) + "..."
+		draw_string(_font, Vector2(x + 4, y + lh), "★ %s" % story_name, HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 9, Color(1.0,0.82,0.40))
+		y += lh
+		draw_string(_font, Vector2(x + 8, y + lh), story_problem, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.82,0.78,0.68))
+		y += lh
+		draw_string(_font, Vector2(x + 8, y + lh), "Desea: " + story_desire, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.62,0.82,0.66))
+		y += lh
+		draw_string(_font, Vector2(x + 8, y + lh), "Y: seguir · P: poseer", HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.95,0.72,0.35))
+		y += int(lh * 1.4)
+
+	# ═══════════════════════════════════════════════
+	# 6. DESIGNATION MODE (only if active)
 	# ═══════════════════════════════════════════════
 	if _designation_mode_name not in ["View","Vista",""]:
 		draw_rect(Rect2(x, y, mw - 4, lh + 4), Color(0.08,0.05,0.15), true)
@@ -3011,7 +3051,7 @@ func _draw_context_bar() -> void:
 		if talk_nearby:
 			controls = [["Flechas", "Cámara"], ["T", "Hablar"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
 		else:
-			controls = [["Flechas", "Cámara"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"], ["ESC", "Menú"]]
+			controls = [["Flechas", "Cámara"], ["Y", "Historia"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"], ["ESC", "Menú"]]
 
 	var cx = 12
 	for ctrl in controls:
