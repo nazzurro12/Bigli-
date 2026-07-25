@@ -3114,6 +3114,7 @@ func _maintain_autonomous_economy() -> void:
 	_queue_resource_collection_jobs("stone", DFJob.JobType.COLLECT_STONE, 5, 8)
 	_queue_harvest_jobs(8)
 	_queue_colony_production_jobs(alive_dwarves, food_count, drink_count)
+	_queue_sanitation_jobs(alive_dwarves)
 
 	# Caza moderada cuando la reserva alimentaria baja.
 	if food_count < alive_dwarves * 3 and _count_open_jobs(DFJob.JobType.HUNT) < 2:
@@ -3141,6 +3142,71 @@ func _job_targets_item(job_type: int, item_id: int) -> bool:
 		if int(queued_job.get_meta("target_item_id", -1)) == item_id:
 			return true
 	return false
+
+func _queue_sanitation_jobs(alive_dwarves: int) -> void:
+	if designation == null or world == null or alive_dwarves <= 0:
+		return
+
+	# La limpieza no puede apropiarse de toda la mano de obra.
+	var clean_limit: int = clampi(1 + alive_dwarves / 5, 1, 4)
+	var open_clean: int = _count_open_jobs(DFJob.JobType.CLEAN)
+	if open_clean < clean_limit:
+		for dirty_position_value: Variant in world.splatters.keys():
+			if open_clean >= clean_limit:
+				break
+			if not (dirty_position_value is Vector3i):
+				continue
+			var dirty_position: Vector3i = dirty_position_value
+			var distance_to_colony: int = abs(dirty_position.x - settlement_center.x) + abs(dirty_position.z - settlement_center.z)
+			if distance_to_colony > 45:
+				continue
+			var substances: Dictionary = world.splatters.get(dirty_position, {})
+			var sanitary_load: float = (
+				float(substances.get("feces", 0.0))
+				+ float(substances.get("urine", 0.0)) * 0.30
+				+ float(substances.get("vomit", 0.0)) * 0.70
+				+ float(substances.get("pathogen", 0.0)) * 1.50
+				+ float(substances.get("miasma", 0.0))
+			)
+			if sanitary_load < 0.03:
+				continue
+			var clean_priority: int = 10 if sanitary_load >= 0.35 else 8
+			if _queue_job_once(DFJob.JobType.CLEAN, dirty_position, clean_priority):
+				open_clean += 1
+
+	var open_empty: int = _count_open_jobs(DFJob.JobType.EMPTY_LATRINE)
+	var empty_limit: int = clampi(1 + alive_dwarves / 8, 1, 3)
+	if open_empty >= empty_limit:
+		return
+	var disposal_position: Vector3i = _find_sanitary_disposal_position()
+	for latrine in world.buildings:
+		if open_empty >= empty_limit:
+			break
+		if latrine.type != DFBuilding.BuildingType.LATRINE:
+			continue
+		if latrine.get_sanitation_fill_ratio() < 0.65:
+			continue
+		if _queue_job_once(DFJob.JobType.EMPTY_LATRINE, latrine.tile_pos, 9):
+			var empty_job: DFJob = designation.job_queue.back()
+			empty_job.disposal_pos = disposal_position
+			open_empty += 1
+
+func _find_sanitary_disposal_position() -> Vector3i:
+	for radius in range(22, 37):
+		var candidates: Array[Vector2i] = [
+			Vector2i(settlement_center.x + radius, settlement_center.z),
+			Vector2i(settlement_center.x - radius, settlement_center.z),
+			Vector2i(settlement_center.x, settlement_center.z + radius),
+			Vector2i(settlement_center.x, settlement_center.z - radius),
+		]
+		for candidate in candidates:
+			if candidate.x < 2 or candidate.x >= world.width - 2 or candidate.y < 2 or candidate.y >= world.depth - 2:
+				continue
+			var candidate_y: int = world.get_surface_height(candidate.x, candidate.y)
+			var candidate_pos := Vector3i(candidate.x, candidate_y, candidate.y)
+			if not world.is_water(candidate_pos) and not world.is_blocked(candidate_pos):
+				return candidate_pos
+	return settlement_center
 
 func _queue_resource_collection_jobs(item_type: String, job_type: int, max_jobs: int, priority: int) -> void:
 	if designation == null or world == null:
