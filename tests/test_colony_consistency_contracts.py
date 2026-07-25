@@ -361,6 +361,15 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("classic_menu_buttons[3].disabled = not playing", self.renderer)
         self.assertIn("file_popup.set_item_disabled(0, not playing)", self.renderer)
 
+    def test_missing_bed_returns_a_vector_sentinel_instead_of_null(self):
+        finder = self.dwarf.split("func _find_unclaimed_bed", 1)[1].split(
+            "func _is_bed_claimed", 1
+        )[0]
+        self.assertIn("-> Vector3i", finder)
+        self.assertIn("Vector3i(-1, -1, -1)", finder)
+        self.assertNotIn("return null", finder)
+        self.assertIn("for item_value in world.items", finder)
+
 
 if __name__ == "__main__":
     unittest.main()
