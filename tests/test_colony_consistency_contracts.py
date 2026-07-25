@@ -467,6 +467,36 @@ class ColonyConsistencyContracts(unittest.TestCase):
             2,
         )
 
+    def test_ocean_embark_is_relocated_to_a_land_dominated_region(self):
+        for token in (
+            "func _region_is_habitable",
+            "func _resolve_habitable_embark_region",
+            "world_gen.is_ocean",
+            "world_gen.is_lake",
+            ">= 0.72",
+            "_resolve_habitable_embark_region(embark_cursor)",
+        ):
+            self.assertIn(token, self.main)
+
+    def test_camera_uses_visible_region_bounds_before_streaming(self):
+        for token in (
+            "func _camera_region_limits",
+            "func _clamp_camera_to_region_view",
+            "_clamp_camera_to_region_view()",
+            "_request_planet_transition(direction)",
+        ):
+            self.assertIn(token, self.main)
+        held = self.main.split("func _process_held_movement", 1)[1].split(
+            "func _move_planet_camera", 1
+        )[0]
+        self.assertIn("_move_planet_camera(direction, 2)", held)
+
+    def test_renderer_never_exposes_the_gray_control_outside_a_region(self):
+        draw_loop = self.renderer.split("for z in range(vh):", 1)[1].split(
+            "if wx >= 0 and wx < world.width", 1
+        )[0]
+        self.assertIn("draw_rect(Rect2(char_pos, _char_size), UI_CLASSIC_WORKSPACE, true)", draw_loop)
+
 
 if __name__ == "__main__":
     unittest.main()
