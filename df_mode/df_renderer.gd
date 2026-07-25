@@ -758,7 +758,9 @@ func _draw_tile(pos: Vector2, char_str: String, fg: Color, bg: Color) -> void:
 	fg = _apply_night_lighting(fg)
 	bg = _apply_night_lighting(bg)
 	
-	if bg != Color.BLACK and bg.a > 0.01:
+	# También hay que pintar el negro. Saltarlo dejaba visible el color gris del
+	# Control cuando la cámara alcanzaba el borde de una región.
+	if bg.a > 0.01:
 		var bg_rect = Rect2(pos.x, pos.y, _char_size.x, _char_size.y)
 		draw_rect(bg_rect, bg, true)
 
@@ -933,6 +935,9 @@ func _draw() -> void:
 	var cam_z = camera_pos.z - vh / 2
 	var cam_y = camera_pos.y
 	var border_x = _draw_border(vw, vh)
+	# Fondo único del visor para que nunca aparezcan huecos entre el terreno,
+	# una transición regional y la barra lateral.
+	draw_rect(Rect2(border_x, UI_CONTENT_TOP, vw * _char_size.x, vh * _char_size.y), Color.BLACK, true)
 
 	# Solo se indexan las entidades visibles. Antes se recorría y convertía todo
 	# el mundo local en cada redibujado aunque la cámara mostrara una fracción.
@@ -1009,11 +1014,6 @@ func _draw() -> void:
 				var fg = Color.WHITE
 				var bg = Color.BLACK
 				var char_pos = Vector2(border_x + x * _char_size.x, UI_CONTENT_TOP + z * _char_size.y)
-				# Nunca dejar ver el gris del Control por debajo del mapa. Las celdas
-				# fuera de la región muestran el espacio de trabajo hasta que el
-				# controlador complete la transición a la región vecina.
-				draw_rect(Rect2(char_pos, _char_size), UI_CLASSIC_WORKSPACE, true)
-
 				if wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth:
 					var tile_type = world.get_tile(pos)
 					var tile_char = world.get_tile_char(pos)
