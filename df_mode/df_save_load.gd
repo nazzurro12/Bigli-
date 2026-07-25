@@ -883,7 +883,9 @@ static func _building_to_dict(b) -> Dictionary:
 		"tile_pos": _v3i_to_arr(b.tile_pos),
 		"size": _v3i_to_arr(b.size),
 		"is_constructed": b.is_constructed,
-		"name": b.name
+		"name": b.name,
+		"sanitation_load": b.sanitation_load,
+		"sanitation_capacity": b.sanitation_capacity
 	}
 
 static func _dict_to_building(d: Dictionary):
@@ -892,6 +894,8 @@ static func _dict_to_building(d: Dictionary):
 	var b = DFBuilding.new(d.get("type", 1), pos)
 	b.is_constructed = d.get("is_constructed", true)
 	b.name = d.get("name", b.name)
+	b.sanitation_load = d.get("sanitation_load", 0.0)
+	b.sanitation_capacity = d.get("sanitation_capacity", 20.0)
 	return b
 
 static func serialize_entity(entity) -> Dictionary:
@@ -1703,5 +1707,7 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	w.military_system = null
 	if main.has_method("_reconcile_storage_containers"):
 		main._reconcile_storage_containers()
+	if main.has_method("_ensure_basic_sanitation"):
+		main._ensure_basic_sanitation()
 	if w.has_method("reconcile_seasonal_weather"):
 		w.reconcile_seasonal_weather()
