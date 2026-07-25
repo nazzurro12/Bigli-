@@ -21,6 +21,9 @@ class ColonyConsistencyContracts(unittest.TestCase):
         cls.pathfinding = (ROOT / "df_mode/df_pathfinding.gd").read_text(
             encoding="utf-8"
         )
+        cls.story_director = (ROOT / "df_mode/df_story_director.gd").read_text(
+            encoding="utf-8"
+        )
 
     def test_crises_require_time_and_sustained_pressure(self):
         self.assertIn("CRISIS_GRACE_MINUTES: int = 1440", self.dwarf)
@@ -610,6 +613,38 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("if success and floor_material_index >= 0:", execute)
         self.assertIn("if success and wall_material_index >= 0:", execute)
         self.assertIn("if success and workshop_material_index >= 0:", execute)
+
+    def test_story_director_turns_real_state_into_visible_hooks(self):
+        for token in (
+            "func _find_best_hook",
+            "func _build_hook",
+            '"desire"',
+            '"problem"',
+            '"stakes"',
+            "hunger * 32.0",
+            "thirst * 36.0",
+            "stress * 28.0",
+        ):
+            self.assertIn(token, self.story_director)
+        self.assertIn("active_story_hook", self.main)
+        self.assertIn('"HISTORIA EN CURSO"', self.renderer)
+
+    def test_possession_has_a_before_after_consequence_report(self):
+        for token in (
+            "func begin_possession",
+            "func end_possession",
+            "func _snapshot",
+            "func _count_relationship_changes",
+            "func _interpret_possession",
+            '"consequences"',
+        ):
+            self.assertIn(token, self.story_director)
+        self.assertIn("story_director.begin_possession", self.main)
+        self.assertIn("story_director.end_possession", self.main)
+        self.assertIn("renderer.follow_dwarf = released_dwarf.id", self.main)
+        self.assertIn("func _focus_story_hook", self.main)
+        self.assertIn("KEY_Y", self.main)
+        self.assertIn('"CONSECUENCIAS"', self.renderer)
 
 
 if __name__ == "__main__":
