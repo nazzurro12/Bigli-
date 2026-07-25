@@ -968,6 +968,7 @@ static func save_game(main) -> bool:
 	data["_simulation_tick_clock"] = main._simulation_tick_clock
 	data["paused"] = main.paused
 	data["camera_pos"] = _v3i_to_arr(main.camera_pos)
+	data["active_planet_region"] = [main.active_planet_region.x, main.active_planet_region.y]
 	data["_current_cycle_follow_index"] = main._current_cycle_follow_index
 	data["follow_dwarf"] = main.renderer.follow_dwarf if main.renderer != null else -1
 	data["_chronicle_events_game"] = main._chronicle_events_game.duplicate()
@@ -1293,6 +1294,10 @@ static func load_game(main) -> bool:
 	main._simulation_tick_clock = data.get("_simulation_tick_clock", 0)
 	main.paused = data.get("paused", false)
 	main.camera_pos = _arr_to_v3i(data.get("camera_pos", [64, 3, 64]))
+	var loaded_region: Array = data.get("active_planet_region", data.get("world", {}).get("active_world_region", [0, 0]))
+	main.active_planet_region = Vector2i(int(loaded_region[0]), int(loaded_region[1])) if loaded_region.size() >= 2 else Vector2i.ZERO
+	main.planet_region_cache.clear()
+	main.planet_designation_cache.clear()
 	main._current_cycle_follow_index = data.get("_current_cycle_follow_index", 0)
 	main._chronicle_events_game = data.get("_chronicle_events_game", []).duplicate()
 	main.generation_seed = data.get("generation_seed", -1)
@@ -1396,6 +1401,7 @@ static func _build_save_data(main) -> Dictionary:
 	data["_simulation_tick_clock"] = main._simulation_tick_clock
 	data["paused"] = main.paused
 	data["camera_pos"] = _v3i_to_arr(main.camera_pos)
+	data["active_planet_region"] = [main.active_planet_region.x, main.active_planet_region.y]
 	data["_current_cycle_follow_index"] = main._current_cycle_follow_index
 	data["follow_dwarf"] = main.renderer.follow_dwarf if main.renderer != null else -1
 	data["_chronicle_events_game"] = main._chronicle_events_game.duplicate()
@@ -1693,6 +1699,10 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	main._simulation_tick_clock = data.get("_simulation_tick_clock", 0)
 	main.paused = data.get("paused", false)
 	main.camera_pos = _arr_to_v3i(data.get("camera_pos", [64, 3, 64]))
+	var loaded_region: Array = data.get("active_planet_region", data.get("world", {}).get("active_world_region", [0, 0]))
+	main.active_planet_region = Vector2i(int(loaded_region[0]), int(loaded_region[1])) if loaded_region.size() >= 2 else Vector2i.ZERO
+	main.planet_region_cache.clear()
+	main.planet_designation_cache.clear()
 	main._current_cycle_follow_index = data.get("_current_cycle_follow_index", 0)
 	main._chronicle_events_game = data.get("_chronicle_events_game", []).duplicate()
 	main.generation_seed = data.get("generation_seed", -1)
