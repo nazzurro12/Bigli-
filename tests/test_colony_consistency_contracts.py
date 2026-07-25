@@ -582,6 +582,19 @@ class ColonyConsistencyContracts(unittest.TestCase):
             self.assertIn(item_rule, self.item)
         self.assertIn("muros construidos conectados", self.renderer)
 
+    def test_floor_construction_replaces_natural_ground_and_consumes_on_success(self):
+        build_floor = self.world.split("func build_floor", 1)[1].split(
+            "func build_stairs_up", 1
+        )[0]
+        self.assertIn("or is_floor(pos)", build_floor)
+        self.assertIn("TileType.CONSTRUCTED_FLOOR", build_floor)
+        execute = self.dwarf.split("func _execute_job", 1)[1].split(
+            "func _execute_empty_latrine_job", 1
+        )[0]
+        self.assertIn("if success and floor_material_index >= 0:", execute)
+        self.assertIn("if success and wall_material_index >= 0:", execute)
+        self.assertIn("if success and workshop_material_index >= 0:", execute)
+
 
 if __name__ == "__main__":
     unittest.main()
