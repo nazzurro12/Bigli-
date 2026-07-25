@@ -269,14 +269,14 @@ const SUBSTANCE_COLORS = {
 	"urine": Color("#D6C84A"), "feces": Color("#70502D"),
 	"water": Color("#4488FF"), "mud": Color("#8B6914"), "poison": Color("#AA00AA"),
 	"pathogen": Color("#00AA44"), "alcohol": Color("#DAA520"), "pus": Color("#88AA44"),
-	"miasma": Color("#8A2BE2") # Purple gas
+	"miasma": Color("#8A2BE2"), "compost": Color("#6B4F2A")
 }
 const SUBSTANCE_NAMES = {
 	"beer": "Cerveza", "blood": "Sangre", "vomit": "Vómito",
 	"urine": "Orina", "feces": "Residuos orgánicos",
 	"water": "Agua", "mud": "Lodo", "poison": "Veneno",
 	"pathogen": "Patógeno", "alcohol": "Alcohol", "pus": "Pus",
-	"miasma": "Miasma"
+	"miasma": "Miasma", "compost": "Compost sanitario"
 }
 
 func _init(w: int = 128, d: int = 128, h: int = 16):
@@ -1549,3 +1549,34 @@ func absorb_from_tile(pos: Vector3i, substance: String, max_amount: float) -> fl
 	if splatters[pos].is_empty():
 		splatters.erase(pos)
 	return take
+
+func clean_sanitary_tile(pos: Vector3i, max_amount: float = 0.18) -> float:
+	var remaining: float = maxf(0.0, max_amount)
+	var removed: float = 0.0
+	for substance in ["feces", "urine", "vomit", "pathogen", "miasma", "mud"]:
+		if remaining <= 0.0:
+			break
+		var taken: float = absorb_from_tile(pos, substance, remaining)
+		removed += taken
+		remaining -= taken
+	return removed
+
+## Riesgo local del agua. Solo consulta cinco casillas, por lo que su coste es
+## constante aunque aumente la población o el tamaño del mundo.
+func get_water_contamination(pos: Vector3i) -> float:
+	var contamination: float = 0.0
+	var sample_positions: Array[Vector3i] = [
+		pos,
+		pos + Vector3i(1, 0, 0),
+		pos + Vector3i(-1, 0, 0),
+		pos + Vector3i(0, 0, 1),
+		pos + Vector3i(0, 0, -1),
+	]
+	for sample_pos in sample_positions:
+		var sample: Dictionary = splatters.get(sample_pos, {})
+		contamination += float(sample.get("pathogen", 0.0)) * 1.0
+		contamination += float(sample.get("feces", 0.0)) * 0.80
+		contamination += float(sample.get("vomit", 0.0)) * 0.35
+		contamination += float(sample.get("mud", 0.0)) * 0.10
+		contamination += float(sample.get("poison", 0.0)) * 1.50
+	return clampf(contamination, 0.0, 2.0)
