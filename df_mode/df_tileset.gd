@@ -65,6 +65,7 @@ func _build_char_map() -> void:
 	_char_map["\u0022"] = 0x22  # QUOTATION MARK (")
 	_char_map["\u0060"] = 0x60  # GRAVE ACCENT (`)
 	_char_map["\u00B7"] = 0xF9  # MIDDLE DOT -> CP437 ∙
+	_char_map["\u2248"] = 0xF7  # ALMOST EQUAL TO -> CP437 ≈
 
 func get_tile_code(char_str: String) -> int:
 	return _char_map.get(char_str, 0x20)  # Default to space
