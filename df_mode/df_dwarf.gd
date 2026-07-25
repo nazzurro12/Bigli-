@@ -291,6 +291,21 @@ var socialized_recently: bool = false
 ## --- GENETICS & BODY COMPOSITION ---
 var genome: RefCounted = null  # DFGenetics.Genome, set on spawn
 var body_mass_kg: float = 70.0  # base dwarf mass in kg (modified by genome.size_multiplier)
+var meals_today: int = 0
+var water_liters_today: float = 0.0
+var daily_protein: float = 0.0
+var daily_carbohydrates: float = 0.0
+var daily_fat: float = 0.0
+var daily_fiber: float = 0.0
+var daily_micronutrients: float = 0.0
+var nutrition_quality: float = 0.75
+var bladder_fill: float = 0.0
+var bowel_fill: float = 0.0
+var physical_condition: float = 0.5
+var education_level: float = 0.0
+var chronic_health: float = 1.0
+var last_physiology_day: int = -1
+var physiology_status: String = "Estable"
 
 ## --- REPRODUCTION ---
 var is_pregnant: bool = false
@@ -359,6 +374,7 @@ func get_skill_level(skill: int) -> int:
 	return skills.get(skill, 0)
 
 func add_skill_xp(skill: int, amount: int) -> void:
+	education_level = minf(1.0, education_level + float(maxi(0, amount)) * 0.0005)
 	var current = skills.get(skill, 0)
 	if randi() % 100 < amount:
 		skills[skill] = current + 1
@@ -634,6 +650,11 @@ func get_full_description() -> String:
 	desc += "\nEstado de Ánimo: %s" % get_mood_name()
 	desc += "\nEmoción: %s (%.0f%%)" % [get_emotion_name(current_emotion), emotion_intensity * 100]
 	desc += "\nEstrés: %.0f%% | Felicidad: %.0f%%" % [stress * 100, happiness * 100]
+	desc += "\nFisiología: %s | Nutrición: %.0f%%" % [physiology_status, nutrition_quality * 100]
+	desc += "\nHoy: %d comidas | %.2f L de agua" % [meals_today, water_liters_today]
+	desc += "\nCondición: %.0f%% | Carga: %.1f/%.1f" % [
+		physical_condition * 100, get_carried_weight(), get_carrying_capacity()
+	]
 	desc += "\nPersonalidad: %s" % get_personality_description()
 	return desc
 
@@ -907,6 +928,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		update_stress(delta_game_minute)
 		update_pain_and_bleeding(delta_game_minute)
 		tick_metabolism(world)
+		tick_humanoid_physiology(world)
 		tick_grooming()
 		tick_hygiene(world)
 		tick_social(world)
@@ -1109,6 +1131,10 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 	var is_meal_time = (hour == 12 or hour == 6 or hour == 18)
 
 	# PRIORIDAD 1: Necesidades de supervivencia críticas
+	if bladder_fill >= 0.75 or bowel_fill >= 0.75:
+		if _try_relieve_waste(world):
+			update_emotions()
+			return
 	if hunger > 0.85 or thirst > 0.85:
 		if _satisfy_needs(world):
 			update_emotions()
@@ -1800,6 +1826,7 @@ func tick_metabolism(world: RefCounted) -> void:
 		var digest = 0.002 * met_rate
 		var absorbed = minf(food_stored, digest)
 		hunger = maxf(0.0, hunger - absorbed * 10.0)
+		bowel_fill = minf(1.25, bowel_fill + absorbed * 0.35)
 		body.ingested_substances["food"] = food_stored - absorbed
 		if body.ingested_substances["food"] <= 0.0:
 			body.ingested_substances.erase("food")
@@ -1807,6 +1834,7 @@ func tick_metabolism(world: RefCounted) -> void:
 	if water_stored > 0.0:
 		var absorb_water = minf(water_stored, 0.003 * met_rate)
 		thirst = maxf(0.0, thirst - absorb_water * 10.0)
+		bladder_fill = minf(1.25, bladder_fill + absorb_water * 0.65)
 		body.ingested_substances["water"] = water_stored - absorb_water
 		if body.ingested_substances["water"] <= 0.0:
 			body.ingested_substances.erase("water")
@@ -1869,6 +1897,105 @@ func tick_metabolism(world: RefCounted) -> void:
 		var dirs = [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,0,1), Vector3i(0,0,-1), Vector3i(0,0,0)]
 		for d in dirs:
 			world.add_splatter_substance(tile_pos + d, "pathogen", 0.005)
+
+func record_consumption(item: DFItem) -> void:
+	if item == null:
+		return
+	if item.is_edible:
+		meals_today += 1
+		daily_protein += item.protein_value
+		daily_carbohydrates += item.carbohydrate_value
+		daily_fat += item.fat_value
+		daily_fiber += item.fiber_value
+		daily_micronutrients += item.micronutrient_value
+	if item.is_drink:
+		water_liters_today += maxf(0.0, item.hydration)
+
+func tick_humanoid_physiology(world: Object) -> void:
+	var day_index: int = floori(float(simulation_minute) / 1440.0)
+	if last_physiology_day < 0:
+		last_physiology_day = day_index
+	elif day_index != last_physiology_day:
+		_evaluate_daily_health()
+		last_physiology_day = day_index
+		meals_today = 0
+		water_liters_today = 0.0
+		daily_protein = 0.0
+		daily_carbohydrates = 0.0
+		daily_fat = 0.0
+		daily_fiber = 0.0
+		daily_micronutrients = 0.0
+
+	var carried_ratio: float = get_carried_weight() / maxf(1.0, get_carrying_capacity())
+	if carried_ratio > 0.30 and has_moved_this_tick:
+		physical_condition = minf(1.0, physical_condition + 0.00004)
+		fatigue = minf(1.25, fatigue + carried_ratio * 0.0002)
+	elif is_sleeping:
+		physical_condition = maxf(0.0, physical_condition - 0.000002)
+
+	if bladder_fill >= 1.0 or bowel_fill >= 1.0:
+		_try_relieve_waste(world)
+	elif bladder_fill > 0.85 or bowel_fill > 0.85:
+		stress = minf(1.0, stress + 0.0005)
+		physiology_status = "Necesita aliviarse"
+	elif nutrition_quality < 0.4:
+		physiology_status = "Malnutrición"
+	elif physical_condition < 0.25:
+		physiology_status = "Condición física baja"
+	else:
+		physiology_status = "Estable"
+
+func _evaluate_daily_health() -> void:
+	var meal_score: float = clampf(float(meals_today) / 3.0, 0.0, 1.0)
+	var water_score: float = clampf(water_liters_today / 1.0, 0.0, 1.0)
+	var macro_score: float = (
+		clampf(daily_protein / 0.65, 0.0, 1.0)
+		+ clampf(daily_carbohydrates / 0.90, 0.0, 1.0)
+		+ clampf(daily_fat / 0.25, 0.0, 1.0)
+	) / 3.0
+	var micro_score: float = (
+		clampf(daily_fiber / 0.45, 0.0, 1.0)
+		+ clampf(daily_micronutrients / 0.45, 0.0, 1.0)
+	) / 2.0
+	var day_quality: float = meal_score * 0.30 + water_score * 0.25 + macro_score * 0.25 + micro_score * 0.20
+	nutrition_quality = lerpf(nutrition_quality, day_quality, 0.20)
+	if day_quality < 0.35:
+		chronic_health = maxf(0.20, chronic_health - 0.004)
+		toughness = maxf(1.0, toughness - 0.002)
+		stress = minf(1.0, stress + 0.02)
+	elif day_quality >= 0.75:
+		chronic_health = minf(1.0, chronic_health + 0.002)
+	health = minf(health, chronic_health)
+
+func get_carried_weight() -> float:
+	var total_weight: float = 0.0
+	for carried_item in inventory:
+		if carried_item is DFItem:
+			total_weight += carried_item.get_item_volume() * maxi(1, carried_item.stack_size)
+	return total_weight
+
+func get_carrying_capacity() -> float:
+	var age_factor: float = 1.0
+	if age < 16:
+		age_factor = 0.55
+	elif age > 55:
+		age_factor = maxf(0.55, 1.0 - float(age - 55) * 0.012)
+	return maxf(5.0, (strength * 2.2 + body_mass_kg * 0.12) * (0.55 + physical_condition * 0.75) * age_factor * chronic_health)
+
+func _try_relieve_waste(world: Object) -> bool:
+	if bladder_fill < 0.75 and bowel_fill < 0.75:
+		return false
+	if bladder_fill >= bowel_fill:
+		world.add_splatter_substance(tile_pos, "urine", 0.03 + bladder_fill * 0.04)
+		bladder_fill = 0.0
+		current_task = "Aliviando la vejiga"
+	else:
+		world.add_splatter_substance(tile_pos, "feces", 0.04 + bowel_fill * 0.05)
+		bowel_fill = 0.0
+		current_task = "Aliviando el intestino"
+	stress = maxf(0.0, stress - 0.02)
+	needs_display_update = true
+	return true
 
 
 ## Grooming: lick/clean limbs coated in substances, ingesting them.
@@ -2012,6 +2139,7 @@ func _satisfy_needs(world) -> bool:
 			body.ingested_substances["food"] = body.ingested_substances.get("food", 0.0) + item.nutrition * 0.5
 			needs[Need.FOOD] = maxf(0.0, needs[Need.FOOD] - item.nutrition * 0.5)
 			hunger = maxf(0.0, hunger - item.nutrition)
+			record_consumption(item)
 			inventory.remove_at(i)
 			ate = true
 			current_task = "Comiendo"
@@ -2022,9 +2150,10 @@ func _satisfy_needs(world) -> bool:
 				add_thought("Comió para sobrevivir.", 0.04 if hunger < 0.8 else 0.01)
 			break
 		elif thirst > drink_threshold and item.is_drink:
-			body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + item.nutrition * 0.5
-			needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - item.nutrition * 0.5)
-			thirst = maxf(0.0, thirst - maxf(0.35, item.nutrition))
+			body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + item.hydration
+			needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - item.hydration)
+			thirst = maxf(0.0, thirst - maxf(0.35, item.hydration))
+			record_consumption(item)
 			inventory.remove_at(i)
 			drank = true
 			current_task = "Bebiendo"
@@ -2594,6 +2723,10 @@ func _pick_up_job(world, jobs: Array) -> void:
 
 func _move_toward(world, target: Vector3i) -> void:
 	var effective_speed = speed * (1.0 - fatigue_level * 0.2)
+	var carried_ratio: float = get_carried_weight() / maxf(1.0, get_carrying_capacity())
+	if carried_ratio > 1.0:
+		effective_speed *= maxf(0.25, 1.0 / carried_ratio)
+		fatigue = minf(1.25, fatigue + 0.0005 * carried_ratio)
 	effective_speed = maxf(0.3, effective_speed)
 	# Only move every N ticks: faster dwarves = more frequent moves
 	if move_tick_counter > 0:
@@ -2728,7 +2861,9 @@ func get_needs_string() -> String:
 	var thirst_pct = int(thirst * 100)
 	var health_pct = int(health * 100)
 	var fatigue_pct = int(fatigue * 100)
-	var result = "H:%d%% S:%d%% " % [hunger_pct, thirst_pct]
+	var result = "H:%d%% S:%d%% V:%d%% I:%d%% " % [
+		hunger_pct, thirst_pct, int(bladder_fill * 100), int(bowel_fill * 100)
+	]
 	if is_pregnant:
 		result += "EMBARAZADA! "
 	if health_pct < 30:
