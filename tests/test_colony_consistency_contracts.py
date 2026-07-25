@@ -29,7 +29,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
     def test_eating_and_drinking_update_authoritative_needs(self):
         self.assertIn("hunger = maxf(0.0, hunger - item.nutrition)", self.dwarf)
         self.assertIn(
-            "thirst = maxf(0.0, thirst - maxf(0.35, item.nutrition))",
+            "thirst = maxf(0.0, thirst - maxf(0.35, item.hydration))",
             self.dwarf,
         )
 
@@ -74,6 +74,38 @@ class ColonyConsistencyContracts(unittest.TestCase):
 
     def test_container_linking_is_idempotent(self):
         self.assertIn("container.container_contents.has(self)", self.item)
+
+    def test_humanoid_physiology_runs_once_per_game_minute(self):
+        self.assertIn("if minute_ticked:", self.dwarf)
+        self.assertIn("tick_humanoid_physiology(world)", self.dwarf)
+        self.assertEqual(self.dwarf.count("tick_humanoid_physiology(world)"), 1)
+
+    def test_three_meals_and_minimum_water_have_daily_consequences(self):
+        self.assertIn("float(meals_today) / 3.0", self.dwarf)
+        self.assertIn("water_liters_today / 1.0", self.dwarf)
+        self.assertIn("nutrition_quality = lerpf", self.dwarf)
+
+    def test_digestion_generates_waste_needs(self):
+        self.assertIn("bladder_fill = minf", self.dwarf)
+        self.assertIn("bowel_fill = minf", self.dwarf)
+        self.assertIn('add_splatter_substance(tile_pos, "urine"', self.dwarf)
+        self.assertIn('add_splatter_substance(tile_pos, "feces"', self.dwarf)
+
+    def test_food_has_balanced_nutrition_dimensions(self):
+        for field in (
+            "protein_value",
+            "carbohydrate_value",
+            "fat_value",
+            "fiber_value",
+            "micronutrient_value",
+        ):
+            self.assertIn(field, self.item)
+            self.assertGreaterEqual(self.save.count(field), 2)
+
+    def test_condition_controls_load_capacity_and_movement(self):
+        self.assertIn("func get_carrying_capacity()", self.dwarf)
+        self.assertIn("physical_condition", self.dwarf)
+        self.assertIn("carried_ratio > 1.0", self.dwarf)
 
 
 if __name__ == "__main__":
