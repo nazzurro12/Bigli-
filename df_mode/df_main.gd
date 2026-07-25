@@ -2570,6 +2570,19 @@ func _build_large_initial_warehouse(settlement_pos: Vector3i, _rng: RandomNumber
 			var shelf: DFBuilding = DFBuilding.new(DFBuilding.BuildingType.FOOD_STORE, shelf_position)
 			world.buildings.append(shelf)
 			shelf_tiles.append(shelf_position)
+			var chest: DFItem = world._spawn_item(
+				shelf_position,
+				"Cofre de Almacén",
+				"storage_chest",
+				DFWorld.MatType.WOOD,
+				"□",
+				Color("#B8793C")
+			)
+			if chest != null:
+				chest.is_container = true
+				chest.container_volume = 32.0
+				chest.max_stack = 1
+				chest.is_in_stockpile = true
 
 	var stockpile: DFStockpile = DFStockpile.new(stockpile_tiles)
 	stockpile.accepts_categories = [
@@ -2620,9 +2633,17 @@ func _build_large_initial_warehouse(settlement_pos: Vector3i, _rng: RandomNumber
 		if spawned_item != null:
 			spawned_item.is_in_stockpile = true
 			if str(resource_data[1]) in ["food", "drink"]:
-				spawned_item.is_inside_container = true
+				for possible_container in world.entities:
+					if (
+						possible_container is DFItem
+						and possible_container.is_container
+						and possible_container.tile_pos == resource_position
+						and possible_container.has_container_space(spawned_item)
+					):
+						spawned_item.put_in_container(possible_container)
+						break
 
-	add_message("Gran almacén construido: 20x20 interiores, muros, dos puertas y %d estanterías." % shelf_tiles.size())
+	add_message("Gran almacén construido: 20x20 interiores, dos puertas y %d cofres utilizables." % shelf_tiles.size())
 	return true
 
 func _find_safe_settlement_center(preferred: Vector2i) -> Vector3i:
