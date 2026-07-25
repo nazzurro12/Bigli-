@@ -204,6 +204,35 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("patient.recovery_streak +=", self.dwarf)
         self.assertNotIn("patient.has_infection = false", self.dwarf)
 
+    def test_water_wells_are_physical_limited_buildings(self):
+        self.assertIn("WATER_WELL", self.building)
+        self.assertIn("func draw_water", self.building)
+        self.assertIn("water_volume -= amount", self.building)
+        self.assertIn("func _ensure_basic_water_supply", self.main)
+        self.assertIn("existing_wells >= 2", self.main)
+
+    def test_old_saves_receive_wells_and_keep_water_quality(self):
+        self.assertIn("main._ensure_basic_water_supply()", self.save)
+        for field in ("water_volume", "water_capacity", "water_contamination"):
+            self.assertGreaterEqual(self.save.count(field), 2)
+
+    def test_thirsty_humanoids_prefer_wells_to_floor_water(self):
+        satisfy = self.dwarf.split("func _satisfy_needs", 1)[1].split(
+            "func _drink_from_water_well", 1
+        )[0]
+        self.assertLess(
+            satisfy.index("_drink_from_water_well"),
+            satisfy.index("_drink_from_splatters"),
+        )
+        self.assertIn('current_task = "Yendo al pozo"', self.dwarf)
+        self.assertIn("nearest_well.draw_water(0.35)", self.dwarf)
+
+    def test_wells_recharge_slowly_and_inherit_local_pollution(self):
+        self.assertIn("func _tick_water_infrastructure", self.main)
+        self.assertIn("world.get_water_contamination(well.tile_pos)", self.main)
+        self.assertIn("well.recharge_water(0.12", self.main)
+        self.assertIn("pathogen_exposure = minf", self.dwarf)
+
 
 if __name__ == "__main__":
     unittest.main()
