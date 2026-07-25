@@ -408,6 +408,35 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("Planeta [%d,%d]", self.renderer)
         self.assertIn("Región %d,%d", self.renderer)
 
+    def test_inactive_planet_regions_survive_save_and_load(self):
+        for token in (
+            "static func serialize_region_world",
+            "static func deserialize_region_world",
+            "static func _serialize_planet_region_cache",
+            "static func _restore_planet_region_cache",
+            'data["planet_regions"] = _serialize_planet_region_cache(main)',
+            '_restore_planet_region_cache(main, data.get("planet_regions", {}))',
+        ):
+            self.assertIn(token, self.save)
+        self.assertEqual(
+            self.save.count('data["planet_regions"] = _serialize_planet_region_cache(main)'),
+            2,
+        )
+        self.assertEqual(
+            self.save.count('_restore_planet_region_cache(main, data.get("planet_regions", {}))'),
+            2,
+        )
+
+    def test_restored_region_rebuilds_typed_entity_indexes_and_jobs(self):
+        restore = self.save.split("static func deserialize_region_world", 1)[1].split(
+            "static func _serialize_planet_region_cache", 1
+        )[0]
+        self.assertIn("restored_world.add_entity(entity)", restore)
+        self.assertIn("restored_world.buildings.append", restore)
+        self.assertIn("restored_world.workshops.append", restore)
+        self.assertIn("restored_world.stockpiles.append", restore)
+        self.assertIn("restored_designation.job_queue.append", restore)
+
 
 if __name__ == "__main__":
     unittest.main()
