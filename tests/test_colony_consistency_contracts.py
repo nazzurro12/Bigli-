@@ -388,11 +388,18 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertNotIn("if minute_ticked or posmod(_absolute_simulation_tick", tick)
         self.assertIn("SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 12", self.main)
 
-    def test_planet_regions_wrap_longitude_but_keep_real_poles(self):
+    def test_planet_frontier_uses_unbounded_signed_regions(self):
+        self.assertIn("return region + direction", self.planet)
+        self.assertIn("return direction != Vector2i.ZERO", self.planet)
+        self.assertIn("static func atlas_region", self.planet)
         self.assertIn("posmod(region.x, planet_width)", self.planet)
-        self.assertIn("clampi(region.y, 0, planet_depth - 1)", self.planet)
-        self.assertIn("if direction.y < 0 and region.y <= 0", self.planet)
-        self.assertIn("if direction.y > 0 and region.y >= planet_depth - 1", self.planet)
+        self.assertIn("posmod(region.y, planet_depth)", self.planet)
+        normalize = self.planet.split("static func normalize_region", 1)[1].split(
+            "static func atlas_region", 1
+        )[0]
+        self.assertNotIn("clampi", normalize)
+        self.assertNotIn("posmod", normalize)
+        self.assertNotIn("Has alcanzado una región polar.", self.main)
 
     def test_crossing_a_local_edge_streams_a_neighbor_region(self):
         for token in (
@@ -702,6 +709,20 @@ class ColonyConsistencyContracts(unittest.TestCase):
             self.world_gen,
         )
         self.assertIn("_local_tile_random(x, z, world.width, world.depth, 301)", self.world_gen)
+
+    def test_signed_frontier_projects_only_macro_data_into_the_atlas(self):
+        world_sample = self.world_gen.split("func _get_world_sample", 1)[1].split(
+            "func _get_world_coords", 1
+        )[0]
+        global_sample = self.world_gen.split("func _get_global_tile_sample", 1)[1].split(
+            "func _local_tile_random", 1
+        )[0]
+        self.assertIn("fposmod(gx, float(world_width))", world_sample)
+        self.assertIn("fposmod(gz, float(world_depth))", world_sample)
+        self.assertNotIn("embark_pos.x >= 0", self.world_gen)
+        self.assertIn("embark_pos != NO_EMBARK_REGION", global_sample)
+        self.assertNotIn("fposmod", global_sample)
+        self.assertIn("DFPlanetRegions.atlas_region(candidate", self.main)
 
 
 if __name__ == "__main__":
