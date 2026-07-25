@@ -370,6 +370,16 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertNotIn("return null", finder)
         self.assertIn("for item_value in world.items", finder)
 
+    def test_settlement_residents_use_the_distributed_ai_branch(self):
+        tick = self.main.split("func _tick()", 1)[1].split(
+            "func _record_performance_sample", 1
+        )[0]
+        self.assertIn("if is_dwarf4 and not is_settlement_resident:", tick)
+        self.assertIn('set_meta("settlement_minute_pending", true)', tick)
+        self.assertIn("resident_minute_due", tick)
+        self.assertNotIn("if minute_ticked or posmod(_absolute_simulation_tick", tick)
+        self.assertIn("SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 12", self.main)
+
 
 if __name__ == "__main__":
     unittest.main()
