@@ -218,6 +218,12 @@ var room_quality: float = 0.0
 var social_timer: float = 0.0
 var last_social_interaction: int = 0
 var loneliness: float = 0.0
+var social_beliefs: Array = []
+var social_reputation: Dictionary = {}
+var last_belief_decay_day: int = -1
+var conversations_held: int = 0
+const MAX_SOCIAL_BELIEFS: int = 24
+const BELIEF_FORGET_DAYS: int = 30
 
 var prayer_timer: float = 0.0
 var favored_deity: String = ""
@@ -455,6 +461,7 @@ func add_memory(category: String, text: String, intensity: float = 0.5) -> void:
 	memories.append(memory)
 	if memories.size() > 100:
 		memories.pop_front()
+	_learn_social_belief(category, id, text, intensity, id, true)
 
 func _get_turn_count() -> int:
 	return simulation_minute
@@ -463,11 +470,31 @@ func has_relationship_with(other_id: int) -> bool:
 	return relationships.has(other_id)
 
 func get_relationship_value(other_id: int) -> float:
-	return relationships.get(other_id, 0.0)
+	return _normalized_relationship_value(relationships.get(other_id, 0.0))
 
 func modify_relationship(other_id: int, delta: float) -> void:
-	var current = relationships.get(other_id, 0.0)
-	relationships[other_id] = clampf(current + delta, -1.0, 1.0)
+	var current = get_relationship_value(other_id)
+	var updated: float = clampf(current + delta, -1.0, 1.0)
+	relationships[other_id] = updated
+	if updated >= 0.55:
+		if not friends.has(other_id):
+			friends.append(other_id)
+		rivals.erase(other_id)
+	elif updated <= -0.45:
+		if not rivals.has(other_id):
+			rivals.append(other_id)
+		friends.erase(other_id)
+	else:
+		friends.erase(other_id)
+		rivals.erase(other_id)
+
+func _normalized_relationship_value(raw_value) -> float:
+	var value: float = float(raw_value)
+	# Las primeras partidas guardaban afinidad como 60..99 aunque el resto del
+	# sistema usa -1..1. Se migra al leer sin romper partidas antiguas.
+	if value > 1.0:
+		return clampf((value - 50.0) / 50.0, -1.0, 1.0)
+	return clampf(value, -1.0, 1.0)
 
 func update_emotions() -> void:
 	var stress_factor = stress
@@ -666,6 +693,9 @@ func get_full_description() -> String:
 	]
 	desc += "\nSalud sistémica: %s | Inmunidad: %.0f%% | Exposición: %.0f%%" % [
 		get_disease_status(), immune_strength * 100.0, pathogen_exposure * 100.0
+	]
+	desc += "\nVida social: %d conversaciones | %d creencias activas" % [
+		conversations_held, social_beliefs.size()
 	]
 	desc += "\nPersonalidad: %s" % get_personality_description()
 	return desc
@@ -2205,6 +2235,7 @@ func tick_hygiene(world) -> void:
 
 # ---- SOCIAL ----
 func tick_social(world) -> void:
+	_decay_social_beliefs()
 	if current_task != "idle": return
 	if randi() % 30 != 0: return
 	for e in world.entities:
@@ -2217,34 +2248,153 @@ func tick_social(world) -> void:
 			current_task = "Socializando"
 			needs_display_update = true
 			needs[Need.SOCIAL] = maxf(0.0, needs[Need.SOCIAL] - 0.2)
-			# Share thoughts — both parties exchange a random memory
-			var my_mem = _pick_random_memory()
-			var their_mem = _pick_other_random_memory(e)
-			if my_mem != "":
-				add_thought("Compartió con alguien: %s" % my_mem, 0.03)
-				e.add_thought("Escuchó de %s: %s" % [name, my_mem], 0.02)
-			if their_mem != "":
-				add_thought("Escuchó de %s: %s" % [e.name, their_mem], 0.02)
-				e.add_thought("Compartió con %s: %s" % [name, their_mem], 0.03)
-			# Gossip: spread stress
+			last_social_interaction = simulation_minute
+			conversations_held += 1
+			_exchange_social_belief(e)
+			var affinity: float = get_relationship_value(e.id)
+			var compatibility: float = _social_compatibility_with(e)
+			var interaction_delta: float = lerpf(-0.015, 0.025, compatibility)
+			modify_relationship(e.id, interaction_delta)
+			e.modify_relationship(id, interaction_delta * 0.8)
+			# El estado emocional se contagia, pero la confianza amortigua el
+			# efecto: una conversación ya no copia estrés sin contexto.
 			var target_stress = e.get("stress")
 			if target_stress == null:
 				target_stress = 0.5
 			var stress_diff = stress - target_stress
 			if abs(stress_diff) > 0.2:
-				var transfer = stress_diff * 0.1
+				var transfer = stress_diff * (0.035 + maxf(0.0, affinity) * 0.045)
 				stress = clampf(stress - transfer, 0.0, 1.0)
 				e.stress = clampf(e.stress + transfer, 0.0, 1.0)
 			return
 
-func _pick_random_memory() -> String:
-	if memories.is_empty(): return ""
-	return memories[randi() % memories.size()].get("text", "")
+func _exchange_social_belief(other) -> void:
+	var belief: Dictionary = _pick_salient_belief()
+	if belief.is_empty() and not memories.is_empty():
+		var memory: Dictionary = memories.back()
+		_learn_social_belief(
+			str(memory.get("category", "vida")),
+			id,
+			str(memory.get("text", "")),
+			float(memory.get("intensity", 0.5)),
+			id,
+			true
+		)
+		belief = _pick_salient_belief()
+	if belief.is_empty():
+		add_thought("Conversó tranquilamente con %s." % other.name, 0.02)
+		return
+	add_thought("Contó a %s: %s" % [other.name, belief.get("claim", "")], 0.02)
+	other._receive_social_belief(belief, self)
 
-func _pick_other_random_memory(other) -> String:
-	var other_memories = other.get("memories")
-	if other_memories == null or other_memories.is_empty(): return ""
-	return other_memories[randi() % other_memories.size()].get("text", "")
+func _receive_social_belief(belief: Dictionary, speaker) -> void:
+	var trust: float = get_relationship_value(speaker.id)
+	var speaker_honesty: float = speaker.get_trait(PersonalityTrait.HONESTY)
+	var confidence: float = float(belief.get("confidence", 0.5))
+	var accepted_confidence: float = confidence * (0.35 + speaker_honesty * 0.25 + (trust + 1.0) * 0.20)
+	accepted_confidence = clampf(accepted_confidence, 0.05, 0.95)
+	var changed: bool = _learn_social_belief(
+		str(belief.get("category", "rumor")),
+		int(belief.get("subject_id", speaker.id)),
+		str(belief.get("claim", "")),
+		accepted_confidence,
+		speaker.id,
+		false
+	)
+	if changed:
+		add_thought("Escuchó de %s: %s" % [speaker.name, belief.get("claim", "")], 0.01)
+		var reputation: float = float(social_reputation.get(speaker.id, 0.0))
+		social_reputation[speaker.id] = clampf(
+			reputation + (accepted_confidence - 0.45) * 0.05, -1.0, 1.0
+		)
+
+func _learn_social_belief(
+	category: String,
+	subject_id: int,
+	claim: String,
+	confidence: float,
+	source_id: int,
+	witnessed: bool
+) -> bool:
+	if claim.strip_edges().is_empty():
+		return false
+	var normalized_claim: String = claim.strip_edges().to_lower()
+	var belief_key: String = "%s|%d|%s" % [category, subject_id, normalized_claim]
+	for existing in social_beliefs:
+		if str(existing.get("key", "")) == belief_key:
+			existing["confidence"] = clampf(
+				maxf(float(existing.get("confidence", 0.0)), confidence) + (0.04 if witnessed else 0.01),
+				0.0,
+				1.0
+			)
+			existing["last_heard_minute"] = simulation_minute
+			var sources: Array = existing.get("sources", [])
+			if not sources.has(source_id):
+				sources.append(source_id)
+			existing["sources"] = sources.slice(maxi(0, sources.size() - 4))
+			return false
+		# Dos afirmaciones diferentes sobre el mismo asunto generan duda real.
+		if str(existing.get("category", "")) == category and int(existing.get("subject_id", -1)) == subject_id:
+			existing["confidence"] = maxf(0.05, float(existing.get("confidence", 0.5)) - confidence * 0.20)
+	var belief := {
+		"key": belief_key,
+		"category": category,
+		"subject_id": subject_id,
+		"claim": claim.strip_edges(),
+		"confidence": clampf(confidence + (0.20 if witnessed else 0.0), 0.05, 1.0),
+		"witnessed": witnessed,
+		"sources": [source_id],
+		"created_minute": simulation_minute,
+		"last_heard_minute": simulation_minute
+	}
+	social_beliefs.append(belief)
+	_prune_social_beliefs()
+	return true
+
+func _pick_salient_belief() -> Dictionary:
+	var selected: Dictionary = {}
+	var best_score: float = 0.0
+	for belief in social_beliefs:
+		var age_days: float = float(simulation_minute - int(belief.get("last_heard_minute", 0))) / 1440.0
+		var score: float = float(belief.get("confidence", 0.0)) - age_days * 0.01
+		if bool(belief.get("witnessed", false)):
+			score += 0.12
+		if score > best_score:
+			best_score = score
+			selected = belief
+	return selected
+
+func _decay_social_beliefs() -> void:
+	var day: int = simulation_minute / 1440
+	if day == last_belief_decay_day or simulation_minute % 60 != id % 60:
+		return
+	last_belief_decay_day = day
+	for belief in social_beliefs:
+		var confidence: float = float(belief.get("confidence", 0.0))
+		belief["confidence"] = maxf(0.0, confidence - (0.008 if bool(belief.get("witnessed", false)) else 0.025))
+	_prune_social_beliefs()
+
+func _prune_social_beliefs() -> void:
+	var oldest_allowed: int = simulation_minute - BELIEF_FORGET_DAYS * 1440
+	var retained: Array = []
+	for belief in social_beliefs:
+		if float(belief.get("confidence", 0.0)) >= 0.08 and int(belief.get("last_heard_minute", 0)) >= oldest_allowed:
+			retained.append(belief)
+	retained.sort_custom(func(a, b): return float(a.get("confidence", 0.0)) > float(b.get("confidence", 0.0)))
+	social_beliefs = retained.slice(0, mini(MAX_SOCIAL_BELIEFS, retained.size()))
+
+func _social_compatibility_with(other) -> float:
+	var similarity: float = 0.0
+	var compared_traits: Array = [
+		PersonalityTrait.SOCIABILITY,
+		PersonalityTrait.HONESTY,
+		PersonalityTrait.COMPASSION,
+		PersonalityTrait.POLITENESS
+	]
+	for trait_id in compared_traits:
+		similarity += 1.0 - absf(get_trait(trait_id) - other.get_trait(trait_id))
+	similarity /= float(compared_traits.size())
+	return clampf(similarity * 0.65 + (get_relationship_value(other.id) + 1.0) * 0.175, 0.0, 1.0)
 
 # ---- INSPECT ----
 func tick_inspect(world) -> void:
