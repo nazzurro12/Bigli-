@@ -1275,7 +1275,9 @@ func _run_world_generation_loop() -> void:
 	await get_tree().process_frame
 	
 	world_gen = DFWorldGen.new(generation_seed)
-	var sizes: Array = [128, 256, 512, 1024]
+	# El máximo equivale exactamente a 197.376 casillas por eje:
+	# 257 regiones DF * 16 bloques * 48 casillas.
+	var sizes: Array = [128, 256, 512, DFWorldGen.MAX_PLANET_REGIONS_PER_AXIS]
 	var selected_size: int = clampi(setting_size, 0, sizes.size() - 1)
 	world_gen.world_width = int(sizes[selected_size])
 	world_gen.world_depth = int(sizes[selected_size])
