@@ -131,6 +131,47 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn('"urine":', self.renderer)
         self.assertIn('"feces":', self.renderer)
 
+    def test_disease_is_a_staged_minute_tick_simulation(self):
+        self.assertIn("enum DiseasePhase", self.dwarf)
+        self.assertIn("tick_health_cycle(world)", self.dwarf)
+        self.assertEqual(self.dwarf.count("tick_health_cycle(world)"), 1)
+        for phase in ("INCUBATING", "SYMPTOMATIC", "RECOVERING"):
+            self.assertIn(phase, self.dwarf)
+
+    def test_recovery_depends_on_living_conditions(self):
+        for factor in (
+            "nutrition_quality",
+            "chronic_health",
+            "sleep_quality",
+            "hydration_support",
+            "is_resting_medical",
+        ):
+            self.assertIn(factor, self.dwarf)
+        self.assertIn("acquired_immunity = 1.0", self.dwarf)
+
+    def test_disease_uses_environment_not_entity_pair_scans(self):
+        health_cycle = self.dwarf.split("func tick_health_cycle", 1)[1].split(
+            "func get_disease_status", 1
+        )[0]
+        self.assertIn('tile_substances.get("pathogen"', health_cycle)
+        self.assertNotIn("for e in world.entities", health_cycle)
+        self.assertIn("simulation_minute % 60 == id % 60", health_cycle)
+
+    def test_health_cycle_is_persistent_and_visible(self):
+        for field in (
+            "disease_phase",
+            "disease_progress",
+            "disease_severity",
+            "pathogen_exposure",
+            "immune_strength",
+            "acquired_immunity",
+            "recovery_streak",
+            "fever",
+        ):
+            self.assertGreaterEqual(self.save.count(field), 2)
+        self.assertIn('"INCUBA"', self.renderer)
+        self.assertIn('"RECUP"', self.renderer)
+
 
 if __name__ == "__main__":
     unittest.main()
