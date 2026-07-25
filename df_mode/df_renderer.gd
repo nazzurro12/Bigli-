@@ -1389,10 +1389,18 @@ func _draw_sidebar(side_x: int) -> void:
 	# ═══════════════════════════════════════════════
 	var zlevel_names = {0:"Cavernas",1:"Sub",2:"Superficie",3:"Cielo",4:"Alto",5:"Cima"}
 	var zname = zlevel_names.get(camera_pos.y, "Z:%d" % camera_pos.y)
+	var main_node = get_parent()
+	var region: Vector2i = main_node.active_planet_region if main_node != null and "active_planet_region" in main_node else Vector2i.ZERO
+	var planet_x: int = region.x * world.width + camera_pos.x
+	var planet_z: int = region.y * world.depth + camera_pos.z
 	draw_string(_font, Vector2(x, y + lh),
-		"  [%d,%d]  %s" % [camera_pos.x, camera_pos.z, zname],
+		"  Planeta [%d,%d]  %s" % [planet_x, planet_z, zname],
 		HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(0.5, 0.5, 0.65))
 	y += int(lh * 1.3)
+	draw_string(_font, Vector2(x, y + lh),
+		"  Región %d,%d · Local %d,%d" % [region.x, region.y, camera_pos.x, camera_pos.z],
+		HORIZONTAL_ALIGNMENT_LEFT, mw, 8, Color(0.45, 0.50, 0.60))
+	y += int(lh * 1.2)
 
 	# ═══════════════════════════════════════════════
 	# 5. DESIGNATION MODE (only if active)
