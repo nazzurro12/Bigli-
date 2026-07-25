@@ -684,6 +684,25 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn('dwarf.get("name")', management)
         self.assertNotIn("dwarf.entity_name", management)
 
+    def test_neighbor_regions_do_not_overlap_or_repeat_local_noise(self):
+        self.assertIn("var local_region_span: float = 1.0", self.world_gen)
+        self.assertIn("func _get_global_tile_sample", self.world_gen)
+        self.assertIn("func _local_tile_random", self.world_gen)
+        for global_sample in (
+            "global_tile.x + seed_offset",
+            "global_tile.y - seed_offset",
+            "global_cave_tile.x",
+            "global_cave_tile.y",
+            "global_rock_tile.x",
+            "global_rock_tile.y",
+        ):
+            self.assertIn(global_sample, self.world_gen)
+        self.assertNotIn(
+            "_octave_noise(float(x) + seed_offset, float(z) - seed_offset",
+            self.world_gen,
+        )
+        self.assertIn("_local_tile_random(x, z, world.width, world.depth, 301)", self.world_gen)
+
 
 if __name__ == "__main__":
     unittest.main()
