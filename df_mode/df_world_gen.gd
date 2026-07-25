@@ -223,6 +223,7 @@ func generate_local_map(world: Object, embark_pt: Vector2i = Vector2i(-1, -1)) -
 		world.elevation.append(row)
 
 	_place_terrain_in_local(world)
+	_place_surface_rock_outcrops(world)
 	_place_trees_in_local(world)
 	_place_flora_in_local(world)
 	_place_features_in_local(world)
@@ -997,6 +998,36 @@ func _geo_to_material(geo: String) -> int:
 		"MARBLE": return DFWorld.MatType.MARBLE
 		"OBSIDIAN": return DFWorld.MatType.OBSIDIAN
 		_: return DFWorld.MatType.STONE
+
+func _place_surface_rock_outcrops(world) -> void:
+	# Afloramientos visibles, agrupados y explotables. Antes toda la geología
+	# quedaba enterrada, así que el mapa superficial parecía contener solo árboles.
+	for z in range(2, world.depth - 2):
+		for x in range(2, world.width - 2):
+			var surface_y: int = world.get_surface_height(x, z)
+			if surface_y < 3 or surface_y > 9:
+				continue
+			var surface_pos := Vector3i(x, surface_y, z)
+			if world.get_tile(surface_pos) not in [
+				DFWorld.TileType.GRASS,
+				DFWorld.TileType.DIRT,
+				DFWorld.TileType.SNOW,
+				DFWorld.TileType.SOIL,
+			]:
+				continue
+			var broad_noise: float = _octave_noise(float(x) + 2211.0, float(z) - 903.0, 3, 0.55, 21.0) * 0.5 + 0.5
+			var detail_noise: float = _octave_noise(float(x) - 177.0, float(z) + 419.0, 2, 0.5, 5.0) * 0.5 + 0.5
+			if broad_noise < 0.71 or detail_noise < 0.58:
+				continue
+			var world_coords: Vector2i = _get_world_coords(x, z, world.width, world.depth)
+			var geology: Array[String] = _get_geology_layers(world_coords.x, world_coords.y)
+			var rock_layer: String = geology[mini(1, geology.size() - 1)] if not geology.is_empty() else "STONE"
+			world.set_tile(surface_pos, DFWorld.TileType.WALL)
+			world.set_material(surface_pos, _geo_to_material(rock_layer))
+			world.tile_data[surface_pos] = {
+				"natural_outcrop": true,
+				"layer": rock_layer,
+			}
 
 func _place_trees_in_local(world) -> void:
 	for z in range(world.depth):
