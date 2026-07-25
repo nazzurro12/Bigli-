@@ -478,25 +478,34 @@ func _build_current_legend_text() -> String:
 
 TERRENO
 #  muro natural
-.  suelo o tierra
-"  pasto
-▣  árbol
+▲  afloramiento de roca minable
+·  suelo despejado o piedra trabajada
+,  pasto o suelo de cueva
+♣  árbol
 ~  agua profunda
-=  agua poco profunda o puente
+≈  agua poco profunda
+=  puente
 •  arena
 ∙  nieve
-░  hielo, suelo de piedra o camino
+░  hielo o camino
+:  tierra
 ▒  parcela cultivable
 █  magma, fuego o muro construido
 < > □  escaleras
 
 HABITANTES Y ANIMALES
-d / w  habitante
-W  habitante trabajando
+@  habitante
+&  habitante trabajando
 z  durmiendo
-Y  crisis emocional
+!  alerta o crisis
 X  criatura hostil
-!  animal cazando o combatiendo
+
+EDIFICIOS
+C  carpintería    M  albañilería
+K  cocina         F  forja
+W  pozo           O  almacén de comida
+B  dormitorio     R  barracas
+*  fogata
 
 OBJETOS
 %  comida o cuerpo
