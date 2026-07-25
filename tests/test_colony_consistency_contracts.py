@@ -353,7 +353,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
 
     def test_legend_matches_current_runtime_symbols(self):
         self.assertIn("func _build_current_legend_text", self.renderer)
-        for current_symbol in ('▣  árbol', 'd / w  habitante', 'O  cofre', 'F3            diagnóstico'):
+        for current_symbol in ('♣  árbol', '@  habitante', 'O  cofre', 'F3            diagnóstico'):
             self.assertIn(current_symbol, self.renderer)
         self.assertNotIn("T : Arbol", self.renderer)
 
@@ -557,6 +557,16 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("posmod(simulation_tick + id, 12) == 0", self.dwarf)
         self.assertIn("if autonomous_decision_due:", self.dwarf)
         self.assertIn("_move_toward(world, path.back())", self.dwarf)
+
+    def test_ascii_language_is_semantic_and_low_noise(self):
+        self.assertIn('TileType.TREE: "\\u2663"', self.world)
+        self.assertIn('TileType.GRASS: ","', self.world)
+        self.assertIn('"natural_outcrop", false', self.world)
+        self.assertIn('return "\\u25B2"', self.world)
+        self.assertIn('return "@"', self.dwarf)
+        self.assertIn('return "&"', self.dwarf)
+        self.assertIn("▲  afloramiento de roca minable", self.renderer)
+        self.assertIn("EDIFICIOS", self.renderer)
 
 
 if __name__ == "__main__":
