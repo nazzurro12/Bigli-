@@ -617,6 +617,8 @@ func _spawn_item(pos: Vector3i, iname: String, itype: String, mat: int, glyph: S
 
 # ---- CONSTRUCTION ----
 func build_wall(pos: Vector3i, mat_id: int = MatType.CONSTRUCTION) -> bool:
+	if get_tile(pos) == TileType.CONSTRUCTED_WALL:
+		return true
 	if is_floor(pos) or is_open_space(pos):
 		var old_t = get_tile(pos)
 		set_tile(pos, TileType.CONSTRUCTED_WALL)
@@ -632,7 +634,11 @@ func build_wall(pos: Vector3i, mat_id: int = MatType.CONSTRUCTION) -> bool:
 	return false
 
 func build_floor(pos: Vector3i, mat_id: int = MatType.CONSTRUCTION) -> bool:
-	if is_open_space(pos) or is_wall(pos):
+	if get_tile(pos) == TileType.CONSTRUCTED_FLOOR:
+		return true
+	# Un suelo construido reemplaza pasto, tierra, arena, roca excavada u otro
+	# suelo natural. Antes solo aceptaba vacío/muro y fallaba en toda vivienda.
+	if is_open_space(pos) or is_wall(pos) or is_floor(pos):
 		set_tile(pos, TileType.CONSTRUCTED_FLOOR)
 		set_material(pos, mat_id)
 		set_revealed(pos, true)
