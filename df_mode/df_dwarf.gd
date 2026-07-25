@@ -1164,8 +1164,8 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 	if main_node != null and "_game_hour" in main_node:
 		hour = main_node._game_hour
 
-	var is_sleep_time = (hour >= 22 or hour < 5)
-	var is_recreation_time = (hour >= 18 and hour < 22)
+	var is_sleep_time = (hour >= 22 or hour < 6)
+	var is_recreation_time = (hour >= 14 and hour < 22)
 	var is_meal_time = (hour == 12 or hour == 6 or hour == 18)
 
 	# PRIORIDAD 1: Necesidades de supervivencia críticas
@@ -1185,7 +1185,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 	# PRIORIDAD 2: Descanso nocturno programado
 	if is_sleep_time:
 		if fatigue > 0.3 or current_job == null:
-			if _try_sleep(world):
+			if _try_sleep(world, true):
 				update_emotions()
 				return
 
@@ -1315,6 +1315,27 @@ func _tick_persistent_autonomy(world, minute_ticked: bool) -> bool:
 		autonomous_plan_cooldown = 10
 		return true
 
+	if DFAutonomousPlan.is_failed(autonomous_plan):
+		var failed_reason: String = str(autonomous_plan.get("last_failure", "No pudo continuar"))
+		autonomous_plan_history.append({
+			"goal": autonomous_goal,
+			"reason": autonomous_reason,
+			"failed": true,
+			"failure": failed_reason,
+			"completed_at": Time.get_ticks_msec(),
+		})
+		if autonomous_plan_history.size() > 12:
+			autonomous_plan_history.pop_front()
+		current_task = "Reconsiderando: %s" % failed_reason
+		autonomous_plan = {}
+		autonomous_goal = ""
+		autonomous_reason = ""
+		autonomous_target = Vector3i(-1, -1, -1)
+		path.clear()
+		path_index = 0
+		autonomous_plan_cooldown = 15
+		return true
+
 	return _execute_autonomous_plan_step(world)
 
 func _create_autonomous_plan(world) -> void:
@@ -1371,13 +1392,17 @@ func _execute_autonomous_plan_step(world) -> bool:
 			if tile_pos == target:
 				DFAutonomousPlan.advance(autonomous_plan)
 			else:
+				var before_move: Vector3i = tile_pos
 				_move_toward(world, target)
+				_record_plan_movement_result(before_move)
 			return true
 		"move_adjacent":
 			if _plan_distance(tile_pos, target) <= 1:
 				DFAutonomousPlan.advance(autonomous_plan)
 			else:
+				var before_adjacent_move: Vector3i = tile_pos
 				_move_toward(world, target)
+				_record_plan_movement_result(before_adjacent_move)
 			return true
 		"stairs_down":
 			var tile_type: int = world.get_tile(target)
@@ -1445,6 +1470,19 @@ func _execute_autonomous_plan_step(world) -> bool:
 	DFAutonomousPlan.fail_step(autonomous_plan, "Paso de plan desconocido: %s" % action)
 	autonomous_plan["state"] = "completed"
 	return true
+
+func _record_plan_movement_result(before_move: Vector3i) -> void:
+	if autonomous_plan.is_empty():
+		return
+	var step: Dictionary = DFAutonomousPlan.current_step(autonomous_plan)
+	if tile_pos != before_move:
+		step["blocked_attempts"] = 0
+		return
+	var blocked_attempts: int = int(step.get("blocked_attempts", 0)) + 1
+	step["blocked_attempts"] = blocked_attempts
+	if blocked_attempts >= 8:
+		DFAutonomousPlan.fail_step(autonomous_plan, "No existe una ruta practicable al objetivo")
+		step["blocked_attempts"] = 0
 
 func _has_tool_named(tokens: Array) -> bool:
 	var weapon_lower: String = equipped_weapon.to_lower()
@@ -2617,8 +2655,8 @@ func _drink_from_splatters(world) -> bool:
 			return true
 	return false
 
-func _try_sleep(world) -> bool:
-	if fatigue <= 0.82:
+func _try_sleep(world, scheduled: bool = false) -> bool:
+	if not scheduled and fatigue <= 0.82:
 		return false
 
 	# Buscar y reclamar cama si no tiene una
@@ -2627,11 +2665,12 @@ func _try_sleep(world) -> bool:
 		if bed_pos.x >= 0:
 			_claim_bed(world, bed_pos)
 
-	# Si tiene cama y no está extremadamente exhausto, caminar hacia ella primero
-	if preferred_bed.x >= 0 and fatigue < 0.96:
+	# Durante el horario nocturno siempre intenta llegar a su cama. Solo una
+	# emergencia de agotamiento permite quedarse dormido antes de alcanzarla.
+	if preferred_bed.x >= 0 and (scheduled or fatigue < 0.96):
 		var dist_to_bed = abs(tile_pos.x - preferred_bed.x) + abs(tile_pos.z - preferred_bed.z)
-		if dist_to_bed > 0:
-			current_task = "Yendo a dormir"
+		if dist_to_bed > 1 or tile_pos.y != preferred_bed.y:
+			current_task = "Yendo a su cama"
 			_move_toward(world, preferred_bed)
 			return true
 
@@ -3137,7 +3176,20 @@ func _move_toward(world, target: Vector3i) -> void:
 		if current_job != null:
 			current_job.state = DFJob.JobState.CANCELLED
 			current_job = null
-		current_task = "idle"
+		if operating_workshop != null:
+			operating_workshop.unassign_dwarf()
+			operating_workshop = null
+		if not autonomous_plan.is_empty():
+			DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada durante demasiado tiempo")
+		if current_task == "Yendo a su cama":
+			# La cama reclamada no es utilizable: liberarla para no bloquear a
+			# toda la colonia y descansar provisionalmente donde haya espacio.
+			preferred_bed = Vector3i(-1, -1, -1)
+			claimed_bed = Vector3i(-1, -1, -1)
+			is_sleeping = true
+			current_task = "Durmiendo sin cama"
+		else:
+			current_task = "Recalculando ruta"
 		path.clear()
 		path_index = 0
 		stuck_counter = 0
