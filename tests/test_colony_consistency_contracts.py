@@ -355,6 +355,12 @@ class ColonyConsistencyContracts(unittest.TestCase):
             self.assertIn(current_symbol, self.renderer)
         self.assertNotIn("T : Arbol", self.renderer)
 
+    def test_unavailable_menus_are_disabled_instead_of_silently_inert(self):
+        self.assertIn("func _sync_classic_control_availability", self.renderer)
+        self.assertIn("classic_menu_buttons[2].disabled = not playing", self.renderer)
+        self.assertIn("classic_menu_buttons[3].disabled = not playing", self.renderer)
+        self.assertIn("file_popup.set_item_disabled(0, not playing)", self.renderer)
+
 
 if __name__ == "__main__":
     unittest.main()
