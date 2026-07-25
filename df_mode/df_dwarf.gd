@@ -1269,7 +1269,15 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		if _tick_persistent_autonomy(world, minute_ticked):
 			update_emotions()
 			return
-		tick_autonomous_survival(world)
+		# Las necesidades críticas y los trabajos siguen respondiendo cada tick,
+		# pero las búsquedas ambientales costosas se reparten entre habitantes.
+		# Si ya existe una ruta, el movimiento continúa sin volver a decidir.
+		var simulation_tick: int = int(world.get_meta("simulation_tick_total", 0))
+		var autonomous_decision_due: bool = posmod(simulation_tick + id, 12) == 0
+		if autonomous_decision_due:
+			tick_autonomous_survival(world)
+		elif not path.is_empty() and path_index < path.size():
+			_move_toward(world, path.back())
 
 	update_emotions()
 
