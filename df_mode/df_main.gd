@@ -2378,6 +2378,7 @@ func _build_initial_settlement(center: Vector3i) -> void:
 	var warehouse_built: bool = _build_large_initial_warehouse(Vector3i(hx, sy, hz), rng)
 	if not warehouse_built:
 		add_message("ADVERTENCIA: no se encontró una zona plana para el almacén 20x20.")
+	_ensure_basic_sanitation()
 
 	# --- Templo religioso completo (3x3), también validado como una sola pieza ---
 	var temple_pos := _find_safe_house_origin(Vector3i(hx, sy, hz + 12), utility_template, used_house_origins)
@@ -2703,6 +2704,39 @@ func _reconcile_storage_containers() -> void:
 			continue
 		stored_item.is_in_stockpile = true
 		stored_item.put_in_container(target_container)
+
+func _ensure_basic_sanitation() -> void:
+	if world == null:
+		return
+	var existing_latrines: int = 0
+	for existing_building: Variant in world.buildings:
+		if existing_building is DFBuilding and existing_building.type == DFBuilding.BuildingType.LATRINE:
+			existing_latrines += 1
+	if existing_latrines >= 4:
+		return
+	var center_value: Variant = world.get_meta("settlement_center", settlement_center)
+	var center: Vector3i = center_value if center_value is Vector3i else settlement_center
+	var offsets: Array[Vector2i] = [
+		Vector2i(-7, -7), Vector2i(7, -7), Vector2i(-7, 7), Vector2i(7, 7),
+		Vector2i(-10, 0), Vector2i(10, 0), Vector2i(0, -10), Vector2i(0, 10)
+	]
+	for sanitation_offset: Vector2i in offsets:
+		if existing_latrines >= 4:
+			break
+		var sanitation_x: int = center.x + sanitation_offset.x
+		var sanitation_z: int = center.z + sanitation_offset.y
+		if sanitation_x < 2 or sanitation_x >= world.width - 2 or sanitation_z < 2 or sanitation_z >= world.depth - 2:
+			continue
+		var sanitation_y: int = world.get_surface_height(sanitation_x, sanitation_z)
+		var sanitation_position := Vector3i(sanitation_x, sanitation_y, sanitation_z)
+		if world.is_water(sanitation_position) or world.is_blocked(sanitation_position):
+			continue
+		world.set_tile(sanitation_position, DFWorld.TileType.CONSTRUCTED_FLOOR)
+		world.set_material(sanitation_position, DFWorld.MatType.STONE)
+		var latrine := DFBuilding.new(DFBuilding.BuildingType.LATRINE, sanitation_position)
+		latrine.sanitation_capacity = 20.0
+		world.buildings.append(latrine)
+		existing_latrines += 1
 
 func _find_safe_settlement_center(preferred: Vector2i) -> Vector3i:
 	if world == null:
