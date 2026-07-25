@@ -191,6 +191,12 @@ var needs: Dictionary = {}
 var mood: int = MoodState.NORMAL
 var mood_counter: int = 0
 var tantrum_destruction: int = 0
+var crisis_pressure: float = 0.0
+var last_crisis_evaluation_minute: int = -1
+var crisis_reason: String = ""
+var berserk_bonus_applied: bool = false
+const CRISIS_GRACE_MINUTES: int = 1440
+const CRISIS_PRESSURE_REQUIRED: float = 360.0
 
 var profession: int = Profession.MINER
 var appointed_position: String = ""
@@ -441,24 +447,21 @@ func modify_relationship(other_id: int, delta: float) -> void:
 func update_emotions() -> void:
 	var stress_factor = stress
 	var need_penalty = 0.0
+	var critical_needs = 0
 	for n in needs.values():
 		if n > 0.7:
 			need_penalty += n * 0.1
+		if n > 0.85:
+			critical_needs += 1
 
 	var total_unhappiness = stress_factor * 0.3 + need_penalty + (1.0 - happiness) * 0.5
 
 	if total_unhappiness > 0.8:
 		current_emotion = Emotion.ANGRY
 		emotion_intensity = total_unhappiness
-		if mood != MoodState.BESERK and randi() % 100 < int(total_unhappiness * 30):
-			mood = MoodState.TANTRUM if randi() % 2 == 0 else MoodState.BESERK
-			mood_counter = 50 + randi() % 100
 	elif total_unhappiness > 0.5:
 		current_emotion = Emotion.SAD
 		emotion_intensity = total_unhappiness
-		if randi() % 100 < 5:
-			mood = MoodState.MELANCHOLY
-			mood_counter = 100 + randi() % 200
 	elif total_unhappiness < 0.2 and happiness > 0.7:
 		current_emotion = Emotion.HAPPY
 		emotion_intensity = 1.0 - total_unhappiness
@@ -466,7 +469,44 @@ func update_emotions() -> void:
 		current_emotion = Emotion.CONTENT
 		emotion_intensity = 0.5
 
-	if stress < 0.1 and mood != MoodState.NORMAL:
+	# Las crisis son consecuencias de privaciones graves sostenidas, no una
+	# lotería ejecutada varias veces por segundo.
+	if simulation_minute == last_crisis_evaluation_minute:
+		return
+	last_crisis_evaluation_minute = simulation_minute
+	var severe_distress = stress >= 0.80 and happiness <= 0.30 and critical_needs >= 2
+	if severe_distress:
+		crisis_pressure = minf(CRISIS_PRESSURE_REQUIRED * 2.0, crisis_pressure + 1.0)
+		crisis_reason = "estrés extremo y %d necesidades críticas" % critical_needs
+	else:
+		crisis_pressure = maxf(0.0, crisis_pressure - 2.0)
+		if crisis_pressure <= 0.0:
+			crisis_reason = ""
+
+	if (
+		mood == MoodState.NORMAL
+		and simulation_minute >= CRISIS_GRACE_MINUTES
+		and crisis_pressure >= CRISIS_PRESSURE_REQUIRED
+	):
+		var violent_disposition = get_trait(PersonalityTrait.VIOLENCE)
+		var anger_disposition = get_trait(PersonalityTrait.ANGER)
+		var can_go_berserk = violent_disposition >= 0.85 and anger_disposition >= 0.80 and stress >= 0.95
+		mood = MoodState.BESERK if can_go_berserk and randf() < 0.08 else MoodState.TANTRUM
+		mood_counter = 120
+		crisis_pressure = CRISIS_PRESSURE_REQUIRED * 0.5
+	elif (
+		mood == MoodState.NORMAL
+		and simulation_minute >= CRISIS_GRACE_MINUTES
+		and total_unhappiness > 0.65
+		and crisis_pressure >= CRISIS_PRESSURE_REQUIRED * 0.75
+	):
+		mood = MoodState.MELANCHOLY
+		mood_counter = 180
+		crisis_pressure *= 0.5
+
+	if stress < 0.1 and crisis_pressure <= 0.0 and mood in [
+		MoodState.TANTRUM, MoodState.BESERK, MoodState.MELANCHOLY
+	]:
 		mood = MoodState.NORMAL
 		mood_counter = 0
 
@@ -990,22 +1030,28 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 							world.combat_system._add_log(msg)
 							other.happiness = clampf(other.happiness - 0.05, 0.0, 1.0)
 						break
-		mood_counter -= 1
+		if minute_ticked:
+			mood_counter -= 1
 		if mood_counter <= 0:
 			mood = MoodState.NORMAL
 			add_thought("Se calmó tras desahogar su frustración.", 0.05)
 		return
 
 	if mood == MoodState.BESERK:
-		combat_skill += 0.5
-		strength += 1.0
+		if not berserk_bonus_applied:
+			combat_skill += 0.5
+			strength += 1.0
+			berserk_bonus_applied = true
 		speed *= 1.5
 		current_task = "¡BESERK! (Atacando todo)"
-		mood_counter -= 1
+		if minute_ticked:
+			mood_counter -= 1
 		if mood_counter <= 0:
 			mood = MoodState.NORMAL
-			combat_skill = maxf(1.0, combat_skill - 0.5)
-			strength = maxf(5.0, strength - 1.0)
+			if berserk_bonus_applied:
+				combat_skill = maxf(1.0, combat_skill - 0.5)
+				strength = maxf(5.0, strength - 1.0)
+				berserk_bonus_applied = false
 			add_thought("La furia berserker se disipó. Está agotado.", -0.05)
 		return
 
@@ -1013,7 +1059,8 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		if randi() % 10 == 0:
 			add_thought("Se siente vacío y sin propósito.", -0.05)
 			current_task = "Melancólico (meditando)"
-		mood_counter -= 1
+		if minute_ticked:
+			mood_counter -= 1
 		if mood_counter <= 0:
 			mood = MoodState.NORMAL
 		return
@@ -1602,19 +1649,13 @@ func _store_items(world: Object) -> void:
 		current_task = "idle"
 		return
 
-	var is_on_food_store = false
-	for b in world.buildings:
-		if b.type == DFBuilding.BuildingType.FOOD_STORE and b.tile_pos == tile_pos:
-			is_on_food_store = true
-			break
-
 	for sp in world.stockpiles:
-		if sp.has_tile(tile_pos) and not sp._has_item_at(world, tile_pos):
+		if sp.has_tile(tile_pos) and sp._tile_has_capacity(world, tile_pos):
 			var item = inventory.pop_back()
 			item.tile_pos = tile_pos
 			item.is_in_stockpile = true
-			if is_on_food_store:
-				item.is_inside_container = true
+			item.carried_by_id = -1
+			_put_item_in_container_at(world, item, tile_pos)
 			world.add_entity(item)
 			current_task = "idle"
 			needs_display_update = true
@@ -1637,13 +1678,8 @@ func _store_items(world: Object) -> void:
 			var item_1352 = inventory.pop_back()
 			item_1352.tile_pos = tile_pos
 			item_1352.is_in_stockpile = true
-			var is_on_fs = false
-			for b_1356 in world.buildings:
-				if b_1356.type == DFBuilding.BuildingType.FOOD_STORE and b_1356.tile_pos == tile_pos:
-					is_on_fs = true
-					break
-			if is_on_fs:
-				item_1352.is_inside_container = true
+			item_1352.carried_by_id = -1
+			_put_item_in_container_at(world, item_1352, tile_pos)
 			world.add_entity(item_1352)
 			current_task = "idle"
 			needs_display_update = true
@@ -1975,6 +2011,7 @@ func _satisfy_needs(world) -> bool:
 		if hunger > food_threshold and item.is_edible:
 			body.ingested_substances["food"] = body.ingested_substances.get("food", 0.0) + item.nutrition * 0.5
 			needs[Need.FOOD] = maxf(0.0, needs[Need.FOOD] - item.nutrition * 0.5)
+			hunger = maxf(0.0, hunger - item.nutrition)
 			inventory.remove_at(i)
 			ate = true
 			current_task = "Comiendo"
@@ -1987,6 +2024,7 @@ func _satisfy_needs(world) -> bool:
 		elif thirst > drink_threshold and item.is_drink:
 			body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + item.nutrition * 0.5
 			needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - item.nutrition * 0.5)
+			thirst = maxf(0.0, thirst - maxf(0.35, item.nutrition))
 			inventory.remove_at(i)
 			drank = true
 			current_task = "Bebiendo"
@@ -2056,6 +2094,10 @@ func _satisfy_needs(world) -> bool:
 		var dist = abs(tile_pos.x - target.tile_pos.x) + abs(tile_pos.z - target.tile_pos.z) + abs(tile_pos.y - target.tile_pos.y) * 2
 		if dist <= 1:
 			inventory.append(target)
+			target.carried_by_id = id
+			target.is_in_stockpile = false
+			target.is_inside_container = false
+			target.container_id = -1
 			world.remove_entity(target)
 			needs_display_update = true
 			return false
@@ -3978,22 +4020,28 @@ func _execute_tan_hide_job(world) -> bool:
 	return true
 
 func _execute_store_in_container_job(world) -> bool:
+	var carried_food = null
+	for item in inventory:
+		if item.is_food or item.is_meat or item.is_drink or item.item_type == "fish":
+			carried_food = item
+			break
 	var target_food = null
 	var best_dist = 999999
-	for ent in world.entities:
-		if ent is DFItem and (ent.is_food or ent.is_meat) and not ent.is_inside_container and not ent.is_decayed:
-			var already_in_sp = false
-			for sp in world.stockpiles:
-				if sp.has_tile(ent.tile_pos):
-					already_in_sp = true
-					break
-			if already_in_sp:
-				continue
-			var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z)
-			if d < best_dist:
-				best_dist = d
-				target_food = ent
-	if target_food != null:
+	if carried_food == null:
+		for ent in world.entities:
+			if ent is DFItem and (ent.is_food or ent.is_meat or ent.is_drink or ent.item_type == "fish") and not ent.is_inside_container and not ent.is_decayed:
+				var already_in_sp = false
+				for sp in world.stockpiles:
+					if sp.has_tile(ent.tile_pos):
+						already_in_sp = true
+						break
+				if already_in_sp:
+					continue
+				var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z)
+				if d < best_dist:
+					best_dist = d
+					target_food = ent
+	if carried_food == null and target_food != null:
 		var dist = abs(tile_pos.x - target_food.tile_pos.x) + abs(tile_pos.z - target_food.tile_pos.z)
 		if dist > 1:
 			_move_toward(world, target_food.tile_pos)
@@ -4001,29 +4049,27 @@ func _execute_store_in_container_job(world) -> bool:
 			if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
 			return false
 		inventory.append(target_food)
+		target_food.carried_by_id = id
+		target_food.is_in_stockpile = false
 		world.remove_entity(target_food)
 		needs_display_update = true
 		current_task = "Recogiendo comida para almacenar"
 		return false
-	var carried_food = null
-	for item in inventory:
-		if item.is_food or item.is_meat:
-			carried_food = item
-			break
 	if carried_food == null:
 		return false
 	var best_fs_pos = Vector3i(-1, -1, -1)
 	var best_fs_dist = 999999
 	for b in world.buildings:
 		if b.type == DFBuilding.BuildingType.FOOD_STORE:
+			var container = _find_container_at(world, b.tile_pos)
+			if container == null or not container.has_container_space(carried_food):
+				continue
 			var d_3722 = abs(b.tile_pos.x - tile_pos.x) + abs(b.tile_pos.z - tile_pos.z)
 			if d_3722 < best_fs_dist:
 				best_fs_dist = d_3722
 				best_fs_pos = b.tile_pos
 	if best_fs_pos.y == -1:
-		carried_food.tile_pos = tile_pos
-		world.add_entity(carried_food)
-		inventory.erase(carried_food)
+		current_task = "Esperando espacio de almacenamiento"
 		return false
 	var dist_to_fs = abs(tile_pos.x - best_fs_pos.x) + abs(tile_pos.z - best_fs_pos.z)
 	if dist_to_fs > 1:
@@ -4032,11 +4078,33 @@ func _execute_store_in_container_job(world) -> bool:
 		if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
 		return false
 	carried_food.tile_pos = best_fs_pos
-	carried_food.is_inside_container = true
+	carried_food.is_in_stockpile = true
+	carried_food.carried_by_id = -1
+	_put_item_in_container_at(world, carried_food, best_fs_pos)
 	world.add_entity(carried_food)
 	inventory.erase(carried_food)
 	add_thought("Guardó " + carried_food.name + " en el almacén de comida.", 0.04)
 	needs_display_update = true
+	return true
+
+func _find_container_at(world: Object, pos: Vector3i):
+	for entity in world.entities:
+		if (
+			entity is DFItem
+			and entity.is_container
+			and entity.tile_pos == pos
+			and entity.contained_volume < entity.container_volume
+		):
+			return entity
+	return null
+
+func _put_item_in_container_at(world: Object, item: DFItem, pos: Vector3i) -> bool:
+	item.is_inside_container = false
+	item.container_id = -1
+	var container = _find_container_at(world, pos)
+	if container == null or not container.has_container_space(item):
+		return false
+	item.put_in_container(container)
 	return true
 
 func _execute_collect_job(world, item_type_to_collect: String) -> bool:
@@ -4100,6 +4168,7 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 		else:
 			# Recoger el item
 			inventory.append(target_item)
+			target_item.carried_by_id = id
 			world.remove_entity(target_item)
 			add_thought("Recogio un " + target_item.name + " para almacenar.", 0.02)
 			current_task = "Recolectando " + target_item.name
@@ -4146,6 +4215,10 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 	else:
 		# Depositar en la posición destino
 		carried_item.tile_pos = target_drop_pos
+		carried_item.carried_by_id = -1
+		carried_item.is_in_stockpile = not is_exterior_drop
+		if not is_exterior_drop:
+			_put_item_in_container_at(world, carried_item, target_drop_pos)
 		world.add_entity(carried_item)
 		inventory.erase(carried_item)
 		if is_exterior_drop:
