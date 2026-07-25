@@ -818,6 +818,24 @@ func _apply_weather_effects() -> void:
 		_wind_spread_pathogens()
 	_wind_evaporate_splatters()
 
+func reconcile_seasonal_weather() -> void:
+	if current_season == Season.WINTER:
+		return
+	if current_weather in [WeatherType.SNOW, WeatherType.BLIZZARD]:
+		current_weather = WeatherType.RAIN if humidity >= 0.55 else WeatherType.CLOUDY
+		precipitation_intensity = 0.35 if current_weather == WeatherType.RAIN else 0.0
+	for position_value: Variant in tiles.keys():
+		if not (position_value is Vector3i):
+			continue
+		var position: Vector3i = position_value
+		if get_tile(position) != TileType.SNOW:
+			continue
+		set_tile(position, TileType.GRASS)
+		set_material(position, MatType.SOIL)
+		var seasonal_data: Dictionary = tile_data.get(position, {})
+		seasonal_data.erase("snow_cover")
+		tile_data[position] = seasonal_data
+
 func _apply_rain() -> void:
 	for z in range(depth):
 		for x in range(width):
