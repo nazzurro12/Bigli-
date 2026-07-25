@@ -391,6 +391,21 @@ func _draw_application_frame(rect: Rect2) -> void:
 	draw_line(Vector2(outer.position.x + 3, menu_y + 17), Vector2(outer.end.x - 3, menu_y + 17),
 		UI_CLASSIC_SHADOW, 1.0)
 
+func _draw_fullscreen_desktop_shell(caption: String, status: String) -> void:
+	var viewport_rect := Rect2(Vector2.ZERO, size)
+	draw_rect(Rect2(0, 0, size.x, 4), UI_CLASSIC_LIGHT, true)
+	draw_rect(Rect2(0, 0, 4, size.y), UI_CLASSIC_LIGHT, true)
+	draw_rect(Rect2(0, size.y - 4, size.x, 4), UI_CLASSIC_SHADOW, true)
+	draw_rect(Rect2(size.x - 4, 0, 4, size.y), UI_CLASSIC_SHADOW, true)
+	_draw_classic_titlebar(Rect2(4, 4, size.x - 8, 24), caption)
+	draw_rect(Rect2(4, 28, size.x - 8, 20), UI_CLASSIC_FACE, true)
+	draw_string(_font, Vector2(12, 42), "Archivo   Ver   Simulación   Herramientas   Ayuda",
+		HORIZONTAL_ALIGNMENT_LEFT, size.x - 24, 10, UI_CLASSIC_TEXT)
+	var status_rect := Rect2(5, size.y - 25, size.x - 10, 20)
+	_draw_classic_bevel(status_rect, UI_CLASSIC_FACE, true)
+	draw_string(_font, Vector2(11, size.y - 10), status,
+		HORIZONTAL_ALIGNMENT_LEFT, size.x - 22, 9, UI_CLASSIC_TEXT)
+
 func _apply_night_lighting(color: Color) -> Color:
 	# Sin filtro global de noche. La hora sigue visible en el HUD, pero los
 	# colores del mapa permanecen nítidos y con su brillo original.
@@ -506,21 +521,27 @@ func _draw() -> void:
 		match state:
 			0: # GameState.SETTINGS_MENU
 				_draw_settings_menu()
+				_draw_fullscreen_desktop_shell("Bigli - Crear un mundo", "Listo")
 				return
 			1: # GameState.GENERATING_WORLD
 				_draw_generating_screen()
+				_draw_fullscreen_desktop_shell("Bigli - Generador de mundos", "Procesando simulación histórica...")
 				return
 			2: # GameState.MODE_SELECT
 				_draw_mode_select_menu()
+				_draw_fullscreen_desktop_shell("Bigli - Seleccionar modo", "Seleccione una opción para continuar")
 				return
 			3: # GameState.EMBARK_MAP_SELECT
 				_draw_embark_map_select()
+				_draw_fullscreen_desktop_shell("Bigli - Ubicación de expedición", "Seleccione una región del mapa")
 				return
 			4: # GameState.EMBARK_PREPARE
 				_draw_embark_prepare()
+				_draw_fullscreen_desktop_shell("Bigli - Preparar expedición", "Configure habitantes y suministros")
 				return
 			6: # GameState.LOADING_PLAYING
 				_draw_loading_playing_screen()
+				_draw_fullscreen_desktop_shell("Bigli - Cargando colonia", "Espere mientras se prepara el asentamiento")
 				return
 
 	var legends_active = false
