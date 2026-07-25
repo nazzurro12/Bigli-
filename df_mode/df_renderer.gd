@@ -267,6 +267,9 @@ const TUTORIAL_STEPS: Array = [
 
 var legend_panel: Panel = null
 var legend_btn: Button = null
+var classic_title_label: Label = null
+var classic_menu_buttons: Array[MenuButton] = []
+var classic_window_buttons: Array[Button] = []
 
 
 func _ready() -> void:
@@ -274,6 +277,7 @@ func _ready() -> void:
 	_font = ThemeDB.fallback_font
 	_char_size = Vector2(16, 16)
 	_apply_classic_control_theme()
+	_create_functional_classic_chrome()
 
 	# Creacion de Leyenda interactiva (Lado Izquierdo)
 	legend_panel = Panel.new()
@@ -282,13 +286,15 @@ func _ready() -> void:
 	legend_panel.anchor_top = 0.1
 	legend_panel.anchor_right = 0.0
 	legend_panel.anchor_bottom = 0.9
-	legend_panel.offset_right = 250
+	legend_panel.offset_right = 325
 	legend_panel.visible = false
 	add_child(legend_panel)
 	
 	var legend_lbl = Label.new()
-	legend_lbl.text = "LEYENDA\n\n# : Muro (Gris)\n. : Suelo\n= : Agua\nT : Arbol\n\nITEMS & RECURSOS\nb : Cama de madera\nc : Cofre / Almacen\n¤ : Fogata encendida\n* : Cenizas de fogata\n% : Plump Helmet (Comida)\n~ : Alcohol / Bebida\n═ : Tronco de Madera\n■ : Bloque de Piedra\n/ : Pico de Minero\n\\ : Hacha de Leñador\n\nCONTROLES (Dios)\nFlechas: Camara\n1: Minar\n2: Talar\n3: Muro\n4: Suelo\nF: Seguir aldeano\nP: Poseer aldeano seguido\nQ: Salir de posesión\nESC: Cerrar una capa / Opciones"
+	legend_lbl.text = _build_current_legend_text()
 	legend_lbl.position = Vector2(10, 10)
+	legend_lbl.size = Vector2(300, 680)
+	legend_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	legend_panel.add_child(legend_lbl)
 	
 	legend_btn = Button.new()
@@ -313,6 +319,163 @@ func _ready() -> void:
 	legend_btn.offset_top = -60
 	legend_btn.offset_right = 26
 	legend_btn.offset_bottom = 60
+
+func _build_current_legend_text() -> String:
+	return """LEYENDA ACTUAL
+
+TERRENO
+#  muro natural
+.  suelo o tierra
+"  pasto
+▣  árbol
+~  agua profunda
+=  agua poco profunda o puente
+•  arena
+∙  nieve
+░  hielo, suelo de piedra o camino
+▒  parcela cultivable
+█  magma, fuego o muro construido
+< > □  escaleras
+
+HABITANTES Y ANIMALES
+d / w  habitante
+W  habitante trabajando
+z  durmiendo
+Y  crisis emocional
+X  criatura hostil
+!  animal cazando o combatiendo
+
+OBJETOS
+%  comida o cuerpo
+~  bebida
+O  cofre o contenedor
+/  arma o herramienta
+[  armadura
+x  objeto roto
+
+CONTROLES PRINCIPALES
+WASD/Flechas  mover cámara o poseído
+Espacio       pausar
+F             seguir habitante
+P / Q         poseer / abandonar
+H             ayuda completa
+F3            diagnóstico de rendimiento
+F5 / F9       guardar / cargar ranura 0
+J             misiones
+L             crónicas"""
+
+func _create_functional_classic_chrome() -> void:
+	classic_title_label = Label.new()
+	classic_title_label.name = "ClassicTitle"
+	classic_title_label.text = "Bigli - Simulador de mundo"
+	classic_title_label.position = Vector2(11, 5)
+	classic_title_label.size = Vector2(600, 22)
+	classic_title_label.add_theme_color_override("font_color", Color.WHITE)
+	classic_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(classic_title_label)
+
+	var menu_specs: Array = [
+		["Archivo", ["Guardar|0", "Cargar|1", "-|99", "Salir|2"]],
+		["Ver", ["Leyenda actual|0", "Ayuda completa|1", "Rendimiento (F3)|2"]],
+		["Simulación", ["Pausar/Reanudar|0", "Velocidad lenta|1", "Velocidad normal|2", "Velocidad rápida|3"]],
+		["Herramientas", ["Misiones|0", "Crónicas|1", "Hablar con entidad|2"]],
+		["Ayuda", ["Controles|0", "Leyenda de símbolos|1"]],
+	]
+	var menu_x: float = 8.0
+	for menu_index in range(menu_specs.size()):
+		var spec: Array = menu_specs[menu_index]
+		var menu := MenuButton.new()
+		menu.name = "ClassicMenu%d" % menu_index
+		menu.text = str(spec[0])
+		menu.flat = true
+		menu.position = Vector2(menu_x, 29)
+		menu.size = Vector2(105 if menu_index in [2, 3] else 78, 19)
+		menu.add_theme_font_size_override("font_size", 10)
+		var popup := menu.get_popup()
+		for item_spec_value in spec[1]:
+			var item_spec: String = str(item_spec_value)
+			var parts: PackedStringArray = item_spec.split("|")
+			var item_id: int = int(parts[1])
+			if parts[0] == "-":
+				popup.add_separator()
+			else:
+				popup.add_item(parts[0], item_id)
+		popup.set_meta("classic_menu_index", menu_index)
+		popup.id_pressed.connect(_on_classic_popup_id_pressed.bind(popup))
+		add_child(menu)
+		classic_menu_buttons.append(menu)
+		menu_x += menu.size.x
+
+	var window_specs: Array = [["_", 0], ["□", 1], ["×", 2]]
+	for window_index in range(window_specs.size()):
+		var window_button := Button.new()
+		window_button.name = "ClassicWindowButton%d" % window_index
+		window_button.text = str(window_specs[window_index][0])
+		window_button.anchor_left = 1.0
+		window_button.anchor_right = 1.0
+		window_button.offset_left = -70 + window_index * 22
+		window_button.offset_right = -49 + window_index * 22
+		window_button.offset_top = 6
+		window_button.offset_bottom = 25
+		window_button.pressed.connect(_on_classic_window_button.bind(int(window_specs[window_index][1])))
+		add_child(window_button)
+		classic_window_buttons.append(window_button)
+
+func _on_classic_popup_id_pressed(item_id: int, popup: PopupMenu) -> void:
+	_on_classic_menu_pressed(int(popup.get_meta("classic_menu_index", -1)), item_id)
+
+func _on_classic_menu_pressed(menu_index: int, item_id: int) -> void:
+	match menu_index:
+		0:
+			if item_id == 0:
+				_dispatch_main_key(KEY_F5)
+			elif item_id == 1:
+				_dispatch_main_key(KEY_F9)
+			elif item_id == 2:
+				get_tree().quit()
+		1:
+			if item_id == 0:
+				legend_panel.visible = not legend_panel.visible
+			elif item_id == 1:
+				_dispatch_main_key(KEY_H)
+			elif item_id == 2:
+				performance_overlay_enabled = not performance_overlay_enabled
+		2:
+			var main_node = get_parent()
+			if item_id == 0:
+				_dispatch_main_key(KEY_SPACE)
+			elif main_node != null and "tick_interval" in main_node:
+				main_node.tick_interval = 0.20 if item_id == 1 else 0.10 if item_id == 2 else 0.05
+		3:
+			_dispatch_main_key(KEY_J if item_id == 0 else KEY_L if item_id == 1 else KEY_T)
+		4:
+			if item_id == 0:
+				_dispatch_main_key(KEY_H)
+			else:
+				legend_panel.visible = true
+	queue_redraw()
+
+func _dispatch_main_key(keycode: Key) -> void:
+	var main_node = get_parent()
+	if main_node == null or not main_node.has_method("_handle_key"):
+		return
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.pressed = true
+	main_node._handle_key(event)
+
+func _on_classic_window_button(action_id: int) -> void:
+	if action_id == 0:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MINIMIZED)
+	elif action_id == 1:
+		var current_mode := DisplayServer.window_get_mode()
+		DisplayServer.window_set_mode(
+			DisplayServer.WINDOW_MODE_WINDOWED
+			if current_mode == DisplayServer.WINDOW_MODE_MAXIMIZED
+			else DisplayServer.WINDOW_MODE_MAXIMIZED
+		)
+	else:
+		get_tree().quit()
 
 func _apply_classic_control_theme() -> void:
 	var classic_theme := Theme.new()
