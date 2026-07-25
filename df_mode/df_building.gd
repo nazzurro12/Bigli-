@@ -24,7 +24,8 @@ enum BuildingType {
 	BRIDGE,       # Puente levadizo
 	CAMPFIRE,     # Fogata
 	FOOD_STORE,   # Estante/Barrel/Caja que preserva comida
-	LATRINE       # Servicio sanitario con capacidad física limitada
+	LATRINE,      # Servicio sanitario con capacidad física limitada
+	WATER_WELL    # Pozo/cisterna comunitaria con volumen y calidad
 }
 
 const BUILDING_NAMES = {
@@ -47,6 +48,7 @@ const BUILDING_NAMES = {
 	BuildingType.CAMPFIRE: "Fogata",
 	BuildingType.FOOD_STORE: "Almacén de Comida",
 	BuildingType.LATRINE: "Letrina",
+	BuildingType.WATER_WELL: "Pozo Comunal",
 }
 
 const BUILDING_GLYPHS = {
@@ -69,6 +71,7 @@ const BUILDING_GLYPHS = {
 	BuildingType.CAMPFIRE: "¤",
 	BuildingType.FOOD_STORE: "▓",
 	BuildingType.LATRINE: "π",
+	BuildingType.WATER_WELL: "◉",
 }
 
 const BUILDING_COLORS = {
@@ -91,6 +94,7 @@ const BUILDING_COLORS = {
 	BuildingType.CAMPFIRE: Color("#FF5500"),
 	BuildingType.FOOD_STORE: Color("#BB8844"),
 	BuildingType.LATRINE: Color("#8B7355"),
+	BuildingType.WATER_WELL: Color("#4FA3D1"),
 }
 
 # Dimensiones (ancho, profundidad)
@@ -107,6 +111,7 @@ const BUILDING_SIZES = {
 	BuildingType.CAMPFIRE: Vector3i(1, 0, 1),
 	BuildingType.FOOD_STORE: Vector3i(1, 0, 1),
 	BuildingType.LATRINE: Vector3i(1, 0, 1),
+	BuildingType.WATER_WELL: Vector3i(1, 0, 1),
 }
 
 var type: int = BuildingType.WORKSHOP
@@ -116,6 +121,9 @@ var is_constructed: bool = true  # Ya construido por defecto
 var name: String = ""
 var sanitation_load: float = 0.0
 var sanitation_capacity: float = 20.0
+var water_volume: float = 0.0
+var water_capacity: float = 80.0
+var water_contamination: float = 0.0
 
 func has_sanitation_capacity(amount: float = 0.0) -> bool:
 	return type == BuildingType.LATRINE and sanitation_load + amount <= sanitation_capacity
@@ -135,6 +143,23 @@ func remove_sanitation_waste(max_amount: float) -> float:
 
 func get_sanitation_fill_ratio() -> float:
 	return sanitation_load / maxf(0.01, sanitation_capacity)
+
+func draw_water(liters: float) -> Dictionary:
+	if type != BuildingType.WATER_WELL or liters <= 0.0 or water_volume <= 0.0:
+		return {"amount": 0.0, "contamination": water_contamination}
+	var amount: float = minf(liters, water_volume)
+	water_volume -= amount
+	return {"amount": amount, "contamination": water_contamination}
+
+func recharge_water(amount: float, local_contamination: float) -> void:
+	if type != BuildingType.WATER_WELL:
+		return
+	water_volume = minf(water_capacity, water_volume + maxf(0.0, amount))
+	water_contamination = lerpf(
+		water_contamination,
+		clampf(local_contamination, 0.0, 1.0),
+		0.08
+	)
 
 func _init(b_type: int, pos: Vector3i):
 	type = b_type
