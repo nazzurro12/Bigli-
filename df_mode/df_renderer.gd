@@ -13,6 +13,7 @@ const SUBSTANCE_COLORS: Dictionary = {
 	"urine":    Color(0.75, 0.68, 0.12, 1.0),
 	"feces":    Color(0.35, 0.22, 0.10, 1.0),
 	"pathogen": Color(0.10, 0.60, 0.15, 1.0),
+	"compost": Color("#6B4F2A"),
 	"poison":   Color(0.45, 0.05, 0.65, 1.0),
 }
 
