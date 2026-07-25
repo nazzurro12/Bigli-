@@ -1985,14 +1985,39 @@ func get_carrying_capacity() -> float:
 func _try_relieve_waste(world: Object) -> bool:
 	if bladder_fill < 0.75 and bowel_fill < 0.75:
 		return false
+	var nearest_latrine = null
+	var nearest_distance: int = 2147483647
+	for building in world.buildings:
+		if building.type != DFBuilding.BuildingType.LATRINE:
+			continue
+		if not building.has_sanitation_capacity(0.12):
+			continue
+		var distance: int = abs(building.tile_pos.x - tile_pos.x) + abs(building.tile_pos.z - tile_pos.z)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_latrine = building
+	var emergency: bool = bladder_fill >= 1.0 or bowel_fill >= 1.0
+	if nearest_latrine != null and nearest_distance > 0 and not emergency:
+		current_task = "Yendo a la letrina"
+		_move_toward(world, nearest_latrine.tile_pos)
+		return true
+	var waste_amount: float = 0.03 + maxf(bladder_fill, bowel_fill) * 0.05
+	var used_latrine: bool = nearest_latrine != null and nearest_distance == 0
 	if bladder_fill >= bowel_fill:
-		world.add_splatter_substance(tile_pos, "urine", 0.03 + bladder_fill * 0.04)
 		bladder_fill = 0.0
 		current_task = "Aliviando la vejiga"
 	else:
-		world.add_splatter_substance(tile_pos, "feces", 0.04 + bowel_fill * 0.05)
 		bowel_fill = 0.0
 		current_task = "Aliviando el intestino"
+	if used_latrine:
+		if not nearest_latrine.add_sanitation_waste(waste_amount):
+			world.add_splatter_substance(tile_pos, "feces", waste_amount)
+			world.add_splatter_substance(tile_pos, "pathogen", waste_amount * 0.10)
+	else:
+		var waste_type: String = "urine" if current_task == "Aliviando la vejiga" else "feces"
+		world.add_splatter_substance(tile_pos, waste_type, waste_amount)
+		if waste_type == "feces":
+			world.add_splatter_substance(tile_pos, "pathogen", waste_amount * 0.08)
 	stress = maxf(0.0, stress - 0.02)
 	needs_display_update = true
 	return true
