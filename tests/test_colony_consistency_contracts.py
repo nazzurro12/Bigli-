@@ -15,6 +15,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
         cls.item = (ROOT / "df_mode/df_item.gd").read_text(encoding="utf-8")
         cls.building = (ROOT / "df_mode/df_building.gd").read_text(encoding="utf-8")
         cls.renderer = (ROOT / "df_mode/df_renderer.gd").read_text(encoding="utf-8")
+        cls.job = (ROOT / "df_mode/df_job.gd").read_text(encoding="utf-8")
 
     def test_crises_require_time_and_sustained_pressure(self):
         self.assertIn("CRISIS_GRACE_MINUTES: int = 1440", self.dwarf)
@@ -171,6 +172,37 @@ class ColonyConsistencyContracts(unittest.TestCase):
             self.assertGreaterEqual(self.save.count(field), 2)
         self.assertIn('"INCUBA"', self.renderer)
         self.assertIn('"RECUP"', self.renderer)
+
+    def test_cleaning_jobs_are_generated_and_executed(self):
+        self.assertIn("func _queue_sanitation_jobs", self.main)
+        self.assertIn("DFJob.JobType.CLEAN", self.main)
+        self.assertIn("world.clean_sanitary_tile", self.dwarf)
+        self.assertIn("func clean_sanitary_tile", self.world)
+        self.assertIn("clean_limit", self.main)
+
+    def test_latrines_are_emptied_into_remote_compost(self):
+        self.assertIn("EMPTY_LATRINE", self.job)
+        self.assertIn("get_sanitation_fill_ratio", self.building)
+        self.assertIn("remove_sanitation_waste", self.building)
+        self.assertIn("_find_sanitary_disposal_position", self.main)
+        self.assertIn('"compost"', self.world)
+
+    def test_sanitation_job_destination_survives_save_load(self):
+        self.assertGreaterEqual(self.save.count("disposal_pos"), 2)
+        self.assertIn("var disposal_pos: Vector3i", self.job)
+
+    def test_dirty_water_has_health_consequences_at_constant_cost(self):
+        contamination = self.world.split("func get_water_contamination", 1)[1]
+        self.assertIn('sample.get("pathogen"', contamination)
+        self.assertIn('sample.get("feces"', contamination)
+        self.assertIn("sample_positions", contamination)
+        self.assertNotIn("for entity in entities", contamination.split("return clampf", 1)[0])
+        self.assertIn("world.get_water_contamination(tile_pos)", self.dwarf)
+
+    def test_medical_care_supports_recovery_instead_of_curing_instantly(self):
+        self.assertIn("patient.disease_severity = maxf", self.dwarf)
+        self.assertIn("patient.recovery_streak +=", self.dwarf)
+        self.assertNotIn("patient.has_infection = false", self.dwarf)
 
 
 if __name__ == "__main__":
