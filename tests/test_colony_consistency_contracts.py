@@ -233,6 +233,50 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("well.recharge_water(0.12", self.main)
         self.assertIn("pathogen_exposure = minf", self.dwarf)
 
+    def test_social_information_has_sources_confidence_and_contradictions(self):
+        for field in (
+            '"confidence"',
+            '"sources"',
+            '"subject_id"',
+            '"witnessed"',
+            '"last_heard_minute"',
+        ):
+            self.assertIn(field, self.dwarf)
+        self.assertIn("Dos afirmaciones diferentes", self.dwarf)
+        self.assertIn("existing[\"confidence\"] = maxf", self.dwarf)
+
+    def test_social_memory_is_bounded_and_decays_off_hot_path(self):
+        self.assertIn("MAX_SOCIAL_BELIEFS: int = 24", self.dwarf)
+        self.assertIn("BELIEF_FORGET_DAYS: int = 30", self.dwarf)
+        self.assertIn("simulation_minute % 60 != id % 60", self.dwarf)
+        self.assertIn("social_beliefs = retained.slice", self.dwarf)
+
+    def test_relationships_are_normalized_and_have_threshold_consequences(self):
+        self.assertIn("func _normalized_relationship_value", self.dwarf)
+        self.assertIn("(value - 50.0) / 50.0", self.dwarf)
+        self.assertIn("if updated >= 0.55:", self.dwarf)
+        self.assertIn("elif updated <= -0.45:", self.dwarf)
+        self.assertIn("randf_range(0.60, 0.95)", self.main)
+        self.assertNotIn("60 + (randi() % 40)", self.main)
+
+    def test_social_cognition_survives_save_load(self):
+        for field in (
+            "social_beliefs",
+            "social_reputation",
+            "last_belief_decay_day",
+            "conversations_held",
+        ):
+            self.assertGreaterEqual(self.save.count(field), 2)
+
+    def test_conversation_uses_trust_personality_and_reciprocity(self):
+        social = self.dwarf.split("func tick_social", 1)[1].split(
+            "# ---- INSPECT ----", 1
+        )[0]
+        self.assertIn("_social_compatibility_with", social)
+        self.assertIn("speaker_honesty", social)
+        self.assertIn("modify_relationship(e.id", social)
+        self.assertIn("e.modify_relationship(id", social)
+
 
 if __name__ == "__main__":
     unittest.main()
