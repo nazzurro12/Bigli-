@@ -461,6 +461,24 @@ func _unindex_entity(e) -> void:
 	if at_pos != null:
 		at_pos.erase(e)
 
+func is_actor_occupied(pos: Vector3i, exclude = null) -> bool:
+	_rebuild_grid_if_needed()
+	var key := "%d,%d,%d" % [pos.x, pos.y, pos.z]
+	for entity_value: Variant in _entity_grid.get(key, []):
+		if entity_value == exclude or entity_value is DFItem:
+			continue
+		if entity_value.get("is_alive") != false:
+			return true
+	return false
+
+func move_entity(entity_value, new_pos: Vector3i) -> void:
+	if entity_value == null or entity_value.tile_pos == new_pos:
+		return
+	_rebuild_grid_if_needed()
+	_unindex_entity(entity_value)
+	entity_value.tile_pos = new_pos
+	_index_entity(entity_value)
+
 func add_entity(e) -> void:
 	entities.append(e)
 	_index_entity(e)
