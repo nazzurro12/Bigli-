@@ -23,7 +23,8 @@ enum BuildingType {
 	TRAP,         # Trampa
 	BRIDGE,       # Puente levadizo
 	CAMPFIRE,     # Fogata
-	FOOD_STORE    # Estante/Barrel/Caja que preserva comida
+	FOOD_STORE,   # Estante/Barrel/Caja que preserva comida
+	LATRINE       # Servicio sanitario con capacidad física limitada
 }
 
 const BUILDING_NAMES = {
@@ -45,6 +46,7 @@ const BUILDING_NAMES = {
 	BuildingType.TEMPLE: "Templo",
 	BuildingType.CAMPFIRE: "Fogata",
 	BuildingType.FOOD_STORE: "Almacén de Comida",
+	BuildingType.LATRINE: "Letrina",
 }
 
 const BUILDING_GLYPHS = {
@@ -66,6 +68,7 @@ const BUILDING_GLYPHS = {
 	BuildingType.TEMPLE: "☼",
 	BuildingType.CAMPFIRE: "¤",
 	BuildingType.FOOD_STORE: "▓",
+	BuildingType.LATRINE: "π",
 }
 
 const BUILDING_COLORS = {
@@ -87,6 +90,7 @@ const BUILDING_COLORS = {
 	BuildingType.TEMPLE: Color("#FFFFFF"),
 	BuildingType.CAMPFIRE: Color("#FF5500"),
 	BuildingType.FOOD_STORE: Color("#BB8844"),
+	BuildingType.LATRINE: Color("#8B7355"),
 }
 
 # Dimensiones (ancho, profundidad)
@@ -102,6 +106,7 @@ const BUILDING_SIZES = {
 	BuildingType.TEMPLE: Vector3i(5, 0, 5),
 	BuildingType.CAMPFIRE: Vector3i(1, 0, 1),
 	BuildingType.FOOD_STORE: Vector3i(1, 0, 1),
+	BuildingType.LATRINE: Vector3i(1, 0, 1),
 }
 
 var type: int = BuildingType.WORKSHOP
@@ -109,6 +114,17 @@ var tile_pos: Vector3i
 var size: Vector3i = Vector3i(3, 0, 3)
 var is_constructed: bool = true  # Ya construido por defecto
 var name: String = ""
+var sanitation_load: float = 0.0
+var sanitation_capacity: float = 20.0
+
+func has_sanitation_capacity(amount: float = 0.0) -> bool:
+	return type == BuildingType.LATRINE and sanitation_load + amount <= sanitation_capacity
+
+func add_sanitation_waste(amount: float) -> bool:
+	if not has_sanitation_capacity(amount):
+		return false
+	sanitation_load += maxf(0.0, amount)
+	return true
 
 func _init(b_type: int, pos: Vector3i):
 	type = b_type
