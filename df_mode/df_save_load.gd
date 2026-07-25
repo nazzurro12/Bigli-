@@ -810,7 +810,8 @@ static func _job_to_dict(job) -> Dictionary:
 		"assigned_tick": job.assigned_tick,
 		"started_tick": job.started_tick,
 		"completed_tick": job.completed_tick,
-		"cancel_reason": job.cancel_reason
+		"cancel_reason": job.cancel_reason,
+		"disposal_pos": _v3i_to_arr(job.disposal_pos)
 	}
 
 static func _dict_to_job(d: Dictionary):
@@ -838,6 +839,7 @@ static func _dict_to_job(d: Dictionary):
 	job.item_produced = d.get("item_produced", "")
 	job.item_count_produced = d.get("item_count_produced", 1)
 	job.reaction_id = d.get("reaction_id", "")
+	job.disposal_pos = _arr_to_v3i(d.get("disposal_pos", [-1, -1, -1]))
 	job.created_tick = d.get("created_tick", 0)
 	job.assigned_tick = d.get("assigned_tick", -1)
 	job.started_tick = d.get("started_tick", -1)
