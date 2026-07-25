@@ -50,6 +50,13 @@ var _legends_select_mode: bool = false
 var _chronicle_events_game: Array = []
 
 var _time_accum: float = 0.0
+var performance_metrics: Dictionary = {
+	"tick_ms": 0.0,
+	"citizens_ms": 0.0,
+	"other_systems_ms": 0.0,
+	"tick_max_ms": 0.0,
+	"samples": 0,
+}
 var _game_minute: int = 0
 var _game_hour: int = 6
 var _game_day: int = 1
@@ -1323,6 +1330,9 @@ func _run_world_generation_loop() -> void:
 func _tick() -> void:
 	if world == null:
 		return
+	var profile_tick_start: int = Time.get_ticks_usec()
+	var profile_citizens_start: int = 0
+	var profile_citizens_ms: float = 0.0
 	world._grid_version = -1  # force spatial grid rebuild this tick
 	var minute_ticked = false
 	var dwarves_count = 0
@@ -1503,6 +1513,7 @@ func _tick() -> void:
 		if _chronicle_events_game.size() > 50:
 			_chronicle_events_game.pop_front()
 
+	profile_citizens_start = Time.get_ticks_usec()
 	for e4 in world.dwarves.duplicate():
 		if e4.get("is_alive") == false:
 			continue
@@ -1699,6 +1710,18 @@ func _tick() -> void:
 							"battle_site": "las tierras de la fortaleza"
 						})
 					add_message("¡La figura histórica '%s' ha muerto! Las crónicas recordarán su fin." % e_dead.name)
+	profile_citizens_ms = float(Time.get_ticks_usec() - profile_citizens_start) / 1000.0
+	_record_performance_sample(profile_tick_start, profile_citizens_ms)
+
+func _record_performance_sample(tick_start_usec: int, citizens_ms: float) -> void:
+	var tick_ms: float = float(Time.get_ticks_usec() - tick_start_usec) / 1000.0
+	var sample_count: int = int(performance_metrics.get("samples", 0))
+	var smoothing: float = 1.0 if sample_count == 0 else 0.12
+	performance_metrics["tick_ms"] = lerpf(float(performance_metrics.get("tick_ms", tick_ms)), tick_ms, smoothing)
+	performance_metrics["citizens_ms"] = lerpf(float(performance_metrics.get("citizens_ms", citizens_ms)), citizens_ms, smoothing)
+	performance_metrics["other_systems_ms"] = lerpf(float(performance_metrics.get("other_systems_ms", 0.0)), maxf(0.0, tick_ms - citizens_ms), smoothing)
+	performance_metrics["tick_max_ms"] = maxf(float(performance_metrics.get("tick_max_ms", 0.0)) * 0.995, tick_ms)
+	performance_metrics["samples"] = sample_count + 1
 
 func _recover_orphaned_jobs() -> void:
 	if designation == null or world == null:
