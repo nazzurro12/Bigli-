@@ -16,6 +16,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
         cls.building = (ROOT / "df_mode/df_building.gd").read_text(encoding="utf-8")
         cls.renderer = (ROOT / "df_mode/df_renderer.gd").read_text(encoding="utf-8")
         cls.job = (ROOT / "df_mode/df_job.gd").read_text(encoding="utf-8")
+        cls.planet = (ROOT / "df_mode/df_planet_regions.gd").read_text(encoding="utf-8")
 
     def test_crises_require_time_and_sustained_pressure(self):
         self.assertIn("CRISIS_GRACE_MINUTES: int = 1440", self.dwarf)
@@ -379,6 +380,33 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("resident_minute_due", tick)
         self.assertNotIn("if minute_ticked or posmod(_absolute_simulation_tick", tick)
         self.assertIn("SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 12", self.main)
+
+    def test_planet_regions_wrap_longitude_but_keep_real_poles(self):
+        self.assertIn("posmod(region.x, planet_width)", self.planet)
+        self.assertIn("clampi(region.y, 0, planet_depth - 1)", self.planet)
+        self.assertIn("if direction.y < 0 and region.y <= 0", self.planet)
+        self.assertIn("if direction.y > 0 and region.y >= planet_depth - 1", self.planet)
+
+    def test_crossing_a_local_edge_streams_a_neighbor_region(self):
+        for token in (
+            "func _request_planet_transition",
+            "func _build_planet_region",
+            "func _poll_planet_transition",
+            "func _activate_planet_region",
+            "_planet_transition_thread.start",
+            "planet_region_cache[old_key] = world",
+            "planet_designation_cache[old_key] = designation",
+        ):
+            self.assertIn(token, self.main)
+        movement = self.main.split("func _try_move_possessed", 1)[1].split(
+            "func _planet_dimensions", 1
+        )[0]
+        self.assertIn("_request_planet_transition(direction)", movement)
+
+    def test_planet_region_is_visible_and_saved(self):
+        self.assertIn('"active_planet_region"', self.save)
+        self.assertIn("Planeta [%d,%d]", self.renderer)
+        self.assertIn("Región %d,%d", self.renderer)
 
 
 if __name__ == "__main__":
