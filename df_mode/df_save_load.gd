@@ -125,6 +125,12 @@ static func _item_to_dict(item) -> Dictionary:
 		"is_organic": item.is_organic,
 		"is_edible": item.is_edible,
 		"nutrition": item.nutrition,
+		"hydration": item.hydration,
+		"protein_value": item.protein_value,
+		"carbohydrate_value": item.carbohydrate_value,
+		"fat_value": item.fat_value,
+		"fiber_value": item.fiber_value,
+		"micronutrient_value": item.micronutrient_value,
 		"quality": item.quality,
 		"max_durability": item.max_durability,
 		"durability": item.durability,
@@ -187,6 +193,12 @@ static func _dict_to_item(d: Dictionary):
 	item.is_organic = d.get("is_organic", false)
 	item.is_edible = d.get("is_edible", false)
 	item.nutrition = d.get("nutrition", 0.3)
+	item.hydration = d.get("hydration", item.hydration)
+	item.protein_value = d.get("protein_value", item.protein_value)
+	item.carbohydrate_value = d.get("carbohydrate_value", item.carbohydrate_value)
+	item.fat_value = d.get("fat_value", item.fat_value)
+	item.fiber_value = d.get("fiber_value", item.fiber_value)
+	item.micronutrient_value = d.get("micronutrient_value", item.micronutrient_value)
 	item.quality = d.get("quality", 0)
 	item.quality_name = item.QUALITY_NAMES.get(item.quality, "Normal")
 	item.quality_color = item.QUALITY_COLORS.get(item.quality, Color.WHITE)
@@ -389,6 +401,21 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"socialized_recently": dwarf.socialized_recently,
 		"genome": _genome_to_dict(dwarf.genome),
 		"body_mass_kg": dwarf.body_mass_kg,
+		"meals_today": dwarf.meals_today,
+		"water_liters_today": dwarf.water_liters_today,
+		"daily_protein": dwarf.daily_protein,
+		"daily_carbohydrates": dwarf.daily_carbohydrates,
+		"daily_fat": dwarf.daily_fat,
+		"daily_fiber": dwarf.daily_fiber,
+		"daily_micronutrients": dwarf.daily_micronutrients,
+		"nutrition_quality": dwarf.nutrition_quality,
+		"bladder_fill": dwarf.bladder_fill,
+		"bowel_fill": dwarf.bowel_fill,
+		"physical_condition": dwarf.physical_condition,
+		"education_level": dwarf.education_level,
+		"chronic_health": dwarf.chronic_health,
+		"last_physiology_day": dwarf.last_physiology_day,
+		"physiology_status": dwarf.physiology_status,
 		"is_pregnant": dwarf.is_pregnant,
 		"pregnancy_progress": dwarf.pregnancy_progress,
 		"partner_id": dwarf.partner_id,
@@ -549,6 +576,21 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.socialized_recently = d.get("socialized_recently", false)
 	df.genome = _dict_to_genome(d.get("genome", {}))
 	df.body_mass_kg = d.get("body_mass_kg", 70.0)
+	df.meals_today = d.get("meals_today", 0)
+	df.water_liters_today = d.get("water_liters_today", 0.0)
+	df.daily_protein = d.get("daily_protein", 0.0)
+	df.daily_carbohydrates = d.get("daily_carbohydrates", 0.0)
+	df.daily_fat = d.get("daily_fat", 0.0)
+	df.daily_fiber = d.get("daily_fiber", 0.0)
+	df.daily_micronutrients = d.get("daily_micronutrients", 0.0)
+	df.nutrition_quality = d.get("nutrition_quality", 0.75)
+	df.bladder_fill = d.get("bladder_fill", 0.0)
+	df.bowel_fill = d.get("bowel_fill", 0.0)
+	df.physical_condition = d.get("physical_condition", 0.5)
+	df.education_level = d.get("education_level", 0.0)
+	df.chronic_health = d.get("chronic_health", 1.0)
+	df.last_physiology_day = d.get("last_physiology_day", -1)
+	df.physiology_status = d.get("physiology_status", "Estable")
 	df.is_pregnant = d.get("is_pregnant", false)
 	df.pregnancy_progress = d.get("pregnancy_progress", 0.0)
 	df.partner_id = d.get("partner_id", -1)
