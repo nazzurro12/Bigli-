@@ -948,6 +948,133 @@ static func deserialize_entity(d: Dictionary):
 		"DFCreature": return _dict_to_creature(d)
 	return null
 
+static func serialize_region_world(region_world, region_designation = null) -> Dictionary:
+	if region_world == null:
+		return {}
+	var payload: Dictionary = {
+		"width": region_world.width,
+		"depth": region_world.depth,
+		"height": region_world.height,
+		"name": region_world.world_name,
+		"world_version": region_world.world_version,
+		"active_world_region": region_world.get_meta("active_world_region", []).duplicate(),
+		"generated_world_sites": region_world.get_meta("generated_world_sites", []).duplicate(true),
+		"tiles": [],
+		"elevation": [],
+		"entities": [],
+		"buildings": [],
+		"workshops": [],
+		"stockpiles": [],
+		"designation": {},
+	}
+	var saved_positions: Dictionary = {}
+	for position in region_world.tiles.keys():
+		saved_positions[position] = true
+	for position in region_world.tile_data.keys():
+		saved_positions[position] = true
+	for position in region_world.materials.keys():
+		saved_positions[position] = true
+	for position in saved_positions.keys():
+		payload["tiles"].append({
+			"p": _v3i_to_arr(position),
+			"t": region_world.tiles.get(position, -1),
+			"m": region_world.materials.get(position, -1),
+			"td": region_world.tile_data.get(position, {}).duplicate(true),
+			"r": region_world.revealed.get(position, false),
+		})
+	for row in region_world.elevation:
+		payload["elevation"].append(row.duplicate())
+	for entity in region_world.entities:
+		var entity_data: Dictionary = serialize_entity(entity)
+		if not entity_data.is_empty():
+			payload["entities"].append(entity_data)
+	for building in region_world.buildings:
+		payload["buildings"].append(_building_to_dict(building))
+	for workshop in region_world.workshops:
+		payload["workshops"].append(_workshop_to_dict(workshop))
+	for stockpile in region_world.stockpiles:
+		payload["stockpiles"].append(_stockpile_to_dict(stockpile))
+	if region_designation != null:
+		payload["designation"] = {
+			"mode": region_designation.mode,
+			"selection_start": _v3i_to_arr(region_designation.selection_start),
+			"selection_end": _v3i_to_arr(region_designation.selection_end),
+			"is_selecting": region_designation.is_selecting,
+			"building_type_to_build": region_designation.building_type_to_build,
+			"job_queue": [],
+		}
+		for job in region_designation.job_queue:
+			payload["designation"]["job_queue"].append(_job_to_dict(job))
+	return payload
+
+static func deserialize_region_world(payload: Dictionary) -> Dictionary:
+	if payload.is_empty():
+		return {}
+	var restored_world = DFWorld.new(
+		int(payload.get("width", 256)),
+		int(payload.get("depth", 256)),
+		int(payload.get("height", 16))
+	)
+	restored_world.world_name = str(payload.get("name", ""))
+	restored_world.world_version = int(payload.get("world_version", 0))
+	restored_world.set_meta("active_world_region", payload.get("active_world_region", []).duplicate())
+	restored_world.set_meta("generated_world_sites", payload.get("generated_world_sites", []).duplicate(true))
+	for entry in payload.get("tiles", []):
+		var position := _arr_to_v3i(entry.get("p", [0, 0, 0]))
+		var tile_value: int = int(entry.get("t", -1))
+		var material_value: int = int(entry.get("m", -1))
+		if tile_value >= 0:
+			restored_world.tiles[position] = tile_value
+		if material_value >= 0:
+			restored_world.materials[position] = material_value
+		var tile_metadata: Dictionary = entry.get("td", {})
+		if not tile_metadata.is_empty():
+			restored_world.tile_data[position] = tile_metadata.duplicate(true)
+		if bool(entry.get("r", false)):
+			restored_world.revealed[position] = true
+	for row in payload.get("elevation", []):
+		restored_world.elevation.append(row.duplicate() if row is Array else [])
+	for entity_data in payload.get("entities", []):
+		var entity = deserialize_entity(entity_data)
+		if entity != null:
+			restored_world.add_entity(entity)
+	for building_data in payload.get("buildings", []):
+		restored_world.buildings.append(_dict_to_building(building_data))
+	for workshop_data in payload.get("workshops", []):
+		restored_world.workshops.append(_dict_to_workshop(workshop_data))
+	for stockpile_data in payload.get("stockpiles", []):
+		restored_world.stockpiles.append(_dict_to_stockpile(stockpile_data))
+	var restored_designation = DFDesignation.new(restored_world)
+	var designation_data: Dictionary = payload.get("designation", {})
+	if not designation_data.is_empty():
+		restored_designation.mode = int(designation_data.get("mode", 0))
+		restored_designation.selection_start = _arr_to_v3i(designation_data.get("selection_start", [-1, -1, -1]))
+		restored_designation.selection_end = _arr_to_v3i(designation_data.get("selection_end", [-1, -1, -1]))
+		restored_designation.is_selecting = bool(designation_data.get("is_selecting", false))
+		restored_designation.building_type_to_build = int(designation_data.get("building_type_to_build", 1))
+		for job_data in designation_data.get("job_queue", []):
+			restored_designation.job_queue.append(_dict_to_job(job_data))
+	return {"world": restored_world, "designation": restored_designation}
+
+static func _serialize_planet_region_cache(main) -> Dictionary:
+	var serialized: Dictionary = {}
+	for region_key in main.planet_region_cache.keys():
+		serialized[region_key] = serialize_region_world(
+			main.planet_region_cache[region_key],
+			main.planet_designation_cache.get(region_key, null)
+		)
+	return serialized
+
+static func _restore_planet_region_cache(main, serialized: Dictionary) -> void:
+	main.planet_region_cache.clear()
+	main.planet_designation_cache.clear()
+	for region_key in serialized.keys():
+		var restored: Dictionary = deserialize_region_world(serialized[region_key])
+		if restored.is_empty():
+			continue
+		main.planet_region_cache[region_key] = restored["world"]
+		main.planet_designation_cache[region_key] = restored["designation"]
+
 static func ensure_save_dir() -> void:
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
 
@@ -1134,6 +1261,7 @@ static func save_game(main) -> bool:
 			data["designation"]["job_queue"].append(_job_to_dict(j))
 	else:
 		data["designation"] = {}
+	data["planet_regions"] = _serialize_planet_region_cache(main)
 
 	var json_str = JSON.stringify(data, "", true)
 	var file = FileAccess.open(get_save_path(0), FileAccess.WRITE)
@@ -1296,8 +1424,7 @@ static func load_game(main) -> bool:
 	main.camera_pos = _arr_to_v3i(data.get("camera_pos", [64, 3, 64]))
 	var loaded_region: Array = data.get("active_planet_region", data.get("world", {}).get("active_world_region", [0, 0]))
 	main.active_planet_region = Vector2i(int(loaded_region[0]), int(loaded_region[1])) if loaded_region.size() >= 2 else Vector2i.ZERO
-	main.planet_region_cache.clear()
-	main.planet_designation_cache.clear()
+	_restore_planet_region_cache(main, data.get("planet_regions", {}))
 	main._current_cycle_follow_index = data.get("_current_cycle_follow_index", 0)
 	main._chronicle_events_game = data.get("_chronicle_events_game", []).duplicate()
 	main.generation_seed = data.get("generation_seed", -1)
@@ -1562,6 +1689,7 @@ static func _build_save_data(main) -> Dictionary:
 			data["designation"]["job_queue"].append(_job_to_dict(j))
 	else:
 		data["designation"] = {}
+	data["planet_regions"] = _serialize_planet_region_cache(main)
 	return data
 
 static func _apply_save_data(main, data: Dictionary) -> void:
@@ -1701,8 +1829,7 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	main.camera_pos = _arr_to_v3i(data.get("camera_pos", [64, 3, 64]))
 	var loaded_region: Array = data.get("active_planet_region", data.get("world", {}).get("active_world_region", [0, 0]))
 	main.active_planet_region = Vector2i(int(loaded_region[0]), int(loaded_region[1])) if loaded_region.size() >= 2 else Vector2i.ZERO
-	main.planet_region_cache.clear()
-	main.planet_designation_cache.clear()
+	_restore_planet_region_cache(main, data.get("planet_regions", {}))
 	main._current_cycle_follow_index = data.get("_current_cycle_follow_index", 0)
 	main._chronicle_events_game = data.get("_chronicle_events_game", []).duplicate()
 	main.generation_seed = data.get("generation_seed", -1)
