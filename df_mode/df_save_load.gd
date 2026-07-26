@@ -5,6 +5,8 @@ const DFCombat = preload("res://df_mode/df_combat.gd")
 const DFInvasion = preload("res://df_mode/df_invasion.gd")
 const DFMilitary = preload("res://df_mode/df_military.gd")
 const DFJobScript = preload("res://df_mode/df_job.gd")
+const DFQuestSystem = preload("res://df_mode/df_quest.gd")
+const DFCaravan = preload("res://df_mode/df_caravan.gd")
 
 const SAVE_DIR = "user://saves/"
 
@@ -21,23 +23,6 @@ static func _color_to_arr(c: Color) -> Array:
 static func _arr_to_color(a: Array) -> Color:
 	if a.size() < 4: return Color.WHITE
 	return Color(a[0], a[1], a[2], a[3])
-
-## JSON convierte las claves numéricas de Dictionary a String. Los mapas
-## indexados por enums deben recuperar claves int antes de volver a la simulación.
-static func _restore_int_keys(raw_value: Variant, defaults: Dictionary = {}) -> Dictionary:
-	var restored: Dictionary = defaults.duplicate()
-	if not (raw_value is Dictionary):
-		return restored
-	for raw_key: Variant in raw_value:
-		var normalized_key: int
-		if raw_key is int:
-			normalized_key = raw_key
-		elif raw_key is String and raw_key.is_valid_int():
-			normalized_key = raw_key.to_int()
-		else:
-			continue
-		restored[normalized_key] = raw_value[raw_key]
-	return restored
 
 static func _body_part_to_dict(bp) -> Dictionary:
 	return {
@@ -440,7 +425,7 @@ static func _dict_to_dwarf(d: Dictionary):
 			df.inventory.append(inventory_item)
 	df.thoughts = d.get("thoughts", []).duplicate()
 	df.minutes_since_alcohol = d.get("minutes_since_alcohol", 0)
-	df.skills = _restore_int_keys(d.get("skills", {}), df.skills)
+	df.skills = d.get("skills", {}).duplicate()
 	df.current_task = d.get("current_task", "idle")
 	df.task_progress = d.get("task_progress", 0.0)
 	df.task_target = _arr_to_v3i(d.get("task_target", [-1, -1, -1]))
@@ -498,7 +483,7 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.wounds_leg_l = d.get("wounds_leg_l", 0.0)
 	df.wounds_leg_r = d.get("wounds_leg_r", 0.0)
 	df.stats_tracker = d.get("stats_tracker", {}).duplicate()
-	df.personality = _restore_int_keys(d.get("personality", {}), df.personality)
+	df.personality = d.get("personality", {}).duplicate()
 	df.emotions = d.get("emotions", []).duplicate()
 	df.current_emotion = d.get("current_emotion", 12)
 	df.emotion_intensity = d.get("emotion_intensity", 0.5)
@@ -515,7 +500,7 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.meditation_counter = d.get("meditation_counter", 0)
 	df.artistic_inspiration = d.get("artistic_inspiration", 0.0)
 	df.creative_works = d.get("creative_works", []).duplicate()
-	df.needs = _restore_int_keys(d.get("needs", {}), df.needs)
+	df.needs = d.get("needs", {}).duplicate()
 	df.mood = d.get("mood", 0)
 	df.mood_counter = d.get("mood_counter", 0)
 	df.tantrum_destruction = d.get("tantrum_destruction", 0)
@@ -998,6 +983,28 @@ static func _strategic_systems_to_dict(world) -> Dictionary:
 		}
 	return result
 
+static func _runtime_systems_to_dict(main) -> Dictionary:
+	var result: Dictionary = {}
+	if main.quest_system != null and main.quest_system.has_method("export_state"):
+		result["quests"] = main.quest_system.export_state()
+	if main.caravan_system != null and main.caravan_system.has_method("export_state"):
+		result["caravans"] = main.caravan_system.export_state()
+	return result
+
+static func _restore_runtime_systems(main, world, data: Dictionary) -> void:
+	if main.quest_system == null:
+		main.quest_system = DFQuestSystem.new(world, main)
+	else:
+		main.quest_system.world_ref = world
+		main.quest_system.main_ref = main
+	if data.has("quests"):
+		main.quest_system.import_state(data["quests"])
+
+	if main.caravan_system == null:
+		main.caravan_system = DFCaravan.new(main.generation_seed)
+	if data.has("caravans"):
+		main.caravan_system.import_state(data["caravans"])
+
 static func _restore_runtime_links(
 	world,
 	designation,
@@ -1295,6 +1302,7 @@ static func save_game(main) -> bool:
 			riv_arr.append(rv)
 	data["world"]["rivers"] = riv_arr
 	data["strategic_systems"] = _strategic_systems_to_dict(w)
+	data["runtime_systems"] = _runtime_systems_to_dict(main)
 
 	data["entities"] = []
 	for e in w.entities:
@@ -1515,6 +1523,7 @@ static func load_game(main) -> bool:
 		main.generation_seed,
 		data.get("strategic_systems", {})
 	)
+	_restore_runtime_systems(main, w, data.get("runtime_systems", {}))
 	return true
 
 static func get_save_list() -> Array:
@@ -1723,6 +1732,7 @@ static func _build_save_data(main) -> Dictionary:
 			riv_arr.append(rv)
 	data["world"]["rivers"] = riv_arr
 	data["strategic_systems"] = _strategic_systems_to_dict(w)
+	data["runtime_systems"] = _runtime_systems_to_dict(main)
 
 	data["entities"] = []
 	for e in w.entities:
@@ -1922,3 +1932,4 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 		main.generation_seed,
 		data.get("strategic_systems", {})
 	)
+	_restore_runtime_systems(main, w, data.get("runtime_systems", {}))
