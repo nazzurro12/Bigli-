@@ -75,8 +75,8 @@ func _tile_has_capacity(world: Object, pos: Vector3i) -> bool:
 	return world.is_floor(pos) and not world.is_blocked(pos) and _count_items_at(world, pos) < MAX_ITEMS_PER_TILE
 
 func _tile_contains_item_type(world: Object, pos: Vector3i, item_type: String) -> bool:
-	for entity: Variant in world.entities:
-		if entity is DFItem and entity.tile_pos == pos and entity.is_in_stockpile and entity.item_type == item_type:
+	for entity: Variant in world.get_items_at(pos):
+		if entity is DFItem and entity.is_in_stockpile and entity.item_type == item_type:
 			return true
 	return false
 
@@ -88,8 +88,8 @@ func _is_shelf_tile(world: Object, pos: Vector3i) -> bool:
 
 func _count_items_at(world: Object, pos: Vector3i) -> int:
 	var count: int = 0
-	for entity: Variant in world.entities:
-		if entity is DFItem and entity.tile_pos == pos and entity.is_in_stockpile:
+	for entity: Variant in world.get_items_at(pos):
+		if entity is DFItem and entity.is_in_stockpile:
 			count += maxi(1, entity.stack_size)
 	return count
 
