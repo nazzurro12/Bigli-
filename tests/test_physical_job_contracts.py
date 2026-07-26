@@ -11,6 +11,7 @@ class PhysicalJobContracts(unittest.TestCase):
         cls.main = (ROOT / "df_mode/df_main.gd").read_text(encoding="utf-8")
         cls.dwarf = (ROOT / "df_mode/df_dwarf.gd").read_text(encoding="utf-8")
         cls.world = (ROOT / "df_mode/df_world.gd").read_text(encoding="utf-8")
+        cls.workshop = (ROOT / "df_mode/df_workshop.gd").read_text(encoding="utf-8")
 
     def test_world_exposes_authoritative_clock_to_inhabitants(self):
         self.assertIn('world.set_meta("game_hour", _game_hour)', self.main)
@@ -74,6 +75,30 @@ class PhysicalJobContracts(unittest.TestCase):
         self.assertIn("set_tile(pos,", dig)
         self.assertIn("_spawn_item(pos, item_name, item_type", dig)
         self.assertIn("return true", dig)
+
+    def test_workshops_wait_for_inputs_before_progressing(self):
+        tick = self.workshop.split("func tick", 1)[1].split("\nfunc ", 1)[0]
+        self.assertIn("if current_recipe.is_empty():", tick)
+        self.assertIn('"waiting_for_inputs": true', tick)
+        self.assertLess(tick.index("if current_recipe.is_empty():"), tick.index("recipe_progress +="))
+
+    def test_workshop_operator_collects_and_consumes_real_inputs(self):
+        prepare = self.dwarf.split("func _prepare_workshop_inputs", 1)[1].split("\nfunc ", 1)[0]
+        self.assertIn('recipe.get("inputs", [])', prepare)
+        self.assertIn("ground_item.is_reserved_for_other(id, simulation_minute)", prepare)
+        self.assertIn("nearest_item.reserve_for(id, simulation_minute + 30)", prepare)
+        self.assertIn("inventory.remove_at(inventory_index)", prepare)
+        self.assertIn("operating_workshop.current_recipe = recipe.duplicate(true)", prepare)
+
+    def test_workshop_outputs_keep_provenance(self):
+        produce = self.dwarf.split("func _produce_workshop_outputs", 1)[1].split("\nfunc ", 1)[0]
+        self.assertIn("world._spawn_item(", produce)
+        self.assertIn("produced.created_by_entity_id = id", produce)
+        self.assertIn("produced.production_recipe_id", produce)
+        self.assertIn("produced.production_site", produce)
+        operate = self.dwarf.split("func _operate_workshop", 1)[1].split("\nfunc ", 1)[0]
+        self.assertIn("operating_workshop.tick(1.0)", operate)
+        self.assertIn("_produce_workshop_outputs(world, completed_recipe)", operate)
 
     def test_sleep_requires_attempting_to_reach_claimed_bed(self):
         sleep = self.dwarf.split("func _try_sleep", 1)[1].split("\nfunc ", 1)[0]
