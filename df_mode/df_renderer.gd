@@ -139,8 +139,8 @@ var _world_minimap_cache_key: String = ""
 
 # El juego puede procesar a más de 60 FPS, pero reconstruir miles de tiles,
 # entidades y paneles 120 veces por segundo no aporta información nueva.
-const MAP_REDRAW_INTERVAL: float = 1.0 / 60.0
-const RENDERER_LOGIC_SYNC_INTERVAL: float = 1.0 / 30.0
+const MAP_REDRAW_INTERVAL: float = 1.0 / 30.0
+const RENDERER_LOGIC_SYNC_INTERVAL: float = 1.0 / 20.0
 var _map_redraw_accumulator: float = 0.0
 var _renderer_logic_accumulator: float = 0.0
 var performance_effects_enabled: bool = false
@@ -424,7 +424,8 @@ func _draw_tile(pos: Vector2, char_str: String, fg: Color, bg: Color) -> void:
 
 func _process(delta: float) -> void:
 	# El estado lógico sigue actualizándose cada frame, pero el mapa se redibuja
-	# como máximo a 60 Hz. Esto elimina el doble redibujado que hundía los FPS al
+	# como máximo a 30 Hz. El mapa ASCII no gana legibilidad a 60 redibujados y
+	# cada actualización implica miles de tiles, paneles y consultas de color.
 	# materializar aldeas con muchas casas, muebles y residentes.
 	_map_redraw_accumulator += delta
 	_renderer_logic_accumulator += delta
@@ -436,7 +437,7 @@ func _process(delta: float) -> void:
 		return
 	_renderer_logic_accumulator = fmod(_renderer_logic_accumulator, RENDERER_LOGIC_SYNC_INTERVAL)
 
-	# Datos ambientales y cursor: 30 Hz son suficientes y evitan trabajo repetido.
+	# Datos ambientales y cursor: 20 Hz son suficientes y evitan trabajo repetido.
 	if world != null:
 		# Tiempo desde el nodo principal
 		var main_nd = get_parent()
@@ -1096,8 +1097,8 @@ func _draw_sidebar(side_x: int) -> void:
 
 		# Items at cursor (compact)
 		var items_here: Array = []
-		for ent in world.entities:
-			if ent is DFItem and ent.tile_pos == _highlighted_tile and not ent.is_decayed:
+		for ent in world.get_items_at(_highlighted_tile):
+			if ent is DFItem and not ent.is_decayed:
 				items_here.append(ent)
 		if not items_here.is_empty():
 			draw_string(_font, Vector2(x + 4, y + lh),
@@ -1131,12 +1132,7 @@ func _draw_sidebar(side_x: int) -> void:
 	# ═══════════════════════════════════════════════
 	var followed_entity: Variant = null
 	if follow_dwarf >= 0:
-		for followed_candidate: Variant in world.entities:
-			if followed_candidate is DFItem:
-				continue
-			var followed_type_value: Variant = followed_candidate.get("creature_type")
-			if str(followed_type_value) != "dwarf":
-				continue
+		for followed_candidate: Variant in world.dwarves:
 			var followed_id_value: Variant = followed_candidate.get("id")
 			var followed_alive_value: Variant = followed_candidate.get("is_alive")
 			if followed_id_value != null and int(followed_id_value) == follow_dwarf and followed_alive_value != false:
@@ -1243,8 +1239,8 @@ func _draw_sidebar(side_x: int) -> void:
 			y += lh
 
 		var stored_items: int = 0
-		for stored_candidate: Variant in world.entities:
-			if stored_candidate is DFItem and stored_candidate.get("is_in_stockpile") == true:
+		for stored_candidate: Variant in world.items:
+			if stored_candidate.get("is_in_stockpile") == true:
 				stored_items += 1
 		var growing_crops_value: Variant = world.get("growing_crops")
 		var crop_count: int = growing_crops_value.size() if growing_crops_value is Dictionary else 0
@@ -1266,10 +1262,9 @@ func _draw_sidebar(side_x: int) -> void:
 	draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.12,0.38,0.48), 1.0)
 	y += int(lh * 1.3)
 
-	var living_dwarves: Array = []
-	for ent2 in world.entities:
-		if ent2.get("creature_type") == "dwarf" and ent2.get("is_alive") != false:
-			living_dwarves.append(ent2)
+	var living_dwarves: Array = world.dwarves.filter(
+		func(dwarf): return dwarf.get("is_alive") != false
+	)
 
 	if living_dwarves.is_empty():
 		draw_string(_font, Vector2(x + 4, y + lh), "  ¡Sin supervivientes!", HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(1.0,0.3,0.3))
