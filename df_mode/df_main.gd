@@ -991,23 +991,50 @@ func _populate_creatures_local() -> void:
 	
 	var rng_local = RandomNumberGenerator.new()
 	rng_local.seed = generation_seed + 9999
-	
-	for z in range(world.depth):
-		for x in range(world.width):
-			if rng_local.randf() > 0.015: continue
-			var wx = int(float(x) / float(world.width) * world_gen.world_width)
-			var wz = int(float(z) / float(world.depth) * world_gen.world_depth)
-			if wx >= world_gen.biome_map[0].size() or wz >= world_gen.biome_map.size(): continue
-			var creature_biome = world_gen.biome_map[wz][wx]
-			var possible = _biome_creature_index.get(creature_biome, [])
-			if possible.is_empty(): continue
-			var chosen = possible[rng_local.randi() % possible.size()]
-			var h = world.get_surface_height(x, z)
-			if h < 1 or h > 8: continue
-			var pos = Vector3i(x, h, z)
-			if world.is_water(pos) or world.is_blocked(pos): continue
-			var creature = DFCreature.new(pos, str(chosen.get("id", chosen["name"])).to_lower(), chosen.get("tile", chosen.get("glyph", "c")), Color(chosen.get("color", "#FFFFFF")), chosen.get("size", "medium"), chosen)
-			world.add_entity(creature)
+
+	# Antes se evaluaba cada casilla y podían aparecer cerca de mil criaturas,
+	# todas con IA activa. Un muestreo con presupuesto conserva fauna variada,
+	# garantiza presencia en mapas grandes y evita regresar al problema de 1 FPS.
+	var target_count: int = clampi(int(world.width * world.depth / 420), 48, 180)
+	var max_attempts: int = target_count * 24
+	var occupied: Dictionary = {}
+	var spawned: int = 0
+	for attempt in range(max_attempts):
+		if spawned >= target_count:
+			break
+		var x: int = rng_local.randi_range(0, world.width - 1)
+		var z: int = rng_local.randi_range(0, world.depth - 1)
+		var wx: int = int(float(x) / float(world.width) * world_gen.world_width)
+		var wz: int = int(float(z) / float(world.depth) * world_gen.world_depth)
+		if wx >= world_gen.biome_map[0].size() or wz >= world_gen.biome_map.size():
+			continue
+		var creature_biome: String = str(world_gen.biome_map[wz][wx])
+		var possible: Array = _biome_creature_index.get(creature_biome, [])
+		if possible.is_empty():
+			continue
+		var h: int = world.get_surface_height(x, z)
+		if h < 1 or h > 12:
+			continue
+		var pos := Vector3i(x, h, z)
+		if occupied.has(pos) or world.is_water(pos) or world.is_blocked(pos):
+			continue
+		var chosen: Dictionary = possible[rng_local.randi() % possible.size()]
+		var glyph: String = str(chosen.get("tile", chosen.get("glyph", "c")))
+		# Algunos datos usan caracteres fuera del atlas CP437. Un símbolo ASCII
+		# legible evita que la fauna desaparezca visualmente.
+		if glyph.length() != 1 or glyph.unicode_at(0) < 32 or glyph.unicode_at(0) > 126:
+			glyph = str(chosen.get("name", "c")).left(1).to_lower()
+		var creature = DFCreature.new(
+			pos,
+			str(chosen.get("id", chosen.get("name", "creature"))).to_lower(),
+			glyph,
+			Color(chosen.get("color", "#FFFFFF")),
+			chosen.get("size", "medium"),
+			chosen
+		)
+		world.add_entity(creature)
+		occupied[pos] = true
+		spawned += 1
 
 func _process(delta: float) -> void:
 	if renderer == null:
