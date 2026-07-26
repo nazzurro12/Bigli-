@@ -213,3 +213,49 @@ func get_trade_stats() -> Dictionary:
 		"active_caravans": caravans.size(),
 		"relations": relations
 	}
+
+func export_state() -> Dictionary:
+	var caravan_data: Array = []
+	for caravan in caravans:
+		var saved: Dictionary = caravan.duplicate(true)
+		var pos: Vector3i = caravan.get("tile_pos", Vector3i.ZERO)
+		var color: Color = caravan.get("civ_color", Color.WHITE)
+		saved["tile_pos"] = [pos.x, pos.y, pos.z]
+		saved["civ_color"] = [color.r, color.g, color.b, color.a]
+		caravan_data.append(saved)
+	return {
+		"seed": _seed,
+		"caravans": caravan_data,
+		"trade_history": trade_history.duplicate(true),
+		"total_trades": total_trades,
+		"total_wealth_traded": total_wealth_traded,
+		"relations": relations.duplicate(true),
+		"rng_state": rng.state,
+	}
+
+func import_state(data: Dictionary) -> void:
+	caravans.clear()
+	for saved_variant in data.get("caravans", []):
+		if not saved_variant is Dictionary:
+			continue
+		var saved: Dictionary = saved_variant.duplicate(true)
+		var pos_data: Array = saved.get("tile_pos", [10, 3, 10])
+		var color_data: Array = saved.get("civ_color", [1.0, 1.0, 1.0, 1.0])
+		saved["tile_pos"] = Vector3i(
+			int(pos_data[0]) if pos_data.size() > 0 else 10,
+			int(pos_data[1]) if pos_data.size() > 1 else 3,
+			int(pos_data[2]) if pos_data.size() > 2 else 10
+		)
+		saved["civ_color"] = Color(
+			float(color_data[0]) if color_data.size() > 0 else 1.0,
+			float(color_data[1]) if color_data.size() > 1 else 1.0,
+			float(color_data[2]) if color_data.size() > 2 else 1.0,
+			float(color_data[3]) if color_data.size() > 3 else 1.0
+		)
+		caravans.append(saved)
+	trade_history = data.get("trade_history", {}).duplicate(true)
+	total_trades = int(data.get("total_trades", 0))
+	total_wealth_traded = float(data.get("total_wealth_traded", 0.0))
+	relations = data.get("relations", {}).duplicate(true)
+	if data.has("rng_state"):
+		rng.state = int(data["rng_state"])
