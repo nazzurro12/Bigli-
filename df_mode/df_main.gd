@@ -1398,6 +1398,10 @@ func _tick() -> void:
 
 	_absolute_simulation_tick += 1
 	world.set_meta("simulation_tick_total", _absolute_simulation_tick)
+	# Fuente autoritativa para horarios de habitantes. DFWorld es RefCounted y no
+	# puede obtener la hora mediante get_parent().
+	world.set_meta("game_hour", _game_hour)
+	world.set_meta("game_minute", _game_minute)
 	_simulation_tick_clock += 1
 	if _simulation_tick_clock >= 25:
 		_simulation_tick_clock = 0
