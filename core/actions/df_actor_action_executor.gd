@@ -119,7 +119,9 @@ static func _pick_up(actor, world, target: Vector3i) -> Dictionary:
 		return _result(false, "No hay ningún objeto para recoger")
 	if actor.inventory.size() >= 8:
 		return _result(false, "El inventario está lleno")
-	world.entities.erase(found)
+	world.remove_entity(found)
+	found.carried_by_id = actor.id
+	found.release_reservation()
 	actor.inventory.append(found)
 	if "needs_display_update" in actor:
 		actor.needs_display_update = true
@@ -130,7 +132,9 @@ static func _drop(actor, world, target: Vector3i) -> Dictionary:
 		return _result(false, "No lleva ningún objeto")
 	var item: Variant = actor.inventory.pop_back()
 	item.tile_pos = target
-	world.entities.append(item)
+	item.carried_by_id = -1
+	item.release_reservation()
+	world.add_entity(item)
 	if "needs_display_update" in actor:
 		actor.needs_display_update = true
 	return _result(true, "Soltó %s" % str(item.name))
