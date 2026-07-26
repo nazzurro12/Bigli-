@@ -1389,7 +1389,8 @@ func _tick() -> void:
 	var profile_tick_start: int = Time.get_ticks_usec()
 	var profile_citizens_start: int = 0
 	var profile_citizens_ms: float = 0.0
-	world._grid_version = -1  # force spatial grid rebuild this tick
+	# El índice espacial se mantiene incrementalmente en move_entity/add_entity/remove_entity.
+	# Forzarlo aquí provocaba un barrido O(entidades) antes de la IA en cada tick.
 	var minute_ticked = false
 	var dwarves_count = 0
 	var mil_strength = 0.0
