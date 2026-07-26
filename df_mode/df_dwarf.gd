@@ -3651,7 +3651,7 @@ func get_body() -> Object:
 	return body
 
 func _workshop_item_matches(item: DFItem, requirement: Dictionary) -> bool:
-	if item == null or item.is_decayed or item.is_inside_container or item.carried_by_id >= 0:
+	if item == null or item.is_decayed or item.is_inside_container:
 		return false
 	var item_type_lower: String = item.item_type.to_lower()
 	var material_lower: String = item.material_name.to_lower()
@@ -3692,6 +3692,8 @@ func _prepare_workshop_inputs(world, recipe: Dictionary) -> bool:
 			if inventory_index in selected_indices:
 				continue
 			var inventory_item = inventory[inventory_index]
+			if not inventory_item is DFItem:
+				continue
 			if _workshop_item_matches(inventory_item, requirement):
 				selected_indices.append(inventory_index)
 				matched_count += 1
@@ -3705,6 +3707,8 @@ func _prepare_workshop_inputs(world, recipe: Dictionary) -> bool:
 		var nearest_item: DFItem = null
 		var nearest_distance: int = 999999
 		for ground_item in world.items:
+			if ground_item.carried_by_id >= 0:
+				continue
 			if not _workshop_item_matches(ground_item, missing_requirement):
 				continue
 			if ground_item.is_reserved_for_other(id, simulation_minute):
