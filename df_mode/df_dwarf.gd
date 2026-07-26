@@ -1085,7 +1085,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		if randi() % 5 == 0:
 			current_task = "¡PATALETA! (Destruyendo cosas)"
 			current_job = null
-			for other in world.entities:
+			for other in world.dwarves:
 				if other is DFDwarf and other != self and other.is_alive:
 					var d = abs(other.tile_pos.x - tile_pos.x) + abs(other.tile_pos.z - tile_pos.z)
 					if d <= 1:
@@ -1832,7 +1832,7 @@ func _work_on_job(world) -> void:
 		if not has_material:
 			var best_item = null
 			var best_dist = 999999
-			for ent in world.entities:
+			for ent in world.items:
 				if ent.get("item_type") == "stone" or ent.get("item_type") == "wood":
 					var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
 					if d < best_dist:
@@ -2450,7 +2450,7 @@ func _social_compatibility_with(other) -> float:
 func tick_inspect(world) -> void:
 	if current_task != "idle": return
 	if randi() % 40 != 0: return
-	for e in world.entities:
+	for e in world.items:
 		if e == self: continue
 		if e is DFItem:
 			var dist = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z) + abs(e.tile_pos.y - tile_pos.y) * 2
@@ -2810,7 +2810,7 @@ func _find_nearby_interesting_tile(world, radius: int) -> Vector3i:
 	var sy = tile_pos.y
 	
 	# Buscar items en el suelo
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem:
 			var dx = abs(e.tile_pos.x - tile_pos.x)
 			var dz = abs(e.tile_pos.z - tile_pos.z)
@@ -2835,7 +2835,7 @@ func _find_nearby_interesting_tile(world, radius: int) -> Vector3i:
 			candidates.append({"pos": w.tile_pos, "priority": 0})
 	
 	# Buscar otros enanos y caminar hacia ellos (efecto manada)
-	for e_1981 in world.entities:
+	for e_1981 in world.dwarves:
 		var is_dwarf = e_1981.get("creature_type") == "dwarf" and e_1981 != self
 		if is_dwarf and e_1981.get("is_alive") == true:
 			var dx_1984 = abs(e_1981.tile_pos.x - tile_pos.x)
@@ -2976,7 +2976,7 @@ func _execute_job(world) -> void:
 		DFJob.JobType.TEND_WOUNDS:
 			var patient_id = current_job.get_meta("patient_id") if current_job.has_meta("patient_id") else -1
 			var patient = null
-			for ent in world.entities:
+			for ent in world.dwarves:
 				if ent.get_instance_id() == patient_id:
 					patient = ent
 					break
@@ -3686,13 +3686,13 @@ func tick_autonomous_survival(world) -> void:
 		if not world.stockpiles.is_empty():
 			for sp in world.stockpiles:
 				for stock_tile in sp.tiles:
-					for e in world.entities:
-						if e is DFItem and e.tile_pos == stock_tile and e.get("item_type") in ["food", "drink", "seed"]:
+					for e in world.get_items_at(stock_tile):
+						if e.get("item_type") in ["food", "drink", "seed"]:
 							var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
 							if d < nearest_dist:
 								nearest_dist = d
 								nearest_food = e
-		for e_2770 in world.entities:
+		for e_2770 in world.items:
 			if e_2770 is DFItem and e_2770.get("item_type") in ["food", "drink", "seed"]:
 				var d_2772 = abs(e_2770.tile_pos.x - tile_pos.x) + abs(e_2770.tile_pos.z - tile_pos.z)
 				if d_2772 < nearest_dist:
@@ -4850,7 +4850,7 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 func _find_house_exterior_storage_pos(world) -> Vector3i:
 	# Recopilar todas las posiciones de puertas
 	var door_positions = []
-	for ent in world.entities:
+	for ent in world.items:
 		if ent is DFItem and ent.item_type == "door":
 			door_positions.append(ent.tile_pos)
 
@@ -4903,11 +4903,7 @@ func _find_house_exterior_storage_pos(world) -> Vector3i:
 						continue
 						
 					# No debe tener ya un objeto tirado en esa posición
-					var has_item = false
-					for ent_check in world.entities:
-						if ent_check is DFItem and ent_check.tile_pos == p:
-							has_item = true
-							break
+					var has_item: bool = not world.get_items_at(p).is_empty()
 					if has_item:
 						continue
 						
