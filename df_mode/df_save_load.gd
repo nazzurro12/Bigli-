@@ -123,6 +123,7 @@ static func _item_to_dict(item) -> Dictionary:
 		"display_color": _color_to_arr(item.display_color),
 		"id": item.id,
 		"is_food": item.is_food,
+		"is_bed": item.is_bed,
 		"is_drink": item.is_drink,
 		"is_meat": item.is_meat,
 		"is_corpse": item.is_corpse,
@@ -152,7 +153,7 @@ static func _item_to_dict(item) -> Dictionary:
 		"max_stack": item.max_stack,
 		"is_container": item.is_container,
 		"container_volume": item.container_volume,
-		"container_contents": [],
+		"container_contents_ids": item.container_contents.map(func(content): return content.id),
 		"contained_volume": item.contained_volume,
 		"is_inside_container": item.is_inside_container,
 		"is_in_stockpile": item.is_in_stockpile,
@@ -183,6 +184,7 @@ static func _dict_to_item(d: Dictionary):
 	item.item_category = d.get("item_category", item.item_category)
 	item.material_name = d.get("material_name", item.material_name)
 	item.is_food = d.get("is_food", false)
+	item.is_bed = d.get("is_bed", false)
 	item.is_drink = d.get("is_drink", false)
 	item.is_meat = d.get("is_meat", false)
 	item.is_corpse = d.get("is_corpse", false)
@@ -804,9 +806,12 @@ static func _dict_to_workshop(d: Dictionary):
 	return w
 
 static func _stockpile_to_dict(s) -> Dictionary:
+	var serialized_tiles: Array = []
+	for tile_value: Variant in s.tiles:
+		serialized_tiles.append(_v3i_to_arr(tile_value))
 	return {
 		"__type": "DFStockpile",
-		"tiles": s.tiles.duplicate(),
+		"tiles": serialized_tiles,
 		"accepts_categories": s.accepts_categories.duplicate(),
 		"display_color": _color_to_arr(s.display_color),
 		"owner_site_id": s.owner_site_id,
@@ -816,7 +821,13 @@ static func _stockpile_to_dict(s) -> Dictionary:
 
 static func _dict_to_stockpile(d: Dictionary):
 	var DFStockpile = load("res://df_mode/df_stockpile.gd")
-	var sp = DFStockpile.new(d.get("tiles", []).duplicate())
+	var restored_tiles: Array = []
+	for tile_value: Variant in d.get("tiles", []):
+		if tile_value is Array:
+			restored_tiles.append(_arr_to_v3i(tile_value))
+		elif tile_value is Vector3i:
+			restored_tiles.append(tile_value)
+	var sp = DFStockpile.new(restored_tiles)
 	sp.accepts_categories = d.get("accepts_categories", ["stone", "wood", "item"]).duplicate()
 	sp.display_color = _arr_to_color(d.get("display_color", [0.8, 0.8, 0.2, 0.3]))
 	sp.owner_site_id = d.get("owner_site_id", -1)
@@ -825,7 +836,7 @@ static func _dict_to_stockpile(d: Dictionary):
 	return sp
 
 static func _building_to_dict(b) -> Dictionary:
-	return {
+	var result := {
 		"__type": "DFBuilding",
 		"type": b.type,
 		"tile_pos": _v3i_to_arr(b.tile_pos),
@@ -833,13 +844,19 @@ static func _building_to_dict(b) -> Dictionary:
 		"is_constructed": b.is_constructed,
 		"name": b.name
 	}
+	if b.has_meta("fuel_ticks"):
+		result["fuel_ticks"] = b.get_meta("fuel_ticks")
+	return result
 
 static func _dict_to_building(d: Dictionary):
 	var DFBuilding = load("res://df_mode/df_building.gd")
 	var pos = _arr_to_v3i(d.get("tile_pos", [0, 0, 0]))
 	var b = DFBuilding.new(d.get("type", 1), pos)
+	b.size = _arr_to_v3i(d.get("size", _v3i_to_arr(b.size)))
 	b.is_constructed = d.get("is_constructed", true)
 	b.name = d.get("name", b.name)
+	if d.has("fuel_ticks"):
+		b.set_meta("fuel_ticks", d.get("fuel_ticks"))
 	return b
 
 static func serialize_entity(entity) -> Dictionary:
@@ -877,6 +894,8 @@ static func _restore_runtime_links(world, designation, generation_seed: int) -> 
 			entity.operating_workshop = null
 		elif entity is DFItem:
 			world.items.append(entity)
+			entity.container_contents.clear()
+			entity.contained_volume = 0.0
 		elif entity is DFCreature:
 			world.creatures.append(entity)
 
@@ -895,6 +914,20 @@ static func _restore_runtime_links(world, designation, generation_seed: int) -> 
 			item.carried_by_id = -1
 			item.release_reservation()
 
+	var items_by_id: Dictionary = {}
+	for item in world.items:
+		items_by_id[item.id] = item
+	for contained_item in world.items:
+		if not contained_item.is_inside_container:
+			continue
+		var container = items_by_id.get(contained_item.container_id)
+		if container != null and container.is_container:
+			container.container_contents.append(contained_item)
+			container.contained_volume += contained_item.get_item_volume()
+		else:
+			contained_item.is_inside_container = false
+			contained_item.container_id = -1
+
 	if designation != null:
 		for job in designation.job_queue:
 			if job.state not in [DFJobScript.JobState.ASSIGNED, DFJobScript.JobState.IN_PROGRESS]:
@@ -906,6 +939,15 @@ static func _restore_runtime_links(world, designation, generation_seed: int) -> 
 				# Una asignación sin trabajador válido vuelve a la cola.
 				job.state = DFJobScript.JobState.UNASSIGNED
 				job.assigned_dwarf_id = -1
+
+	for workshop in world.workshops:
+		if workshop.dwarf_assigned < 0:
+			continue
+		var operator = dwarves_by_id.get(workshop.dwarf_assigned)
+		if operator != null and operator.operating_workshop == null:
+			operator.operating_workshop = workshop
+		else:
+			workshop.unassign_dwarf()
 
 	world.combat_system = DFCombat.new()
 	world.invasion_system = DFInvasion.new(generation_seed)
