@@ -85,6 +85,11 @@ class RuntimePerformanceContracts(unittest.TestCase):
         self.assertIn("world.creatures", behavior)
         self.assertIn("world.items", behavior)
 
+    def test_inhabitant_ai_has_no_general_entity_scans(self):
+        self.assertNotIn("in world.entities:", self.dwarf)
+        self.assertIn("world.get_items_at(stock_tile)", self.dwarf)
+        self.assertIn("world.get_items_at(p)", self.dwarf)
+
     def test_spatial_queries_use_the_incremental_grid(self):
         for method in ("get_entity_at", "get_items_at", "is_actor_occupied"):
             method_body = self.world.split("func " + method, 1)[1].split("\nfunc ", 1)[0]
