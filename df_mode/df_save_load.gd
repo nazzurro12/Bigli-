@@ -266,8 +266,6 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"age": dwarf.age,
 		"birth_year": dwarf.birth_year,
 		"caste": dwarf.caste,
-		"glyph": dwarf.glyph,
-		"display_color": _color_to_arr(dwarf.display_color),
 		"is_world_settlement_resident": dwarf.is_world_settlement_resident,
 		"settlement_site_id": dwarf.settlement_site_id,
 		"settlement_family_id": dwarf.settlement_family_id,
@@ -422,8 +420,6 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.age = d.get("age", 20)
 	df.birth_year = d.get("birth_year", 43)
 	df.caste = d.get("caste", "dwarf")
-	df.glyph = d.get("glyph", "")
-	df.display_color = _arr_to_color(d.get("display_color", [0.0, 0.0, 0.0, 0.0]))
 	df.is_world_settlement_resident = d.get("is_world_settlement_resident", false)
 	df.settlement_site_id = d.get("settlement_site_id", -1)
 	df.settlement_family_id = d.get("settlement_family_id", -1)
