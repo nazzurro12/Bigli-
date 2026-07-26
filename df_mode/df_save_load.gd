@@ -22,6 +22,23 @@ static func _arr_to_color(a: Array) -> Color:
 	if a.size() < 4: return Color.WHITE
 	return Color(a[0], a[1], a[2], a[3])
 
+## JSON convierte las claves numéricas de Dictionary a String. Los mapas
+## indexados por enums deben recuperar claves int antes de volver a la simulación.
+static func _restore_int_keys(raw_value: Variant, defaults: Dictionary = {}) -> Dictionary:
+	var restored: Dictionary = defaults.duplicate()
+	if not (raw_value is Dictionary):
+		return restored
+	for raw_key: Variant in raw_value:
+		var normalized_key: int
+		if raw_key is int:
+			normalized_key = raw_key
+		elif raw_key is String and raw_key.is_valid_int():
+			normalized_key = raw_key.to_int()
+		else:
+			continue
+		restored[normalized_key] = raw_value[raw_key]
+	return restored
+
 static func _body_part_to_dict(bp) -> Dictionary:
 	return {
 		"name": bp.name,
@@ -423,7 +440,7 @@ static func _dict_to_dwarf(d: Dictionary):
 			df.inventory.append(inventory_item)
 	df.thoughts = d.get("thoughts", []).duplicate()
 	df.minutes_since_alcohol = d.get("minutes_since_alcohol", 0)
-	df.skills = d.get("skills", {}).duplicate()
+	df.skills = _restore_int_keys(d.get("skills", {}), df.skills)
 	df.current_task = d.get("current_task", "idle")
 	df.task_progress = d.get("task_progress", 0.0)
 	df.task_target = _arr_to_v3i(d.get("task_target", [-1, -1, -1]))
@@ -481,7 +498,7 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.wounds_leg_l = d.get("wounds_leg_l", 0.0)
 	df.wounds_leg_r = d.get("wounds_leg_r", 0.0)
 	df.stats_tracker = d.get("stats_tracker", {}).duplicate()
-	df.personality = d.get("personality", {}).duplicate()
+	df.personality = _restore_int_keys(d.get("personality", {}), df.personality)
 	df.emotions = d.get("emotions", []).duplicate()
 	df.current_emotion = d.get("current_emotion", 12)
 	df.emotion_intensity = d.get("emotion_intensity", 0.5)
@@ -498,7 +515,7 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.meditation_counter = d.get("meditation_counter", 0)
 	df.artistic_inspiration = d.get("artistic_inspiration", 0.0)
 	df.creative_works = d.get("creative_works", []).duplicate()
-	df.needs = d.get("needs", {}).duplicate()
+	df.needs = _restore_int_keys(d.get("needs", {}), df.needs)
 	df.mood = d.get("mood", 0)
 	df.mood_counter = d.get("mood_counter", 0)
 	df.tantrum_destruction = d.get("tantrum_destruction", 0)
