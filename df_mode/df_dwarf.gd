@@ -1818,6 +1818,17 @@ func _job_requires_physical_progress(job_type: int) -> bool:
 		DFJob.JobType.SMOOTH,
 	]
 
+func _cancel_current_job(reason: String) -> void:
+	if current_job == null:
+		return
+	current_job.cancel_reason = reason
+	current_job.state = DFJob.JobState.CANCELLED
+	current_job.assigned_dwarf_id = -1
+	current_job = null
+	task_progress = 0.0
+	current_task = "Trabajo cancelado: %s" % reason
+	needs_display_update = true
+
 func _work_on_job(world) -> void:
 	if is_possessed:
 		return
@@ -1847,16 +1858,24 @@ func _work_on_job(world) -> void:
 			var best_item = null
 			var best_dist = 999999
 			for ent in world.items:
-				if ent.get("item_type") == "stone" or ent.get("item_type") == "wood":
-					var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
-					if d < best_dist:
-						best_dist = d
-						best_item = ent
+				if ent.item_type != "stone" and ent.item_type != "wood":
+					continue
+				if ent.is_decayed or ent.is_inside_container or ent.carried_by_id >= 0:
+					continue
+				if ent.reserved_by_id >= 0 and ent.reserved_by_id != id:
+					continue
+				var d: int = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
+				if d < best_dist:
+					best_dist = d
+					best_item = ent
 
 			if best_item != null:
-				current_task = "Buscando material"
-				var dist_to_item = abs(tile_pos.x - best_item.tile_pos.x) + abs(tile_pos.z - best_item.tile_pos.z) + abs(tile_pos.y - best_item.tile_pos.y) * 2
+				best_item.reserved_by_id = id
+				current_task = "Llevando material para %s" % current_job.get_description().to_lower()
+				var dist_to_item: int = abs(tile_pos.x - best_item.tile_pos.x) + abs(tile_pos.z - best_item.tile_pos.z) + abs(tile_pos.y - best_item.tile_pos.y) * 2
 				if dist_to_item <= 1:
+					best_item.reserved_by_id = -1
+					best_item.carried_by_id = id
 					world.remove_entity(best_item)
 					inventory.append(best_item)
 					needs_display_update = true
@@ -1864,7 +1883,7 @@ func _work_on_job(world) -> void:
 				else:
 					_move_toward(world, best_item.tile_pos)
 			else:
-				current_job.state = DFJob.JobState.CANCELLED
+				_cancel_current_job("no hay piedra o madera accesible")
 			return
 
 	var dist = abs(tile_pos.x - current_job.tile_pos.x) + abs(tile_pos.z - current_job.tile_pos.z)
@@ -2886,6 +2905,7 @@ func _execute_job(world) -> void:
 		DFJob.JobType.CHOP_TREE:
 			success = world.chop_tree(current_job.tile_pos, tile_pos)
 		DFJob.JobType.BUILD_WALL:
+			var wall_was_complete: bool = world.get_tile(current_job.tile_pos) == DFWorld.TileType.CONSTRUCTED_WALL
 			var mat_id = 11
 			var wall_material_index: int = -1
 			for i in range(inventory.size()):
@@ -2894,9 +2914,10 @@ func _execute_job(world) -> void:
 					wall_material_index = i
 					break
 			success = world.build_wall(current_job.tile_pos, mat_id)
-			if success and wall_material_index >= 0:
+			if success and not wall_was_complete and wall_material_index >= 0:
 				inventory.remove_at(wall_material_index)
 		DFJob.JobType.BUILD_FLOOR:
+			var floor_was_complete: bool = world.get_tile(current_job.tile_pos) == DFWorld.TileType.CONSTRUCTED_FLOOR
 			var mat_id_2026 = 11
 			var floor_material_index: int = -1
 			for i_2027 in range(inventory.size()):
@@ -2905,9 +2926,10 @@ func _execute_job(world) -> void:
 					floor_material_index = i_2027
 					break
 			success = world.build_floor(current_job.tile_pos, mat_id_2026)
-			if success and floor_material_index >= 0:
+			if success and not floor_was_complete and floor_material_index >= 0:
 				inventory.remove_at(floor_material_index)
 		DFJob.JobType.BUILD_WORKSHOP:
+			var workshop_was_complete: bool = world.get_workshop_at(current_job.tile_pos) != null
 			var mat_id_2034 = 11
 			var workshop_material_index: int = -1
 			for i_2035 in range(inventory.size()):
@@ -2915,13 +2937,16 @@ func _execute_job(world) -> void:
 					mat_id_2034 = inventory[i_2035].material
 					workshop_material_index = i_2035
 					break
-			for b in world.buildings:
-				if b.tile_pos == current_job.tile_pos and not b.is_constructed:
-					b.is_constructed = true
-					success = true
-					world.create_workshop(b.type, b.tile_pos)
-					break
-			if success and workshop_material_index >= 0:
+			if workshop_was_complete:
+				success = true
+			else:
+				for b in world.buildings:
+					if b.tile_pos == current_job.tile_pos and not b.is_constructed:
+						b.is_constructed = true
+						world.create_workshop(b.type, b.tile_pos)
+						success = true
+						break
+			if success and not workshop_was_complete and workshop_material_index >= 0:
 				inventory.remove_at(workshop_material_index)
 		DFJob.JobType.WORKSHOP_REACTION:
 			var reaction_id = current_job.reaction_id
@@ -3065,10 +3090,10 @@ func _execute_job(world) -> void:
 		add_thought("Completó satisfactoriamente un trabajo.", 0.03)
 		current_task = "idle"
 	elif current_job != null:
-		if current_job.state != DFJob.JobState.IN_PROGRESS:
-			current_job.state = DFJob.JobState.CANCELLED
-			current_job = null
-			current_task = "idle"
+		if _job_requires_physical_progress(current_job.job_type):
+			_cancel_current_job("el destino ya no admite este trabajo")
+		elif current_job.state != DFJob.JobState.IN_PROGRESS:
+			_cancel_current_job("no se pudo completar la acción")
 
 func _execute_empty_latrine_job(world: Object) -> bool:
 	var target_latrine = null
