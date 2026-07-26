@@ -7,7 +7,7 @@ const SETTINGS_MENU := 0
 const GENERATING_WORLD := 1
 const PLAYING := 5
 const LOADING_PLAYING := 6
-const MAX_GENERATION_FRAMES := 1800
+const MAX_GENERATION_FRAMES := 18000
 const MAX_SIMULATION_FRAMES := 2400
 const TEST_SAVE_SLOT := 99
 
@@ -45,6 +45,7 @@ func _process(_delta: float) -> void:
 		"WAITING_SETTINGS":
 			if state == SETTINGS_MENU:
 				_game_main.generation_seed = 424242
+				_game_main.setting_size = 0
 				_game_main.set_meta("quick_start_pending", true)
 				_game_main.current_state = GENERATING_WORLD
 				_change_phase("GENERATING")
