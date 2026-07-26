@@ -1,0 +1,82 @@
+param(
+    [string]$GodotPath = "",
+    [int]$TimeoutSeconds = 120
+)
+
+$ErrorActionPreference = "Stop"
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
+$ArtifactsDirectory = Join-Path $ProjectRoot "test-results"
+$ImportLog = Join-Path $ArtifactsDirectory "godot-import.log"
+$SmokeLog = Join-Path $ArtifactsDirectory "godot-smoke.log"
+
+New-Item -ItemType Directory -Force -Path $ArtifactsDirectory | Out-Null
+
+if ([string]::IsNullOrWhiteSpace($GodotPath)) {
+    $Candidates = @(
+        "godot",
+        "godot4",
+        "C:\Program Files\Godot\Godot_v4.7-stable_win64.exe",
+        (Join-Path $ProjectRoot "Godot_v4.7-stable_win64.exe")
+    )
+    foreach ($Candidate in $Candidates) {
+        if (Get-Command $Candidate -ErrorAction SilentlyContinue) {
+            $GodotPath = (Get-Command $Candidate).Source
+            break
+        }
+        if (Test-Path $Candidate) {
+            $GodotPath = $Candidate
+            break
+        }
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($GodotPath) -or -not (Test-Path $GodotPath)) {
+    throw "No encontré Godot. Usa -GodotPath con la ruta de Godot 4.7."
+}
+
+function Invoke-GodotChecked {
+    param(
+        [string[]]$Arguments,
+        [string]$LogPath,
+        [string]$StageName
+    )
+
+    if (Test-Path $LogPath) {
+        Remove-Item $LogPath -Force
+    }
+
+    $Process = Start-Process -FilePath $GodotPath -ArgumentList $Arguments -PassThru -NoNewWindow
+    if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
+        $Process.Kill()
+        throw "$StageName excedió $TimeoutSeconds segundos. Revisa $LogPath"
+    }
+
+    $LogContent = if (Test-Path $LogPath) {
+        Get-Content $LogPath -Raw
+    } else {
+        ""
+    }
+
+    $FatalPattern = "(?im)^\s*(SCRIPT ERROR|ERROR):|Parse Error|Failed to load script"
+    if ($Process.ExitCode -ne 0 -or $LogContent -match $FatalPattern) {
+        if (-not [string]::IsNullOrWhiteSpace($LogContent)) {
+            Write-Host $LogContent
+        }
+        throw "$StageName falló con código $($Process.ExitCode). Revisa $LogPath"
+    }
+}
+
+Write-Host "1/2 Importando y validando el proyecto..."
+Invoke-GodotChecked `
+    -Arguments @("--headless", "--path", $ProjectRoot, "--editor", "--quit", "--log-file", $ImportLog) `
+    -LogPath $ImportLog `
+    -StageName "Importación"
+
+Write-Host "2/2 Ejecutando prueba nativa de arranque..."
+Invoke-GodotChecked `
+    -Arguments @("--headless", "--path", $ProjectRoot, "--script", "res://tests/runtime_smoke.gd", "--log-file", $SmokeLog) `
+    -LogPath $SmokeLog `
+    -StageName "Prueba de arranque"
+
+Write-Host "OK: Bigli cargó sus scripts y escena principal sin errores detectados."
+Write-Host "Logs: $ArtifactsDirectory"
