@@ -4858,8 +4858,14 @@ func _execute_store_in_container_job(world) -> bool:
 	carried_food.tile_pos = best_fs_pos
 	carried_food.is_in_stockpile = true
 	carried_food.carried_by_id = -1
+	if not _put_item_in_container_at(world, carried_food, best_fs_pos):
+		# Otro transportista pudo llenar el cofre durante el trayecto. Se conserva
+		# el objeto en el inventario y se busca otro destino en el siguiente tick.
+		carried_food.carried_by_id = id
+		carried_food.is_in_stockpile = false
+		current_task = "Buscando otro cofre con espacio"
+		return false
 	carried_food.release_reservation(id)
-	_put_item_in_container_at(world, carried_food, best_fs_pos)
 	world.add_entity(carried_food)
 	inventory.erase(carried_food)
 	add_thought("Guardó " + carried_food.name + " en el almacén de comida.", 0.04)
