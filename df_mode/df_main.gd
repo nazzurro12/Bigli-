@@ -399,7 +399,7 @@ func _consume_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> void:
 				remaining = 0
 			else:
 				remaining -= item_amount
-				world_ref.entities.erase(candidate_item)
+				world_ref.remove_entity(candidate_item)
 
 func _add_message_async(msg: String) -> void:
 	add_message(msg)
