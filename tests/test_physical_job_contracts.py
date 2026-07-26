@@ -33,6 +33,31 @@ class PhysicalJobContracts(unittest.TestCase):
         for job_name in ("DIG", "CHOP_TREE", "BUILD_WALL", "BUILD_FLOOR", "BUILD_WORKSHOP"):
             self.assertIn("DFJob.JobType." + job_name, physical)
 
+    def test_construction_materials_are_reserved_and_not_duplicated(self):
+        work = self.dwarf.split("func _work_on_job", 1)[1].split("\nfunc ", 1)[0]
+        self.assertIn("ent.reserved_by_id >= 0 and ent.reserved_by_id != id", work)
+        self.assertIn("ent.is_inside_container or ent.carried_by_id >= 0", work)
+        self.assertIn("best_item.reserved_by_id = id", work)
+        self.assertIn("best_item.carried_by_id = id", work)
+        self.assertLess(work.index("world.remove_entity(best_item)"), work.index("inventory.append(best_item)"))
+
+    def test_failed_physical_jobs_explain_why_they_stopped(self):
+        cancel = self.dwarf.split("func _cancel_current_job", 1)[1].split("\nfunc ", 1)[0]
+        self.assertIn("current_job.cancel_reason = reason", cancel)
+        self.assertIn("current_job.assigned_dwarf_id = -1", cancel)
+        self.assertIn('"Trabajo cancelado: %s" % reason', cancel)
+        work = self.dwarf.split("func _work_on_job", 1)[1].split("\nfunc ", 1)[0]
+        self.assertIn('_cancel_current_job("no hay piedra o madera accesible")', work)
+
+    def test_completed_construction_does_not_consume_material_twice(self):
+        execute = self.dwarf.split("func _execute_job", 1)[1].split("\nfunc ", 1)[0]
+        self.assertIn("wall_was_complete", execute)
+        self.assertIn("floor_was_complete", execute)
+        self.assertIn("workshop_was_complete", execute)
+        self.assertIn("not wall_was_complete and wall_material_index >= 0", execute)
+        self.assertIn("not floor_was_complete and floor_material_index >= 0", execute)
+        self.assertIn("not workshop_was_complete and workshop_material_index >= 0", execute)
+
     def test_construction_changes_authoritative_tiles(self):
         for method, tile_name in (
             ("build_wall", "CONSTRUCTED_WALL"),
