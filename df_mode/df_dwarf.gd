@@ -2975,7 +2975,7 @@ func get_health_bar() -> String:
 		else: result += "\u2591"
 	return result
 
-func _get_best_skill() -> int:
+func _get_best_skill() -> Variant:
 	var best = Skill.MINING
 	var best_val = -1
 	for s in skills:
