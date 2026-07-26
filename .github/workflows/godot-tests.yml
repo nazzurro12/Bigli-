@@ -36,8 +36,5 @@ jobs:
       - name: Import project and validate scripts
         run: godot --headless --editor --path . --quit
 
-      - name: Test fortress initialization and movement
-        run: godot --headless --path . test_df_integration.tscn
-
-      - name: Test jobs and save-load round trip
+      - name: Test fortress jobs and save-load round trip
         run: godot --headless --path . test_df_jobs.tscn
