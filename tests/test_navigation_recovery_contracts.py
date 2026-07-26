@@ -38,6 +38,15 @@ class NavigationRecoveryContracts(unittest.TestCase):
         self.assertNotIn('if current_task == "Yendo a su cama":', move)
         self.assertIn('current_task = "Durmiendo sin cama"', move)
 
+    def test_side_step_invalidates_the_old_path(self):
+        move = self.dwarf.split("func _move_toward", 1)[1].split("\nfunc ", 1)[0]
+        detour = move.split("if not alt_blocked:", 1)[1].split("if not found_alt:", 1)[0]
+        self.assertIn("world.move_entity(self, alt)", detour)
+        self.assertIn("path.clear()", detour)
+        self.assertIn("path_index = 0", detour)
+        self.assertIn("has_moved_this_tick = true", detour)
+        self.assertIn('stats_tracker["distance_traveled"] += 1', detour)
+
     def test_navigation_occupancy_uses_the_spatial_index(self):
         move = self.dwarf.split("func _move_toward", 1)[1].split("\nfunc ", 1)[0]
         self.assertIn("world.is_actor_occupied(next_step, self)", move)
