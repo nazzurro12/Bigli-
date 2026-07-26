@@ -1991,7 +1991,7 @@ func _draw_settings_menu() -> void:
 		["Megabestias", ["Pocas", "Moderadas", "Abundantes"][main_node.setting_beast_density]],
 	]
 	for option_index in range(options.size()):
-		var selected: bool = int(main_node.setting_selected_index) == option_index
+		var selected := main_node.setting_selected_index == option_index
 		var row_rect := Rect2(inner_x, row_y, inner_width, UI.ROW_HEIGHT)
 		if selected:
 			draw_rect(row_rect, UI.WIN_TITLE_START, true)
@@ -2001,8 +2001,9 @@ func _draw_settings_menu() -> void:
 		var row_color := Color.WHITE if selected else UI.TEXT
 		draw_string(_font, Vector2(inner_x + 12.0, row_y + 16.0), str(options[option_index][0]),
 			HORIZONTAL_ALIGNMENT_LEFT, inner_width * 0.55, UI.FONT_SM, row_color)
-		draw_string(_font, Vector2(inner_x + inner_width - 12.0, row_y + 16.0), str(options[option_index][1]),
-			HORIZONTAL_ALIGNMENT_RIGHT, inner_width * 0.45, UI.FONT_SM, UI.GOLD if not selected else Color.WHITE)
+		var value_text := "<  %s  >" % str(options[option_index][1])
+		draw_string(_font, Vector2(inner_x + inner_width * 0.50, row_y + 16.0), value_text,
+			HORIZONTAL_ALIGNMENT_RIGHT, inner_width * 0.48, UI.FONT_SM, UI.GOLD if not selected else Color.WHITE)
 		row_y += UI.ROW_HEIGHT
 
 	row_y += UI.SPACE_MD
@@ -2035,6 +2036,35 @@ func _draw_settings_menu() -> void:
 		footer_x += _draw_keycap(Vector2(footer_x, footer_y - 12.0), footer_item[0], footer_item[1])
 	draw_string(_font, Vector2(viewport.x - left_margin, footer_y + 4.0), "BIGLI · PRE-ALPHA",
 		HORIZONTAL_ALIGNMENT_RIGHT, -1, UI.FONT_XS, UI.TEXT_DISABLED)
+
+func get_settings_menu_hit_regions() -> Dictionary:
+	var viewport := size
+	var scale := UI.responsive_scale(viewport)
+	var left_margin := UI.snap(maxf(32.0, viewport.x * 0.065))
+	var top_margin := UI.snap(maxf(28.0, viewport.y * 0.07))
+	var panel_width := UI.content_width(viewport, 640.0 * scale, 24.0)
+	var panel_height := UI.snap(minf(480.0 * scale, viewport.y - top_margin - 88.0))
+	var panel_x := UI.snap(viewport.x - panel_width - left_margin)
+	var content := Rect2(
+		panel_x + 3.0,
+		top_margin + 27.0,
+		panel_width - 6.0,
+		panel_height - 30.0
+	)
+	var inner_x := content.position.x + UI.SPACE_LG
+	var inner_width := content.size.x - UI.SPACE_LG * 2.0
+	var row_y := content.position.y + UI.SPACE_LG + 28.0
+	var rows: Array[Rect2] = []
+	for option_index in range(5):
+		rows.append(Rect2(inner_x, row_y + option_index * UI.ROW_HEIGHT, inner_width, UI.ROW_HEIGHT))
+	var action_y := content.end.y - UI.BUTTON_HEIGHT - UI.SPACE_LG
+	var gap := UI.SPACE_SM
+	var button_width := (inner_width - gap) / 2.0
+	return {
+		"rows": rows,
+		"quick_start": Rect2(inner_x, action_y, button_width, UI.BUTTON_HEIGHT),
+		"create_world": Rect2(inner_x + button_width + gap, action_y, button_width, UI.BUTTON_HEIGHT),
+	}
 
 func _draw_settings_menu_legacy() -> void:
 	var main_node = get_parent()
@@ -2253,7 +2283,7 @@ func _draw_generating_screen() -> void:
 	else:
 		var visible_events := mini(main_node.gen_rolling_events.size(), maxi(1, int((event_height - 16.0) / 17.0)))
 		for event_index in range(visible_events):
-			var source_index: int = int(main_node.gen_rolling_events.size()) - visible_events + event_index
+			var source_index := main_node.gen_rolling_events.size() - visible_events + event_index
 			var event_text := str(main_node.gen_rolling_events[source_index])
 			var shown := event_text if event_text.length() <= 100 else event_text.substr(0, 97) + "…"
 			draw_string(_font, Vector2(x + 12.0, event_y), "• " + shown,
