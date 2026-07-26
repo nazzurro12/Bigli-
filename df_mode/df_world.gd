@@ -588,7 +588,7 @@ func _find_wood_spawn_pos(tree_pos: Vector3i, chopper_pos: Vector3i) -> Vector3i
 
 func _spawn_item(pos: Vector3i, iname: String, itype: String, mat: int, glyph: String, color: Color) -> DFItem:
 	var item = DFItem.new(pos, iname, itype, mat, glyph, color)
-	entities.append(item)
+	add_entity(item)
 	return item
 
 # ---- CONSTRUCTION ----
