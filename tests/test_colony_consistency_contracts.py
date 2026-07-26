@@ -674,7 +674,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
             "story_director.record_action",
         ):
             self.assertIn(token, self.main)
-        self.assertIn('"E", "Actuar/usar"', self.renderer)
+        self.assertIn('["E", "Contexto"]', self.renderer)
         self.assertIn('"OBJETIVO CUMPLIDO"', self.renderer)
 
     def test_manual_pickup_and_drop_keep_world_indexes_consistent(self):
@@ -762,6 +762,30 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn('data["story_director"] = main.story_director.serialize_state()', self.save)
         self.assertIn('main.story_director.deserialize_state(data.get("story_director", {}))', self.save)
         self.assertIn("CAMPAÑA PROCEDURAL", self.renderer)
+
+    def test_possession_supports_inventory_equipment_and_directed_attack(self):
+        for token in (
+            "possessed_inventory_index",
+            "func _cycle_possessed_item",
+            "func _use_selected_possessed_item",
+            "func _possessed_attack",
+            "world.combat_system.creature_attack(possessed_dwarf, target)",
+            'story_director.record_action("attack"',
+            "KEY_TAB",
+            "KEY_U",
+        ):
+            self.assertIn(token, self.main)
+        self.assertIn('["F", "Atacar"]', self.renderer)
+
+    def test_animals_keep_species_identity_during_combat(self):
+        display = (ROOT / "df_mode/df_creature.gd").read_text(
+            encoding="utf-8"
+        ).split("func get_display_char", 1)[1].split(
+            "func get_display_color", 1
+        )[0]
+        self.assertIn("return glyph", display)
+        self.assertNotIn('return "X"', display)
+        self.assertNotIn('return "!"', display)
 
 
 if __name__ == "__main__":
