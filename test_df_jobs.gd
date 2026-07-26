@@ -142,6 +142,16 @@ func _run_save_load_round_trip() -> void:
 	_change_phase("VERIFYING_SAVE")
 	var world = _game_main.world
 	var dwarf = world.dwarves[0]
+	var expected_building_sizes: Array = world.buildings.map(
+		func(building): return [building.type, building.tile_pos, building.size]
+	)
+	var expected_stockpile_tiles: Array = []
+	for stockpile in world.stockpiles:
+		expected_stockpile_tiles.append(stockpile.tiles.duplicate())
+	var expected_container_links: Dictionary = {}
+	for item in world.items:
+		if item.is_inside_container:
+			expected_container_links[item.id] = item.container_id
 	var expected := {
 		"minute": _game_main._game_minute,
 		"hour": _game_main._game_hour,
@@ -151,6 +161,9 @@ func _run_save_load_round_trip() -> void:
 		"item_count": world.items.size(),
 		"dwarf_id": dwarf.id,
 		"inventory_ids": dwarf.inventory.map(func(item): return item.id),
+		"building_sizes": expected_building_sizes,
+		"stockpile_tiles": expected_stockpile_tiles,
+		"container_links": expected_container_links,
 	}
 	if not DFSaveLoad.save_game_slot(_game_main, TEST_SAVE_SLOT):
 		_fail("No se pudo crear el guardado de prueba")
@@ -180,6 +193,20 @@ func _run_save_load_round_trip() -> void:
 	_expect(world.combat_system != null, "El combate quedó desactivado al cargar")
 	_expect(world.invasion_system != null, "Las invasiones quedaron desactivadas al cargar")
 	_expect(world.military_system != null, "El ejército quedó desactivado al cargar")
+	_expect(
+		world.buildings.map(func(building): return [building.type, building.tile_pos, building.size])
+		== expected.building_sizes,
+		"Cambió el tamaño o la posición de un edificio"
+	)
+	var loaded_stockpile_tiles: Array = []
+	for stockpile in world.stockpiles:
+		loaded_stockpile_tiles.append(stockpile.tiles.duplicate())
+	_expect(loaded_stockpile_tiles == expected.stockpile_tiles, "Cambió el área de un almacén")
+	var loaded_container_links: Dictionary = {}
+	for item in world.items:
+		if item.is_inside_container:
+			loaded_container_links[item.id] = item.container_id
+	_expect(loaded_container_links == expected.container_links, "Cambió el contenido de contenedores")
 
 	var loaded_dwarf = world.get_dwarf_by_id(expected.dwarf_id)
 	_expect(loaded_dwarf != null, "No se recuperó el enano comprobado")
