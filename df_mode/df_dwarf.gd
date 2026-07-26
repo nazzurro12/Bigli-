@@ -4900,126 +4900,106 @@ func _put_item_in_container_at(world: Object, item: DFItem, pos: Vector3i) -> bo
 	return true
 
 func _execute_collect_job(world, item_type_to_collect: String) -> bool:
-	# 1. Si no tenemos el objeto en el inventario, buscarlo e ir a recogerlo
-	var carried_item = null
-	for item in inventory:
-		if item.item_type == item_type_to_collect:
-			carried_item = item
+	var carried_item: DFItem = null
+	for inventory_item in inventory:
+		if inventory_item is DFItem and inventory_item.item_type == item_type_to_collect:
+			carried_item = inventory_item
 			break
-			
+
 	if carried_item == null:
-		# Verificar si hay espacio en algún stockpile antes de ir a buscarlo
-		var has_stockpile_space = false
+		var has_storage_space: bool = false
 		for capacity_stockpile in world.stockpiles:
-			var capacity_free_pos: Vector3i = capacity_stockpile.get_free_tile(world)
-			if capacity_free_pos.y != -1:
-				has_stockpile_space = true
+			if capacity_stockpile.get_free_tile(world, item_type_to_collect).y != -1:
+				has_storage_space = true
 				break
-		if not has_stockpile_space and item_type_to_collect == "wood":
-			var capacity_exterior_pos: Vector3i = _find_house_exterior_storage_pos(world)
-			if capacity_exterior_pos != Vector3i(-1, -1, -1):
-				has_stockpile_space = true
-				
-		if not has_stockpile_space:
-			# No hay espacio de almacenamiento disponible, cancelar el trabajo
-			if current_job != null:
-				current_job.state = DFJob.JobState.CANCELLED
-			current_task = "idle"
+		if not has_storage_space:
+			_cancel_current_job("no hay espacio en ningún almacén")
 			return false
 
-		# Encontrar el item suelto mas cercano en el mundo
-		var target_item = null
-		var best_d = 999999
-		for ent in world.items:
-			if ent is DFItem and ent.item_type == item_type_to_collect and not ent.is_inside_container:
-				# Verificar que no este ya en un stockpile
-				var already_in_sp = false
-				for occupied_stockpile in world.stockpiles:
-					if occupied_stockpile.has_tile(ent.tile_pos):
-						already_in_sp = true
-						break
-				if already_in_sp:
-					continue
-				var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z)
-				if d < best_d:
-					best_d = d
-					target_item = ent
+		var target_item: DFItem = null
+		var best_distance: int = 999999
+		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
+		for world_item in world.items:
+			if not world_item is DFItem:
+				continue
+			if world_item.item_type != item_type_to_collect or world_item.is_inside_container:
+				continue
+			if world_item.is_decayed or world_item.carried_by_id >= 0:
+				continue
+			if world_item.is_reserved_for_other(id, current_tick):
+				continue
+			var already_stored: bool = false
+			for occupied_stockpile in world.stockpiles:
+				if occupied_stockpile.has_tile(world_item.tile_pos) and world_item.is_in_stockpile:
+					already_stored = true
+					break
+			if already_stored:
+				continue
+			var item_distance: int = abs(world_item.tile_pos.x - tile_pos.x) + abs(world_item.tile_pos.z - tile_pos.z) + abs(world_item.tile_pos.y - tile_pos.y) * 2
+			if item_distance < best_distance:
+				best_distance = item_distance
+				target_item = world_item
+
 		if target_item == null:
-			# No hay items sueltos de este tipo para recolectar, cancelar el trabajo
-			if current_job != null:
-				current_job.state = DFJob.JobState.CANCELLED
-			current_task = "idle"
+			_cancel_current_job("ya no queda %s suelta para recoger" % item_type_to_collect)
 			return false
-			
-		var dist = abs(tile_pos.x - target_item.tile_pos.x) + abs(tile_pos.z - target_item.tile_pos.z)
-		if dist > 1:
+
+		target_item.reserve_for(id, current_tick + 600)
+		if best_distance > 1 or target_item.tile_pos.y != tile_pos.y:
 			_move_toward(world, target_item.tile_pos)
 			current_task = "Yendo a recoger " + target_item.name
-			if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
-			return false # Aun no completado
-		else:
-			# Recoger el item
-			inventory.append(target_item)
-			target_item.carried_by_id = id
-			world.remove_entity(target_item)
-			add_thought("Recogio un " + target_item.name + " para almacenar.", 0.02)
-			current_task = "Recolectando " + target_item.name
-			needs_display_update = true
-			return false # Siguiente tick para ir a guardarlo
-			
-	# 2. Si ya tenemos el objeto, buscar el stockpile mas cercano con espacio libre
-	var best_sp = null
-	var best_sp_pos = Vector3i(-1, -1, -1)
-	var best_sp_dist = 999999
-	for candidate_stockpile in world.stockpiles:
-		var stockpile_free_pos: Vector3i = candidate_stockpile.get_free_tile(world)
-		if stockpile_free_pos.y != -1:
-			var stockpile_distance: int = abs(stockpile_free_pos.x - tile_pos.x) + abs(stockpile_free_pos.z - tile_pos.z)
-			if stockpile_distance < best_sp_dist:
-				best_sp_dist = stockpile_distance
-				best_sp_pos = stockpile_free_pos
-				best_sp = candidate_stockpile
+			if current_job != null:
+				current_job.state = DFJob.JobState.IN_PROGRESS
+			return false
 
-	var target_drop_pos = best_sp_pos
-	var is_exterior_drop = false
-	
-	if best_sp == null or best_sp_pos.y == -1:
-		if item_type_to_collect == "wood":
-			var exterior_drop_pos: Vector3i = _find_house_exterior_storage_pos(world)
-			if exterior_drop_pos != Vector3i(-1, -1, -1):
-				target_drop_pos = exterior_drop_pos
-				is_exterior_drop = true
-
-	if target_drop_pos.y == -1:
-		# No hay almacenes ni espacio exterior de casas, dejar caer aquí y completar
-		carried_item.tile_pos = tile_pos
-		world.add_entity(carried_item)
-		inventory.erase(carried_item)
-		add_thought("Dejo " + carried_item.name + " en el suelo por falta de espacio.", -0.01)
-		return true
-
-	var dist_to_drop = abs(tile_pos.x - target_drop_pos.x) + abs(tile_pos.z - target_drop_pos.z)
-	if dist_to_drop > 1:
-		_move_toward(world, target_drop_pos)
-		current_task = "Llevando " + carried_item.name + (" al exterior" if is_exterior_drop else " al almacen")
-		if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
-		return false
-	else:
-		# Depositar en la posición destino
-		carried_item.tile_pos = target_drop_pos
-		carried_item.carried_by_id = -1
-		carried_item.is_in_stockpile = not is_exterior_drop
-		if not is_exterior_drop:
-			_put_item_in_container_at(world, carried_item, target_drop_pos)
-		world.add_entity(carried_item)
-		inventory.erase(carried_item)
-		if is_exterior_drop:
-			add_thought("Almacenó " + carried_item.name + " afuera de una casa.", 0.03)
-		else:
-			add_thought("Almaceno " + carried_item.name + " en el almacen.", 0.04)
-		current_task = "idle"
+		target_item.release_reservation(id)
+		target_item.carried_by_id = id
+		target_item.is_in_stockpile = false
+		world.remove_entity(target_item)
+		inventory.append(target_item)
+		add_thought("Recogió %s para almacenarlo." % target_item.name, 0.02)
+		current_task = "Transportando " + target_item.name
 		needs_display_update = true
-		return true
+		return false
+
+	var target_stockpile = null
+	var target_drop_pos: Vector3i = Vector3i(-1, -1, -1)
+	var best_stockpile_distance: int = 999999
+	for candidate_stockpile in world.stockpiles:
+		var candidate_pos: Vector3i = candidate_stockpile.get_free_tile(world, carried_item.item_type)
+		if candidate_pos.y == -1:
+			continue
+		var candidate_distance: int = abs(candidate_pos.x - tile_pos.x) + abs(candidate_pos.z - tile_pos.z) + abs(candidate_pos.y - tile_pos.y) * 2
+		if candidate_distance < best_stockpile_distance:
+			best_stockpile_distance = candidate_distance
+			target_drop_pos = candidate_pos
+			target_stockpile = candidate_stockpile
+
+	if target_stockpile == null:
+		current_task = "Esperando espacio para guardar " + carried_item.name
+		return false
+
+	if best_stockpile_distance > 1 or target_drop_pos.y != tile_pos.y:
+		_move_toward(world, target_drop_pos)
+		current_task = "Llevando " + carried_item.name + " al almacén"
+		if current_job != null:
+			current_job.state = DFJob.JobState.IN_PROGRESS
+		return false
+
+	carried_item.tile_pos = target_drop_pos
+	carried_item.carried_by_id = -1
+	carried_item.is_in_stockpile = true
+	carried_item.release_reservation(id)
+	var stored_in_container: bool = _put_item_in_container_at(world, carried_item, target_drop_pos)
+	world.add_entity(carried_item)
+	inventory.erase(carried_item)
+	if stored_in_container:
+		add_thought("Guardó %s dentro de un cofre." % carried_item.name, 0.05)
+	else:
+		add_thought("Apiló %s en el almacén." % carried_item.name, 0.03)
+	current_task = "idle"
+	needs_display_update = true
+	return true
 
 func _find_house_exterior_storage_pos(world) -> Vector3i:
 	# Recopilar todas las posiciones de puertas
