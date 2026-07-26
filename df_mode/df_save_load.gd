@@ -1105,6 +1105,7 @@ static func save_game(main) -> bool:
 	data["_current_cycle_follow_index"] = main._current_cycle_follow_index
 	data["follow_dwarf"] = main.renderer.follow_dwarf if main.renderer != null else -1
 	data["_chronicle_events_game"] = main._chronicle_events_game.duplicate()
+	data["story_director"] = main.story_director.serialize_state()
 	data["generation_seed"] = main.generation_seed
 	data["world_name"] = main.world_name
 	data["embark_prepare_points"] = main.embark_prepare_points
@@ -1439,6 +1440,7 @@ static func load_game(main) -> bool:
 	_restore_planet_region_cache(main, data.get("planet_regions", {}))
 	main._current_cycle_follow_index = data.get("_current_cycle_follow_index", 0)
 	main._chronicle_events_game = data.get("_chronicle_events_game", []).duplicate()
+	main.story_director.deserialize_state(data.get("story_director", {}))
 	main.generation_seed = data.get("generation_seed", -1)
 	main.world_name = data.get("world_name", "")
 	main.embark_prepare_points = data.get("embark_prepare_points", 100)
@@ -1544,6 +1546,7 @@ static func _build_save_data(main) -> Dictionary:
 	data["_current_cycle_follow_index"] = main._current_cycle_follow_index
 	data["follow_dwarf"] = main.renderer.follow_dwarf if main.renderer != null else -1
 	data["_chronicle_events_game"] = main._chronicle_events_game.duplicate()
+	data["story_director"] = main.story_director.serialize_state()
 	data["generation_seed"] = main.generation_seed
 	data["world_name"] = main.world_name
 	data["embark_prepare_points"] = main.embark_prepare_points
@@ -1850,6 +1853,7 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	_restore_planet_region_cache(main, data.get("planet_regions", {}))
 	main._current_cycle_follow_index = data.get("_current_cycle_follow_index", 0)
 	main._chronicle_events_game = data.get("_chronicle_events_game", []).duplicate()
+	main.story_director.deserialize_state(data.get("story_director", {}))
 	main.generation_seed = data.get("generation_seed", -1)
 	main.world_name = data.get("world_name", "")
 	main.embark_prepare_points = data.get("embark_prepare_points", 100)
