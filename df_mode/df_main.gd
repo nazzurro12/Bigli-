@@ -2552,8 +2552,6 @@ func _build_large_initial_warehouse(settlement_pos: Vector3i, _rng: RandomNumber
 		)
 		if spawned_item != null:
 			spawned_item.is_in_stockpile = true
-			if str(resource_data[1]) in ["food", "drink"]:
-				spawned_item.is_inside_container = true
 
 	add_message("Gran almacén construido: 20x20 interiores, muros, dos puertas y %d estanterías." % shelf_tiles.size())
 	return true
