@@ -24,6 +24,23 @@ static func _arr_to_color(a: Array) -> Color:
 	if a.size() < 4: return Color.WHITE
 	return Color(a[0], a[1], a[2], a[3])
 
+static func _restore_int_keys(raw_value: Variant, fallback: Dictionary = {}) -> Dictionary:
+	# JSON convierte las claves numéricas de Dictionary en String. Relaciones,
+	# reputaciones y otros índices por ID deben recuperarlas como enteros.
+	if not raw_value is Dictionary:
+		return fallback.duplicate(true)
+	var restored: Dictionary = {}
+	for raw_key: Variant in raw_value:
+		var restored_key: Variant = raw_key
+		if raw_key is String and raw_key.is_valid_int():
+			restored_key = int(raw_key)
+		var raw_entry: Variant = raw_value[raw_key]
+		if raw_entry is Dictionary or raw_entry is Array:
+			restored[restored_key] = raw_entry.duplicate(true)
+		else:
+			restored[restored_key] = raw_entry
+	return restored
+
 static func _body_part_to_dict(bp) -> Dictionary:
 	return {
 		"name": bp.name,
