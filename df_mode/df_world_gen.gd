@@ -1044,6 +1044,13 @@ func _place_trees_in_local(world) -> void:
 				world.set_material(Vector3i(x, h, z), DFWorld.MatType.WOOD)
 
 func _place_flora_in_local(world) -> void:
+	# La flora silvestre debe ser visible sin convertir miles de plantas en
+	# entidades activas. El presupuesto escala con el mapa y mantiene estable
+	# el coste del ciclo de simulación.
+	var surface_budget: int = clampi(int(world.width * world.depth / 112), 180, 640)
+	var cave_budget: int = clampi(int(world.width * world.depth / 320), 48, 220)
+	var surface_count: int = 0
+	var cave_count: int = 0
 	for z in range(world.depth):
 		for x in range(world.width):
 			var coords = _get_world_coords(x, z, world.width, world.depth)
@@ -1053,21 +1060,50 @@ func _place_flora_in_local(world) -> void:
 			var h = world.get_surface_height(x, z)
 			
 			# 1. Flora superficial
-			if h >= 2 and h <= 8:
+			if h >= 2 and h <= 12:
 				var pos = Vector3i(x, h, z)
 				var t = world.get_tile(pos)
 				if t == DFWorld.TileType.GRASS or t == DFWorld.TileType.SAND:
-					if rng.randf() < config_cactus_chance and (biome == "desert" or biome == "beach"):
-						world._spawn_item(pos, "Cactus", "wood", DFWorld.MatType.WOOD, "♣", Color("#88FF88"))
-					elif rng.randf() < config_berry_bush_chance and biome in ["grassland", "alpine_meadow", "taiga", "swamp"]:
-						world._spawn_item(pos, "Arbusto de Bayas", "food", 0, "*", Color("#FF5555"))
+					var flora_chance: float = config_cactus_chance if biome in ["desert", "beach"] else config_berry_bush_chance
+					if surface_count < surface_budget and rng.randf() < flora_chance * 0.18:
+						var flora: Dictionary = _surface_flora_for_biome(biome)
+						if not flora.is_empty():
+							world._spawn_item(
+								pos,
+								str(flora["name"]),
+								str(flora["type"]),
+								int(flora["material"]),
+								str(flora["glyph"]),
+								flora["color"] as Color
+							)
+							surface_count += 1
 							
 			# 2. Flora subterránea
+			if cave_count >= cave_budget:
+				continue
 			for y in range(h - 1, -8, -1):
 				var pos_c = Vector3i(x, y, z)
 				if world.get_tile(pos_c) == DFWorld.TileType.CAVE_FLOOR:
-					if rng.randf() < 0.02: # 2% de probabilidad fija en cuevas abiertas
+					if rng.randf() < 0.002:
 						world._spawn_item(pos_c, "Plump Helmet Silvestre", "food", 0, "%", Color("#FF88FF"))
+						cave_count += 1
+						break
+
+
+func _surface_flora_for_biome(biome: String) -> Dictionary:
+	match biome:
+		"desert", "beach":
+			return {"name": "Cactus", "type": "wood", "material": DFWorld.MatType.WOOD, "glyph": "♣", "color": Color("#6FAF55")}
+		"swamp":
+			return {"name": "Junco Silvestre", "type": "plant", "material": DFWorld.MatType.SOIL, "glyph": ";", "color": Color("#76A85B")}
+		"taiga", "pine_forest", "mountain_forest":
+			return {"name": "Helecho", "type": "plant", "material": DFWorld.MatType.SOIL, "glyph": "♣", "color": Color("#4F9A5B")}
+		"temperate_forest", "dense_temperate_forest", "rainforest":
+			return {"name": "Matorral Silvestre", "type": "plant", "material": DFWorld.MatType.SOIL, "glyph": "♣", "color": Color("#42A85A")}
+		"grassland", "savanna", "alpine_meadow":
+			return {"name": "Flores Silvestres", "type": "plant", "material": DFWorld.MatType.SOIL, "glyph": "*", "color": Color("#E4C95B")}
+		_:
+			return {}
 
 func _check_tree_spacing(world, x: int, y: int, z: int, min_dist: int) -> bool:
 	for dz in range(-min_dist, min_dist + 1):
