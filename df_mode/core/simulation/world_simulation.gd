@@ -9,6 +9,7 @@ var settlement: SettlementController = SettlementController.new()
 var faction_relations: Dictionary = {}
 var history: Array[Dictionary] = []
 var elapsed_minutes: int = 0
+var initialized: bool = false
 
 ## Lee una propiedad de Dictionary u Object sin llamar Object.get() con dos argumentos.
 static func _safe_get(source: Variant, property_name: StringName, default_value: Variant = null) -> Variant:
@@ -32,12 +33,15 @@ func initialize(world) -> void:
 			var definition = database.get_creature(str(creature_type) if creature_type != null else "")
 			if definition != null and entity is DFCreature:
 				definition.apply_to(entity)
+	if initialized:
+		return
 	if faction_relations.is_empty():
 		set_relation("dwarves", "goblins", -60)
 		set_relation("dwarves", "humans", 15)
 		set_relation("dwarves", "elves", 5)
 		set_relation("humans", "goblins", -35)
 	record("Fundación de %s" % settlement.name)
+	initialized = true
 
 func tick(world, minute_ticked: bool) -> Array[String]:
 	if not minute_ticked:
@@ -97,3 +101,24 @@ func record(description: String) -> void:
 	history.append({"minute": elapsed_minutes, "description": description})
 	if history.size() > 200:
 		history.pop_front()
+
+func export_state() -> Dictionary:
+	return {
+		"elapsed_minutes": elapsed_minutes,
+		"faction_relations": faction_relations.duplicate(true),
+		"history": history.duplicate(true),
+		"initialized": initialized,
+		"settlement": settlement.export_state(),
+	}
+
+func import_state(data: Dictionary) -> void:
+	elapsed_minutes = int(data.get("elapsed_minutes", 0))
+	faction_relations = data.get("faction_relations", {}).duplicate(true)
+	history.clear()
+	for entry: Variant in data.get("history", []):
+		if entry is Dictionary:
+			history.append(entry.duplicate(true))
+	initialized = bool(data.get("initialized", true))
+	var settlement_data: Variant = data.get("settlement", {})
+	if settlement_data is Dictionary:
+		settlement.import_state(settlement_data)
