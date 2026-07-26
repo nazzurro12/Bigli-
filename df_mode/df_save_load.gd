@@ -353,6 +353,10 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"life_history": dwarf.life_history.duplicate(true),
 		"career_offers": dwarf.career_offers.duplicate(true),
 		"social_roles": dwarf.social_roles.duplicate(),
+		"known_reputations": dwarf.known_reputations.duplicate(true),
+		"rumors": dwarf.rumors.duplicate(true),
+		"legal_record": dwarf.legal_record.duplicate(true),
+		"life_decisions": dwarf.life_decisions.duplicate(true),
 		"possession_count": dwarf.possession_count,
 		"last_possession_event_id": dwarf.last_possession_event_id,
 		"preferences": dwarf.preferences.duplicate(),
@@ -520,6 +524,10 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.life_history = d.get("life_history", []).duplicate(true)
 	df.career_offers = d.get("career_offers", []).duplicate(true)
 	df.social_roles = d.get("social_roles", []).duplicate()
+	df.known_reputations = _restore_int_keys(d.get("known_reputations", {}), df.known_reputations)
+	df.rumors = d.get("rumors", []).duplicate(true)
+	df.legal_record = d.get("legal_record", []).duplicate(true)
+	df.life_decisions = d.get("life_decisions", []).duplicate(true)
 	df.possession_count = d.get("possession_count", 0)
 	df.last_possession_event_id = d.get("last_possession_event_id", -1)
 	df.preferences = d.get("preferences", {}).duplicate()
