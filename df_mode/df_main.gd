@@ -457,15 +457,15 @@ func _consume_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> bool:
 			_release_recipe_reservations(world_ref, recipe, int(workshop.dwarf_assigned))
 			return false
 	var consumed_ids: Array = []
-	for entry_value: Variant in reservations:
-		var item := _find_recipe_item(world_ref, int(entry_value.get("item_id", -1)))
-		var amount := int(entry_value.get("amount", 0))
-		consumed_ids.append(item.id)
-		if item.stack_size > amount:
-			item.stack_size -= amount
-			item.release_reservation(int(workshop.dwarf_assigned))
+	for consumed_entry: Variant in reservations:
+		var consumed_item := _find_recipe_item(world_ref, int(consumed_entry.get("item_id", -1)))
+		var consumed_amount: int = int(consumed_entry.get("amount", 0))
+		consumed_ids.append(consumed_item.id)
+		if consumed_item.stack_size > consumed_amount:
+			consumed_item.stack_size -= consumed_amount
+			consumed_item.release_reservation(int(workshop.dwarf_assigned))
 		else:
-			world_ref.entities.erase(item)
+			world_ref.entities.erase(consumed_item)
 	recipe["_consumed_input_ids"] = consumed_ids
 	recipe.erase("_reserved_inputs")
 	return true
@@ -1425,8 +1425,9 @@ func _tick() -> void:
 				dwarves_count += 1
 				mil_strength += e.combat_skill
 				_fortress_wealth_calc += 10.0
-		for e in world.items:
-			_fortress_wealth_calc += 1.0
+		for wealth_item in world.items:
+			if wealth_item != null:
+				_fortress_wealth_calc += 1.0
 
 	if _simulation_tick_clock == 6 and _game_minute % 2 == 0:
 		_maintain_autonomous_economy()
@@ -2653,8 +2654,8 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 		add_message("========================================")
 	else:
 		var alive_count = 0
-		for ent in world.dwarves:
-			if ent.get("is_alive") != false:
+		for counted_survivor in world.dwarves:
+			if counted_survivor.get("is_alive") != false:
 				alive_count += 1
 		add_message("========================================")
 		add_message("  NUEVO EMBARQUE EN %s!" % world_name.to_upper())
@@ -2768,10 +2769,10 @@ func _build_initial_settlement(center: Vector3i) -> void:
 		if bed_item != null:
 			bed_item.is_bed = true
 		if i < settlement_dwarves.size():
-			var resident = settlement_dwarves[i]
-			resident.preferred_bed = bed_offset_pos
-			if world.is_water(resident.tile_pos) or world.is_blocked(resident.tile_pos):
-				resident.tile_pos = bed_offset_pos
+			var assigned_resident = settlement_dwarves[i]
+			assigned_resident.preferred_bed = bed_offset_pos
+			if world.is_water(assigned_resident.tile_pos) or world.is_blocked(assigned_resident.tile_pos):
+				assigned_resident.tile_pos = bed_offset_pos
 			
 		var door_offset_pos = bpos + Vector3i(template.door.x, 0, template.door.y)
 		world._spawn_item(door_offset_pos, "Puerta de Madera", "door", 0, "p", Color("#8B5A2B"))
@@ -4843,10 +4844,10 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 				if pos.x >= minimap_x and pos.x <= minimap_x + minimap_size and pos.y >= minimap_y and pos.y <= minimap_y + minimap_size:
 					var relative_mx = pos.x - minimap_x
 					var relative_my = pos.y - minimap_y
-					var target_wx = int(relative_mx / float(minimap_size) * map_w)
-					var target_wz = int(relative_my / float(minimap_size) * map_h)
-					embark_cursor.x = clampi(target_wx, 0, map_w - 1)
-					embark_cursor.y = clampi(target_wz, 0, map_h - 1)
+					var minimap_target_wx: int = int(relative_mx / float(minimap_size) * map_w)
+					var minimap_target_wz: int = int(relative_my / float(minimap_size) * map_h)
+					embark_cursor.x = clampi(minimap_target_wx, 0, map_w - 1)
+					embark_cursor.y = clampi(minimap_target_wz, 0, map_h - 1)
 					renderer.queue_redraw()
 					return
 				
@@ -4966,11 +4967,11 @@ func _get_spiral_offsets(count: int) -> Array:
 		for tz in range(-ring + 1, ring + 1):
 			offsets.append(Vector2i(ring * step, tz * step))
 		# Bottom edge
-		for tx in range(ring - 1, -ring - 1, -1):
-			offsets.append(Vector2i(tx * step, ring * step))
+		for bottom_x in range(ring - 1, -ring - 1, -1):
+			offsets.append(Vector2i(bottom_x * step, ring * step))
 		# Left edge
-		for tz in range(ring - 1, -ring, -1):
-			offsets.append(Vector2i(-ring * step, tz * step))
+		for left_z in range(ring - 1, -ring, -1):
+			offsets.append(Vector2i(-ring * step, left_z * step))
 		ring += 1
 	return offsets
 
@@ -4980,18 +4981,18 @@ func _simulate_embark_demographics(years: int) -> Array:
 	
 	# Initial 7 dwarves profile setup
 	var list_dwarves = []
-	for i in range(7):
+	for founder_index in range(7):
 		var dname = ""
-		if i < config_dwarf_names.size() and config_dwarf_names[i] != "":
-			dname = config_dwarf_names[i]
+		if i < config_dwarf_names.size() and config_dwarf_names[founder_index] != "":
+			dname = config_dwarf_names[founder_index]
 		else:
-			dname = world_gen.namegen.generate_dwarf_name() if world_gen and world_gen.namegen else "Enano Fundador %d" % (i + 1)
+			dname = world_gen.namegen.generate_dwarf_name() if world_gen and world_gen.namegen else "Enano Fundador %d" % (founder_index + 1)
 			
-		var is_male = i % 2 == 0
+		var is_male = founder_index % 2 == 0
 		var age = rng.randi_range(20, 45)
 		var prof = DFDwarf.Profession.CRAFTSMAN
 		if i < config_dwarf_professions.size():
-			prof = config_dwarf_professions[i]
+			prof = config_dwarf_professions[founder_index]
 		else:
 			# Standard starting professions
 			var base_profs = [
@@ -5003,7 +5004,7 @@ func _simulate_embark_demographics(years: int) -> Array:
 				DFDwarf.Profession.COOK,
 				DFDwarf.Profession.DOCTOR
 			]
-			prof = base_profs[i]
+			prof = base_profs[founder_index]
 			
 		list_dwarves.append({
 			"name": dname,
@@ -5013,56 +5014,56 @@ func _simulate_embark_demographics(years: int) -> Array:
 			"alive": true,
 			"profession": prof,
 			"generation": 0,
-			"equipped_weapon": config_dwarf_weapons[i] if i < config_dwarf_weapons.size() else "",
-			"priorities": config_dwarf_priorities[i] if i < config_dwarf_priorities.size() else {}
+			"equipped_weapon": config_dwarf_weapons[founder_index] if founder_index < config_dwarf_weapons.size() else "",
+			"priorities": config_dwarf_priorities[founder_index] if founder_index < config_dwarf_priorities.size() else {}
 		})
 		
 	# Simulation years
 	for y in range(years):
 		# 1. Aging and mortality
-		for d in list_dwarves:
-			if not d.alive: continue
-			d.age += 1
+		for aging_resident in list_dwarves:
+			if not aging_resident.alive: continue
+			aging_resident.age += 1
 			# Natural death checks
 			var death_chance = 0.008 # 0.8% annual accident chance
-			if d.age > 65:
-				death_chance += (d.age - 65) * 0.05
+			if aging_resident.age > 65:
+				death_chance += (aging_resident.age - 65) * 0.05
 			if rng.randf() < death_chance:
-				d.alive = false
+				aging_resident.alive = false
 				
 		# 2. Marriage
 		var single_males = []
 		var single_females = []
-		for d in list_dwarves:
-			if d.alive and d.age >= 18 and d.spouse == null:
-				if d.gender_male:
-					single_males.append(d)
+		for marriage_candidate in list_dwarves:
+			if marriage_candidate.alive and marriage_candidate.age >= 18 and marriage_candidate.spouse == null:
+				if marriage_candidate.gender_male:
+					single_males.append(marriage_candidate)
 				else:
-					single_females.append(d)
+					single_females.append(marriage_candidate)
 		
 		# Match couples
 		single_males.shuffle()
 		single_females.shuffle()
 		var p_count = mini(single_males.size(), single_females.size())
-		for i in range(p_count):
+		for couple_index in range(p_count):
 			if rng.randf() < 0.20: # 20% marriage chance per year
-				single_males[i].spouse = single_females[i].name
-				single_females[i].spouse = single_males[i].name
+				single_males[couple_index].spouse = single_females[couple_index].name
+				single_females[couple_index].spouse = single_males[couple_index].name
 				
 		# 3. Births
 		var newborns = []
-		for d in list_dwarves:
+		for parent_candidate in list_dwarves:
 			# Female, alive, married, of child-bearing age
-			if d.alive and not d.gender_male and d.spouse != null and d.age >= 18 and d.age <= 45:
+			if parent_candidate.alive and not parent_candidate.gender_male and parent_candidate.spouse != null and parent_candidate.age >= 18 and parent_candidate.age <= 45:
 				if rng.randf() < 0.25: # 25% birth chance per married female
 					newborns.append({
-						"name": world_gen.namegen.generate_dwarf_name() if world_gen and world_gen.namegen else "Hijo de " + d.name.split(" ")[0],
+						"name": world_gen.namegen.generate_dwarf_name() if world_gen and world_gen.namegen else "Hijo de " + parent_candidate.name.split(" ")[0],
 						"gender_male": rng.randf() < 0.5,
 						"age": 0,
 						"spouse": null,
 						"alive": true,
 						"profession": DFDwarf.Profession.CRAFTSMAN,
-						"generation": d.generation + 1,
+						"generation": parent_candidate.generation + 1,
 						"equipped_weapon": "",
 						"priorities": {}
 					})
@@ -5070,12 +5071,12 @@ func _simulate_embark_demographics(years: int) -> Array:
 		
 		# 4. Critical Population Immigration
 		var alive_count = 0
-		for d in list_dwarves:
-			if d.alive: alive_count += 1
+		for population_member in list_dwarves:
+			if population_member.alive: alive_count += 1
 		if alive_count < 3:
 			# Immigrants join
 			var imm_count = rng.randi_range(2, 4)
-			for i in range(imm_count):
+			for immigrant_index in range(imm_count):
 				list_dwarves.append({
 					"name": world_gen.namegen.generate_dwarf_name() if world_gen and world_gen.namegen else "Refugiado",
 					"gender_male": rng.randf() < 0.5,
@@ -5090,9 +5091,9 @@ func _simulate_embark_demographics(years: int) -> Array:
 				
 	# Filter survivors
 	var survivors = []
-	for d in list_dwarves:
-		if d.alive:
-			survivors.append(d)
+	for final_resident in list_dwarves:
+		if population_member.alive:
+			survivors.append(population_member)
 			
 	# Limit survivors to a reasonable maximum (e.g. 50) to avoid crowding, but usually it stabilizes around 7-30
 	if survivors.size() > 50:
