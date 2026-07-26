@@ -25,6 +25,7 @@ const DFDialogue = preload("res://df_mode/df_dialogue.gd")
 const DFFastTravel = preload("res://df_mode/df_fast_travel.gd")
 const DFQuestSystem = preload("res://df_mode/df_quest.gd")
 const DFSaveLoad = preload("res://df_mode/df_save_load.gd")
+const DFConsequenceSystem = preload("res://df_mode/df_consequence_system.gd")
 const DFWorldSimulationScript = preload("res://df_mode/core/simulation/world_simulation.gd")
 const WorldGenerationSettings = preload("res://world/world_generation_settings.gd")
 
@@ -1317,6 +1318,12 @@ func _tick() -> void:
 
 	if minute_ticked:
 		_maintain_autonomous_economy()
+		_ensure_consequence_system()
+		if _game_minute % 10 == 0:
+			var social_results: Array = world.consequence_system.tick_social_simulation(_get_absolute_game_minute())
+			for social_result: Variant in social_results:
+				if social_result is Dictionary and social_result.get("type", "") == "career_decision":
+					_chronicle_events_game.append(social_result)
 
 	if world.invasion_system != null and minute_ticked and _game_minute % 10 == 0:
 		world.invasion_system.check_invasion(_game_minute, _game_season, dwarves_count, mil_strength)
@@ -1692,16 +1699,30 @@ func _possess_dwarf(id: int) -> void:
 			possessed_dwarf = e
 			last_possessed_dwarf = e
 			possessed_dwarf.is_possessed = true
+			_ensure_consequence_system()
+			var possession_event: Dictionary = world.consequence_system.record_possession_started(possessed_dwarf)
+			_chronicle_events_game.append(possession_event)
 			add_message("! POSESION INICIADA ! (WASD para mover)")
 			renderer.follow_dwarf = -1
 			return
 			
 func _exit_possession() -> void:
 	if possessed_dwarf != null:
+		_ensure_consequence_system()
+		var consequence_event: Dictionary = world.consequence_system.record_possession_ended(possessed_dwarf)
+		_chronicle_events_game.append(consequence_event)
 		possessed_dwarf.is_possessed = false
 		possessed_dwarf = null
 		add_message("Posesion terminada. (L para volver)")
 		follow_time = 0.0
+
+func _ensure_consequence_system() -> void:
+	if world != null and world.consequence_system == null:
+		world.consequence_system = DFConsequenceSystem.new(world)
+
+func _get_absolute_game_minute() -> int:
+	var season_index: int = maxi(0, SEASON_LIST.find(_game_season))
+	return (((_game_year * 4 + season_index) * 28 + (_game_day - 1)) * 24 + _game_hour) * 60 + _game_minute
 
 func _try_move_possessed(direction: Vector2i) -> bool:
 	if possessed_dwarf == null or world == null or direction == Vector2i.ZERO:
