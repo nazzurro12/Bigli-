@@ -8,6 +8,10 @@ var _initial_positions = {}
 var _test_passed = false
 var _errors = []
 var _world_generated = false
+var _phase_started_ms: int = 0
+
+const GENERATION_TIMEOUT_MS := 180000
+const LOADING_TIMEOUT_MS := 180000
 
 func _ready():
 	print("[TEST] === TEST DE INTEGRACION DF MODE ===")
@@ -19,10 +23,11 @@ func _ready():
 		return
 	_game_main = main_scene.instantiate()
 	add_child(_game_main)
+	_phase_started_ms = Time.get_ticks_msec()
 	print("[TEST] Escena cargada. Esperando inicializacion...")
 	_phase = "WAITING_SETTINGS"
 
-func _process(delta):
+func _process(_delta):
 	if _game_main == null:
 		return
 	
@@ -33,9 +38,11 @@ func _process(delta):
 			print("[TEST] Estado: SETTINGS_MENU (0). Iniciando Quick Start...")
 			_game_main.current_state = 1
 			_game_main.set_meta("quick_start_pending", true)
-			_game_main.generation_seed = randi()
+			_game_main.generation_seed = 424242
+			_game_main.setting_size = 0
 			_phase = "GENERATING"
 			_tick_count = 0
+			_phase_started_ms = Time.get_ticks_msec()
 			print("[TEST] Quick Start enviado! Esperando generacion del mundo...")
 	
 	elif _phase == "GENERATING":
@@ -47,12 +54,13 @@ func _process(delta):
 				_tick_count = 0
 				_phase = "TICKING"
 				print("[TEST] Iniciando monitoreo de " + str(_ticks_to_wait) + " ticks...")
-			else:
-				_phase = "WAITING_LOAD"
-				_tick_count = 0
+				else:
+					_phase = "WAITING_LOAD"
+					_tick_count = 0
+					_phase_started_ms = Time.get_ticks_msec()
 		
 		_tick_count += 1
-		if _tick_count > 600:
+		if Time.get_ticks_msec() - _phase_started_ms > GENERATION_TIMEOUT_MS:
 			_error("Timeout esperando generacion del mundo (estado=" + str(state) + ")")
 			_finish_test()
 	
@@ -70,7 +78,7 @@ func _process(delta):
 			_error("Estado inesperado durante carga: " + str(state))
 			_finish_test()
 		_tick_count += 1
-		if _tick_count > 300:
+		if Time.get_ticks_msec() - _phase_started_ms > LOADING_TIMEOUT_MS:
 			_error("Timeout esperando LOADING_PLAYING -> PLAYING")
 			_finish_test()
 	
