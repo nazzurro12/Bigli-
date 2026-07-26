@@ -1492,8 +1492,8 @@ func _has_tool_named(tokens: Array) -> bool:
 	for item in inventory:
 		var item_name: String = str(item.name).to_lower() if "name" in item else ""
 		var item_type: String = str(item.item_type).to_lower() if "item_type" in item else ""
-		for token in tokens:
-			var lowered: String = str(token).to_lower()
+		for inventory_token in tokens:
+			var lowered: String = str(inventory_token).to_lower()
 			if lowered in item_name or lowered in item_type:
 				return true
 	return false
@@ -4716,14 +4716,14 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 	if carried_item == null:
 		# Verificar si hay espacio en algún stockpile antes de ir a buscarlo
 		var has_stockpile_space = false
-		for sp in world.stockpiles:
-			var free_pos = sp.get_free_tile(world)
-			if free_pos.y != -1:
+		for capacity_stockpile in world.stockpiles:
+			var capacity_free_pos: Vector3i = capacity_stockpile.get_free_tile(world)
+			if capacity_free_pos.y != -1:
 				has_stockpile_space = true
 				break
 		if not has_stockpile_space and item_type_to_collect == "wood":
-			var ext_pos = _find_house_exterior_storage_pos(world)
-			if ext_pos != Vector3i(-1, -1, -1):
+			var capacity_exterior_pos: Vector3i = _find_house_exterior_storage_pos(world)
+			if capacity_exterior_pos != Vector3i(-1, -1, -1):
 				has_stockpile_space = true
 				
 		if not has_stockpile_space:
@@ -4740,8 +4740,8 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 			if ent is DFItem and ent.item_type == item_type_to_collect and not ent.is_inside_container:
 				# Verificar que no este ya en un stockpile
 				var already_in_sp = false
-				for sp in world.stockpiles:
-					if sp.has_tile(ent.tile_pos):
+				for occupied_stockpile in world.stockpiles:
+					if occupied_stockpile.has_tile(ent.tile_pos):
 						already_in_sp = true
 						break
 				if already_in_sp:
@@ -4777,23 +4777,23 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 	var best_sp = null
 	var best_sp_pos = Vector3i(-1, -1, -1)
 	var best_sp_dist = 999999
-	for sp_3794 in world.stockpiles:
-		var free_pos = sp_3794.get_free_tile(world)
-		if free_pos.y != -1:
-			var d_3797 = abs(free_pos.x - tile_pos.x) + abs(free_pos.z - tile_pos.z)
-			if d_3797 < best_sp_dist:
-				best_sp_dist = d_3797
-				best_sp_pos = free_pos
-				best_sp = sp_3794
+	for candidate_stockpile in world.stockpiles:
+		var stockpile_free_pos: Vector3i = candidate_stockpile.get_free_tile(world)
+		if stockpile_free_pos.y != -1:
+			var stockpile_distance: int = abs(stockpile_free_pos.x - tile_pos.x) + abs(stockpile_free_pos.z - tile_pos.z)
+			if stockpile_distance < best_sp_dist:
+				best_sp_dist = stockpile_distance
+				best_sp_pos = stockpile_free_pos
+				best_sp = candidate_stockpile
 
 	var target_drop_pos = best_sp_pos
 	var is_exterior_drop = false
 	
 	if best_sp == null or best_sp_pos.y == -1:
 		if item_type_to_collect == "wood":
-			var ext_pos = _find_house_exterior_storage_pos(world)
-			if ext_pos != Vector3i(-1, -1, -1):
-				target_drop_pos = ext_pos
+			var exterior_drop_pos: Vector3i = _find_house_exterior_storage_pos(world)
+			if exterior_drop_pos != Vector3i(-1, -1, -1):
+				target_drop_pos = exterior_drop_pos
 				is_exterior_drop = true
 
 	if target_drop_pos.y == -1:
