@@ -1593,7 +1593,7 @@ func _find_nearby_master_for_skill(world, skill_id: int):
 	var best_master = null
 	var best_level = my_level
 	var nearest_dist = 15.0
-	for e in world.entities:
+	for e in world.dwarves:
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		var is_alive_check = e.get("is_alive")
 		if is_dwarf and e != self and (is_alive_check == null or is_alive_check == true):
@@ -1622,7 +1622,7 @@ func _find_nearby_building_type(world, b_type: int) -> Vector3i:
 
 func _try_socialize(world) -> bool:
 	var target = null
-	for e in world.entities:
+	for e in world.dwarves:
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		var is_alive_check = e.get("is_alive")
 		if is_dwarf and e != self and (is_alive_check == null or is_alive_check == true):
@@ -2288,7 +2288,7 @@ func tick_social(world) -> void:
 	_decay_social_beliefs()
 	if current_task != "idle": return
 	if randi() % 30 != 0: return
-	for e in world.entities:
+	for e in world.dwarves:
 		if e == self: continue
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		var e_alive = e.get("is_alive")
@@ -3370,7 +3370,7 @@ func _check_personality_compatibility(other) -> bool:
 func _try_find_partner(world) -> void:
 	var best_candidate = null
 	var best_relation = 0.6
-	for e in world.entities:
+	for e in world.dwarves:
 		if e == self: continue
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		if not is_dwarf: continue
@@ -3422,7 +3422,7 @@ func _try_conceive(world) -> void:
 	if gender != "Female":
 		return
 	var husband = null
-	for e in world.entities:
+	for e in world.dwarves:
 		if e.id == family.spouse:
 			husband = e
 			break
@@ -3465,7 +3465,7 @@ func _give_birth(world) -> void:
 	child.family.mother = id
 	child.family.father = partner_id
 	var father = null
-	for e in world.entities:
+	for e in world.dwarves:
 		if e.id == partner_id:
 			father = e
 			break
@@ -3539,7 +3539,7 @@ func tick_child_growth(world) -> void:
 func _get_parent_from_world(world, parent_id: int):
 	if world == null:
 		return null
-	for e in world.entities:
+	for e in world.dwarves:
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		if is_dwarf and e.id == parent_id and e.get("is_alive") == true:
 			return e
@@ -4338,12 +4338,12 @@ func _execute_hunt_job(world) -> bool:
 			return true
 	var target_creature_id = current_job.get_meta("creature_id", -1)
 	var target = null
-	for e in world.entities:
+	for e in world.creatures:
 		if e.get("id") == target_creature_id and e.get("is_alive") == true:
 			target = e
 			break
 	if target == null:
-		for e_3419 in world.entities:
+		for e_3419 in world.creatures:
 			if e_3419.get("creature_type") != null and e_3419.get("creature_type") != "dwarf" and e_3419.get("is_alive") == true:
 				var dist = abs(tile_pos.x - e_3419.tile_pos.x) + abs(tile_pos.z - e_3419.tile_pos.z)
 				if dist <= 20:
@@ -5019,7 +5019,7 @@ func _tick_hunting_behavior(world) -> bool:
 	# Validar target actual
 	if hunting_target != null:
 		var target_exists = false
-		for ent1 in world.entities:
+		for ent1 in world.creatures:
 			if ent1 == hunting_target:
 				target_exists = true
 				break
@@ -5027,7 +5027,7 @@ func _tick_hunting_behavior(world) -> bool:
 			# El target murió o desapareció, buscar si dejó un cadáver en su lugar para degollarlo
 			if hunting_target != null:
 				var corpse_found = null
-				for ent2 in world.entities:
+				for ent2 in world.items:
 					if ent2 is DFItem and ent2.item_type == "corpse" and ent2.tile_pos == hunting_target.tile_pos:
 						corpse_found = ent2
 						break
@@ -5057,7 +5057,7 @@ func _tick_hunting_behavior(world) -> bool:
 		# Buscar criatura viva más cercana (rango 30)
 		var best_prey = null
 		var best_d = 99999
-		for ent3 in world.entities:
+		for ent3 in world.creatures:
 			var c_type = ent3.get("creature_type")
 			var alive = ent3.get("is_alive")
 			if ent3 != self and c_type != null and c_type != "dwarf" and c_type != "" and alive == true:
