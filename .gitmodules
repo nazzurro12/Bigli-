@@ -1,0 +1,4 @@
+[submodule "addons/gdUnit4"]
+	path = addons/gdUnit4
+	url = https://github.com/godot-gdunit-labs/gdUnit4.git
+	branch = v6.1.3
