@@ -3309,6 +3309,13 @@ func _move_toward(world, target: Vector3i) -> void:
 				var alt_blocked: bool = world.is_actor_occupied(alt, self)
 				if not alt_blocked:
 					world.move_entity(self, alt)
+					# El desvío cambió el origen real: la ruta anterior ya no es
+					# válida y debe recalcularse desde esta nueva casilla.
+					path.clear()
+					path_index = 0
+					path_replan_count = 0
+					has_moved_this_tick = true
+					stats_tracker["distance_traveled"] += 1
 					found_alt = true
 					break
 			if not found_alt:
