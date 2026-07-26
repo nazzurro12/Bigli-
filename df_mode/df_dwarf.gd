@@ -5,6 +5,10 @@ class_name DFDwarf
 const DFActorActionExecutor = preload("res://core/actions/df_actor_action_executor.gd")
 const DFAutonomousPlan = preload("res://core/ai/df_autonomous_plan.gd")
 
+# Reparte únicamente los cálculos de rutas nuevas. Una ruta ya calculada continúa
+# moviéndose cada tick, por lo que esto reduce picos sin robotizar el movimiento.
+const PATH_REQUEST_BUCKETS: int = 4
+
 enum Skill {
 	MINING, CARPENTRY, MASONRY, SMITHING, COOKING, BREWING, FARMING, FISHING,
 	WOODCUTTING, ENGRAVING, MECHANICS, DOCTORING, ORGANIZING, MILITARY_TACTICS,
@@ -3154,6 +3158,14 @@ func _pick_up_job(world, jobs: Array) -> void:
 		assign_job(best_job)
 		current_task = best_job.get_description()
 
+func _path_request_slot_is_due(world) -> bool:
+	if is_possessed:
+		return true
+	if has_meta("is_follower") and bool(get_meta("is_follower", false)):
+		return true
+	var global_tick: int = int(world.get_meta("simulation_tick_total", 0))
+	return posmod(id, PATH_REQUEST_BUCKETS) == posmod(global_tick, PATH_REQUEST_BUCKETS)
+
 func _move_toward(world, target: Vector3i) -> void:
 	var effective_speed = speed * (1.0 - fatigue_level * 0.2)
 	var carried_ratio: float = get_carried_weight() / maxf(1.0, get_carrying_capacity())
@@ -3166,6 +3178,14 @@ func _move_toward(world, target: Vector3i) -> void:
 		move_tick_counter -= 1
 		return
 	move_tick_counter = ceil(2.0 / effective_speed)
+
+	# A* era solicitado por todos los habitantes en el mismo fotograma al cambiar
+	# de tarea. Los cálculos iniciales se distribuyen; posesión y seguidores
+	# mantienen respuesta inmediata. No se incrementa stuck_counter mientras
+	# simplemente se espera el turno de planificación.
+	var needs_new_path: bool = path.is_empty() or path_index >= path.size()
+	if needs_new_path and not _path_request_slot_is_due(world):
+		return
 
 	if tile_pos == last_pos:
 		stuck_counter += 1
