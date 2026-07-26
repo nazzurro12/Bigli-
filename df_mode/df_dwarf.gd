@@ -186,6 +186,12 @@ var relationships: Dictionary = {}
 var family: Dictionary = { "mother": -1, "father": -1, "spouse": -1, "children": [] }
 var friends: Array = []
 var rivals: Array = []
+var reputation: Dictionary = {}
+var life_history: Array = []
+var career_offers: Array = []
+var social_roles: Array = []
+var possession_count: int = 0
+var last_possession_event_id: int = -1
 
 var preferences: Dictionary = {}
 var memories: Array = []
