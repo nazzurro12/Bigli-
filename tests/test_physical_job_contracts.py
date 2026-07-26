@@ -100,6 +100,13 @@ class PhysicalJobContracts(unittest.TestCase):
         self.assertIn("operating_workshop.tick(1.0)", operate)
         self.assertIn("_produce_workshop_outputs(world, completed_recipe)", operate)
 
+    def test_workshop_orders_queue_recipes_instead_of_spawning_free_items(self):
+        execute = self.dwarf.split("func _execute_job", 1)[1].split("\nfunc ", 1)[0]
+        reaction = execute.split("DFJob.JobType.WORKSHOP_REACTION:", 1)[1].split("\n\t\tDFJob.JobType.", 1)[0]
+        self.assertIn("world.get_workshop_at(current_job.tile_pos)", reaction)
+        self.assertIn("target_workshop.queue_recipe(reaction_id)", reaction)
+        self.assertNotIn("world._spawn_item", reaction)
+
     def test_sleep_requires_attempting_to_reach_claimed_bed(self):
         sleep = self.dwarf.split("func _try_sleep", 1)[1].split("\nfunc ", 1)[0]
         self.assertIn("_find_unclaimed_bed(world)", sleep)
