@@ -58,6 +58,29 @@ class RuntimePerformanceContracts(unittest.TestCase):
         self.assertIn("world.get_items_at(stock_tile)", needs)
         self.assertNotIn("for ent in world.entities", needs)
 
+    def test_social_searches_only_visit_inhabitants(self):
+        for method in (
+            "_find_nearby_master_for_skill",
+            "_try_socialize",
+            "tick_social",
+            "_try_find_partner",
+            "_try_conceive",
+            "_give_birth",
+            "_get_parent_from_world",
+        ):
+            body = self.dwarf.split("func " + method, 1)[1].split("\nfunc ", 1)[0]
+            self.assertNotIn("in world.entities:", body, method)
+            self.assertIn("world.dwarves", body, method)
+
+    def test_hunting_uses_creature_and_item_collections(self):
+        hunt = self.dwarf.split("func _execute_hunt_job", 1)[1].split("\nfunc ", 1)[0]
+        behavior = self.dwarf.split("func _tick_hunting_behavior", 1)[1].split("\nfunc ", 1)[0]
+        self.assertNotIn("in world.entities:", hunt)
+        self.assertIn("world.creatures", hunt)
+        self.assertNotIn("in world.entities:", behavior)
+        self.assertIn("world.creatures", behavior)
+        self.assertIn("world.items", behavior)
+
     def test_spatial_queries_use_the_incremental_grid(self):
         for method in ("get_entity_at", "get_items_at", "is_actor_occupied"):
             method_body = self.world.split("func " + method, 1)[1].split("\nfunc ", 1)[0]
