@@ -168,6 +168,7 @@ var workshops: Array = []
 var invasion_system = null
 var military_system = null
 var combat_system = null
+var consequence_system = null
 
 # ---- WEATHER / CLIMATE SYSTEM ----
 var current_weather: int = WeatherType.CLEAR
