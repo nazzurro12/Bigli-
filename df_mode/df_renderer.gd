@@ -6,6 +6,7 @@ const DFWorld = preload("res://df_mode/df_world.gd")
 const DFDesignation = preload("res://df_mode/df_designation.gd")
 const DFTileset = preload("res://df_mode/df_tileset.gd")
 const DFJob = preload("res://df_mode/df_job.gd")
+const UI = preload("res://df_mode/df_ui_theme.gd")
 const SUBSTANCE_COLORS: Dictionary = {
 	"blood":    Color(0.55, 0.0,  0.0,  1.0),
 	"beer":     Color(0.70, 0.55, 0.05, 1.0),
@@ -16,22 +17,22 @@ const SUBSTANCE_COLORS: Dictionary = {
 
 # Windows Classic / XP-era palette. The game intentionally looks like a
 # simulation utility from 2001-2004 instead of a modern flat dashboard.
-const UI_BG := Color("#1d2937")
-const UI_BG_RAISED := Color("#243548")
-const UI_BORDER := Color("#6d829a")
-const UI_BORDER_SOFT := Color("#3d5269")
-const UI_TEXT := Color("#e7edf4")
-const UI_TEXT_MUTED := Color("#a8b5c4")
-const UI_ACCENT := Color("#0a3b8f")
-const UI_GOLD := Color("#f3cf45")
-const UI_SUCCESS := Color("#65d77f")
-const UI_WARNING := Color("#ffd65a")
-const WIN_FACE := Color("#d4d0c8")
-const WIN_LIGHT := Color("#ffffff")
-const WIN_SHADOW := Color("#808080")
-const WIN_DARK_SHADOW := Color("#404040")
-const WIN_TITLE_START := Color("#0a246a")
-const WIN_TITLE_END := Color("#3a6ea5")
+const UI_BG := UI.SURFACE_0
+const UI_BG_RAISED := UI.SURFACE_2
+const UI_BORDER := UI.BORDER
+const UI_BORDER_SOFT := UI.BORDER_SOFT
+const UI_TEXT := UI.TEXT
+const UI_TEXT_MUTED := UI.TEXT_MUTED
+const UI_ACCENT := UI.ACCENT
+const UI_GOLD := UI.GOLD
+const UI_SUCCESS := UI.SUCCESS
+const UI_WARNING := UI.WARNING
+const WIN_FACE := UI.WIN_FACE
+const WIN_LIGHT := UI.WIN_LIGHT
+const WIN_SHADOW := UI.WIN_SHADOW
+const WIN_DARK_SHADOW := UI.WIN_DARK_SHADOW
+const WIN_TITLE_START := UI.WIN_TITLE_START
+const WIN_TITLE_END := UI.WIN_TITLE_END
 
 var world = null
 var camera_pos: Vector3i = Vector3i(64, 3, 64)
@@ -786,11 +787,13 @@ func _draw() -> void:
 						draw_rect(Rect2(bar_x, bar_y, bar_w, bar_h), Color(0.0, 0.0, 0.0, 0.7), true)
 						draw_rect(Rect2(bar_x, bar_y, bar_w * ehp, bar_h), Color(0.8, 0.15, 0.15).lerp(Color(0.3, 0.85, 0.3), ehp), true)
 
-				# Cursor highlight with animated glow
+				# Precise cursor: steady color and corner registration marks.
 				if pos == _highlighted_tile:
-					var pulse = 0.3 + 0.3 * sin(effect_time_ms * 0.006)
-					draw_rect(Rect2(char_pos.x - 1, char_pos.y - 1, _char_size.x + 2, _char_size.y + 2), Color(1.0, 1.0, 1.0, pulse), false, 1.5)
-					draw_rect(Rect2(char_pos.x - 1, char_pos.y - 1, _char_size.x + 2, 1), Color(0.8, 0.9, 1.0, pulse * 0.5), true)
+					var selection_rect := Rect2(char_pos, _char_size)
+					draw_rect(selection_rect, Color(UI.ACCENT.r, UI.ACCENT.g, UI.ACCENT.b, 0.12), true)
+					draw_rect(selection_rect.grow(-1), UI.ACCENT, false, 1.0)
+					draw_line(selection_rect.position, selection_rect.position + Vector2(5, 0), Color.WHITE, 1.0)
+					draw_line(selection_rect.position, selection_rect.position + Vector2(0, 5), Color.WHITE, 1.0)
 
 	if _dialogue_active:
 		_draw_dialogue_overlay()
@@ -809,25 +812,15 @@ func _draw() -> void:
 	if performance_overlay_enabled:
 		_draw_performance_overlay()
 
-	# Draw glowing retro terminal outer border around the map + sidebar
+	# Windows Classic recessed frame around the playable workspace.
 	if world != null and not show_help:
 		var outline_w = vw * _char_size.x
 		if show_sidebar:
 			outline_w += sidebar_width * _char_size.x + 8
-		var outline_rect = Rect2(border_x - 4, 2, outline_w + 8, vh * _char_size.y + 4)
-		
-		# Draw top & bottom dashed lines
-		var ds_x = outline_rect.position.x
-		while ds_x < outline_rect.end.x:
-			draw_line(Vector2(ds_x, outline_rect.position.y), Vector2(minf(ds_x + 5, outline_rect.end.x), outline_rect.position.y), Color(0.0, 2.5, 0.0, 0.9), 1.5)
-			draw_line(Vector2(ds_x, outline_rect.end.y), Vector2(minf(ds_x + 5, outline_rect.end.x), outline_rect.end.y), Color(0.0, 2.5, 0.0, 0.9), 1.5)
-			ds_x += 10
-		# Draw left & right dashed lines
-		var ds_y = outline_rect.position.y
-		while ds_y < outline_rect.end.y:
-			draw_line(Vector2(outline_rect.position.x, ds_y), Vector2(outline_rect.position.x, minf(ds_y + 5, outline_rect.end.y)), Color(0.0, 2.5, 0.0, 0.9), 1.5)
-			draw_line(Vector2(outline_rect.end.x, ds_y), Vector2(outline_rect.end.x, minf(ds_y + 5, outline_rect.end.y)), Color(0.0, 2.5, 0.0, 0.9), 1.5)
-			ds_y += 10
+		var outline_rect = UI.snapped_rect(Rect2(border_x - 4, 2, outline_w + 8, vh * _char_size.y + 4))
+		draw_rect(outline_rect, UI.WIN_DARK_SHADOW, false, 1.0)
+		draw_line(outline_rect.position + Vector2(1, 1), Vector2(outline_rect.end.x - 1, outline_rect.position.y + 1), UI.WIN_SHADOW, 1.0)
+		draw_line(outline_rect.position + Vector2(1, 1), Vector2(outline_rect.position.x + 1, outline_rect.end.y - 1), UI.WIN_SHADOW, 1.0)
 
 	var msg_y = vh * _char_size.y + 4
 	_draw_message_log(msg_y)
@@ -1882,7 +1875,168 @@ func _translate_race_fast(race: String) -> String:
 		"megabeast": return "Bestia"
 	return race
 
+func _draw_menu_backdrop(viewport: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport), UI.MENU_SKY_TOP, true)
+	var bands := 28
+	for band in range(bands):
+		var t := float(band) / float(bands - 1)
+		var band_y := viewport.y * t
+		draw_rect(
+			Rect2(0, band_y, viewport.x, viewport.y / float(bands) + 1.0),
+			UI.MENU_SKY_TOP.lerp(UI.MENU_SKY_BOTTOM, t),
+			true
+		)
+	var horizon := viewport.y * 0.58
+	var seed_value := 23841
+	for ridge in range(4):
+		var points := PackedVector2Array()
+		points.append(Vector2(0, viewport.y))
+		var segment_width := maxf(32.0, viewport.x / 24.0)
+		for segment in range(25):
+			var px := float(segment) * segment_width
+			var noise_value := sin(float(segment * 17 + ridge * 31 + seed_value) * 0.21)
+			var py := horizon - float(ridge) * 34.0 - noise_value * (24.0 + ridge * 10.0)
+			points.append(Vector2(px, py))
+		points.append(Vector2(viewport.x, viewport.y))
+		var ridge_color := Color("#152635").darkened(float(3 - ridge) * 0.08)
+		draw_colored_polygon(points, ridge_color)
+	draw_rect(Rect2(0, viewport.y - 44, viewport.x, 44), Color("#090E14"), true)
+	draw_line(Vector2(0, viewport.y - 44), Vector2(viewport.x, viewport.y - 44), UI.GOLD.darkened(0.25), 1.0)
+
+func _draw_classic_button(rect: Rect2, label: String, selected: bool = false, primary: bool = false) -> void:
+	var snapped := UI.snapped_rect(rect)
+	var face := UI.WIN_FACE_WARM if not selected else UI.WIN_TITLE_START
+	if primary and not selected:
+		face = Color("#DCE8F5")
+	draw_rect(snapped, face, true)
+	var light := UI.WIN_LIGHT if not selected else UI.WIN_TITLE_END
+	var shadow := UI.WIN_DARK_SHADOW if not selected else Color("#041B4D")
+	draw_line(snapped.position, Vector2(snapped.end.x, snapped.position.y), light, 1.0)
+	draw_line(snapped.position, Vector2(snapped.position.x, snapped.end.y), light, 1.0)
+	draw_line(Vector2(snapped.position.x, snapped.end.y - 1), snapped.end - Vector2(0, 1), shadow, 1.0)
+	draw_line(Vector2(snapped.end.x - 1, snapped.position.y), snapped.end - Vector2(1, 0), shadow, 1.0)
+	if selected:
+		draw_rect(snapped.grow(-3), Color(1, 1, 1, 0.18), false, 1.0)
+	var text_color := Color.WHITE if selected else Color("#17202A")
+	draw_string(_font, Vector2(snapped.position.x + 8.0, snapped.position.y + snapped.size.y * 0.66),
+		label, HORIZONTAL_ALIGNMENT_CENTER, snapped.size.x - 16.0, UI.FONT_MD, text_color)
+
+func _draw_keycap(position: Vector2, key_text: String, description: String) -> float:
+	var key_width := maxf(32.0, float(key_text.length()) * 7.0 + 16.0)
+	var key_rect := Rect2(position, Vector2(key_width, 24.0))
+	_draw_classic_button(key_rect, key_text)
+	draw_string(_font, position + Vector2(key_width + 8.0, 16.0), description,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_SM, UI.TEXT_MUTED)
+	return key_width + 8.0 + float(description.length()) * 6.0 + 20.0
+
+func _draw_progress_bar(rect: Rect2, progress: float, label: String = "") -> void:
+	var snapped := UI.snapped_rect(rect)
+	draw_rect(snapped, UI.WIN_DARK_SHADOW, true)
+	draw_line(snapped.position, Vector2(snapped.end.x, snapped.position.y), Color("#202020"), 1.0)
+	draw_line(snapped.position, Vector2(snapped.position.x, snapped.end.y), Color("#202020"), 1.0)
+	var inner := snapped.grow(-3)
+	draw_rect(inner, Color("#F5F5F5"), true)
+	var pct := clampf(progress, 0.0, 1.0)
+	var fill := Rect2(inner.position, Vector2(inner.size.x * pct, inner.size.y))
+	if fill.size.x > 0:
+		draw_rect(fill, UI.WIN_TITLE_START, true)
+		var blocks := int(fill.size.x / 12.0)
+		for block in range(1, blocks + 1):
+			var line_x := fill.position.x + float(block) * 12.0
+			draw_line(Vector2(line_x, fill.position.y), Vector2(line_x, fill.end.y), UI.WIN_TITLE_END, 1.0)
+	if label != "":
+		draw_string(_font, Vector2(snapped.position.x + 4.0, snapped.position.y + snapped.size.y * 0.68),
+			label, HORIZONTAL_ALIGNMENT_CENTER, snapped.size.x - 8.0, UI.FONT_SM,
+			Color.WHITE if pct > 0.52 else Color("#18212A"))
+
 func _draw_settings_menu() -> void:
+	var main_node = get_parent()
+	if main_node == null:
+		return
+	var viewport := size
+	var scale := UI.responsive_scale(viewport)
+	_draw_menu_backdrop(viewport)
+
+	var left_margin := UI.snap(maxf(32.0, viewport.x * 0.065))
+	var top_margin := UI.snap(maxf(28.0, viewport.y * 0.07))
+	var title_y := top_margin
+	draw_string(_font, Vector2(left_margin, title_y + 34.0), "BIGLI",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(UI.FONT_XL, int(30.0 * scale)), UI.TEXT)
+	draw_string(_font, Vector2(left_margin + 4.0, title_y + 60.0), "WORLD SIMULATION",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(UI.FONT_MD, int(14.0 * scale)), UI.GOLD)
+	draw_line(Vector2(left_margin, title_y + 72.0), Vector2(left_margin + 340.0 * scale, title_y + 72.0), UI.GOLD, 2.0)
+	draw_string(_font, Vector2(left_margin, title_y + 96.0),
+		"Cada fortaleza deja una historia que el mundo recordará.",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_MD, UI.TEXT_MUTED)
+
+	var panel_width := UI.content_width(viewport, 640.0 * scale, 24.0)
+	var panel_height := UI.snap(minf(480.0 * scale, viewport.y - top_margin - 88.0))
+	var panel_x := UI.snap(viewport.x - panel_width - left_margin)
+	var panel_y := top_margin
+	var content := _draw_classic_frame(Rect2(panel_x, panel_y, panel_width, panel_height), "Crear un mundo nuevo")
+	draw_rect(content, UI.MENU_PANEL, true)
+
+	var inner_x := content.position.x + UI.SPACE_LG
+	var inner_width := content.size.x - UI.SPACE_LG * 2.0
+	var row_y := content.position.y + UI.SPACE_LG
+	draw_string(_font, Vector2(inner_x, row_y + 14.0), "CONFIGURACIÓN DEL MUNDO",
+		HORIZONTAL_ALIGNMENT_LEFT, inner_width, UI.FONT_MD, UI.GOLD)
+	row_y += 28.0
+
+	var options = [
+		["Semilla", "Aleatoria" if main_node.generation_seed == -1 else str(main_node.generation_seed)],
+		["Continente", ["Pequeño · 128²", "Estándar · 256²", "Grande · 512²", "Gigantesco · 1024²"][clampi(main_node.setting_size, 0, 3)]],
+		["Historia", "%d años" % main_node.setting_history_options[main_node.setting_history_idx]],
+		["Civilizaciones", ["Baja", "Media", "Alta"][main_node.setting_civ_density]],
+		["Megabestias", ["Pocas", "Moderadas", "Abundantes"][main_node.setting_beast_density]],
+	]
+	for option_index in range(options.size()):
+		var selected := main_node.setting_selected_index == option_index
+		var row_rect := Rect2(inner_x, row_y, inner_width, UI.ROW_HEIGHT)
+		if selected:
+			draw_rect(row_rect, UI.WIN_TITLE_START, true)
+			draw_rect(row_rect.grow(-2), Color(1, 1, 1, 0.14), false, 1.0)
+		elif option_index % 2 == 1:
+			draw_rect(row_rect, Color(1, 1, 1, 0.025), true)
+		var row_color := Color.WHITE if selected else UI.TEXT
+		draw_string(_font, Vector2(inner_x + 12.0, row_y + 16.0), str(options[option_index][0]),
+			HORIZONTAL_ALIGNMENT_LEFT, inner_width * 0.55, UI.FONT_SM, row_color)
+		draw_string(_font, Vector2(inner_x + inner_width - 12.0, row_y + 16.0), str(options[option_index][1]),
+			HORIZONTAL_ALIGNMENT_RIGHT, inner_width * 0.45, UI.FONT_SM, UI.GOLD if not selected else Color.WHITE)
+		row_y += UI.ROW_HEIGHT
+
+	row_y += UI.SPACE_MD
+	var description_rect := Rect2(inner_x, row_y, inner_width, 72.0)
+	draw_rect(description_rect, UI.SURFACE_0, true)
+	draw_rect(description_rect, UI.BORDER_SOFT, false, 1.0)
+	var descriptions := [
+		"Determina la identidad reproducible del planeta.",
+		"Define la extensión global; las zonas cercanas se materializan con máximo detalle.",
+		"Simula reinos, guerras, migraciones, ruinas y linajes antes del desembarco.",
+		"Controla cuántas culturas compiten por territorio y recursos.",
+		"Regula la presencia histórica de dragones y criaturas legendarias.",
+	]
+	var description_lines := _wrap_text(descriptions[clampi(main_node.setting_selected_index, 0, 4)], int((inner_width - 24.0) / 7.0))
+	var description_y := description_rect.position.y + 20.0
+	for description_line in description_lines:
+		draw_string(_font, Vector2(description_rect.position.x + 12.0, description_y), description_line,
+			HORIZONTAL_ALIGNMENT_LEFT, description_rect.size.x - 24.0, UI.FONT_SM, UI.TEXT_MUTED)
+		description_y += 16.0
+
+	var action_y := content.end.y - UI.BUTTON_HEIGHT - UI.SPACE_LG
+	var gap := UI.SPACE_SM
+	var button_width := (inner_width - gap) / 2.0
+	_draw_classic_button(Rect2(inner_x, action_y, button_width, UI.BUTTON_HEIGHT), "INICIO RÁPIDO · Q")
+	_draw_classic_button(Rect2(inner_x + button_width + gap, action_y, button_width, UI.BUTTON_HEIGHT), "CREAR MUNDO · ENTER", true, true)
+
+	var footer_y := viewport.y - 32.0
+	var footer_x := left_margin
+	for footer_item in [["↑↓", "Seleccionar"], ["←→", "Cambiar"], ["R", "Nueva semilla"]]:
+		footer_x += _draw_keycap(Vector2(footer_x, footer_y - 12.0), footer_item[0], footer_item[1])
+	draw_string(_font, Vector2(viewport.x - left_margin, footer_y + 4.0), "BIGLI · PRE-ALPHA",
+		HORIZONTAL_ALIGNMENT_RIGHT, -1, UI.FONT_XS, UI.TEXT_DISABLED)
+
+func _draw_settings_menu_legacy() -> void:
 	var main_node = get_parent()
 	if main_node == null: return
 
@@ -2021,6 +2175,96 @@ func _draw_settings_menu() -> void:
 
 
 func _draw_generating_screen() -> void:
+	var main_node = get_parent()
+	if main_node == null:
+		return
+	var viewport := size
+	_draw_menu_backdrop(viewport)
+	var scale := UI.responsive_scale(viewport)
+	var panel_width := UI.content_width(viewport, 880.0 * scale, 24.0)
+	var panel_height := UI.snap(minf(600.0 * scale, viewport.y - 64.0))
+	var panel_rect := Rect2(
+		UI.snap((viewport.x - panel_width) * 0.5),
+		UI.snap((viewport.y - panel_height) * 0.5),
+		panel_width,
+		panel_height
+	)
+	var content := _draw_classic_frame(panel_rect, "Bigli World Generator")
+	draw_rect(content, UI.MENU_PANEL, true)
+	var inset := UI.SPACE_LG
+	var x := content.position.x + inset
+	var width := content.size.x - inset * 2.0
+	var y := content.position.y + inset
+	var building_terrain := int(main_node.gen_year) <= 0 and float(main_node.load_progress) < 0.18
+	var phase_title := "CONSTRUYENDO EL PLANETA" if building_terrain else "SIMULANDO LA HISTORIA"
+	draw_string(_font, Vector2(x, y + 18.0), phase_title,
+		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_LG, UI.TEXT)
+	draw_string(_font, Vector2(x, y + 40.0), str(main_node.world_name).to_upper(),
+		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_MD, UI.GOLD)
+	y += 60.0
+
+	var progress := clampf(float(main_node.load_progress), 0.0, 1.0)
+	if not building_terrain and int(main_node.gen_max_years) > 0:
+		progress = maxf(progress, 0.18 + float(main_node.gen_year) / float(main_node.gen_max_years) * 0.70)
+	_draw_progress_bar(Rect2(x, y, width, 24.0), progress, "%d%%" % roundi(progress * 100.0))
+	y += 38.0
+	draw_string(_font, Vector2(x, y + 14.0), str(main_node.load_status),
+		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_SM, UI.TEXT_MUTED)
+	y += 34.0
+
+	var world_width := int(main_node.world_gen.world_width) if main_node.world_gen != null else 0
+	var world_depth := int(main_node.world_gen.world_depth) if main_node.world_gen != null else 0
+	var stats := [
+		["Mapa global", "%d × %d" % [world_width, world_depth]],
+		["Regiones", _format_world_region_count(world_width * world_depth)],
+		["Año histórico", "%d / %d" % [main_node.gen_year, main_node.gen_max_years]],
+		["Era", str(main_node.gen_current_age).capitalize()],
+		["Personajes", str(main_node.gen_historical_figures)],
+		["Asentamientos", str(main_node.gen_active_sites)],
+		["Conflictos", str(main_node.gen_active_wars)],
+		["Bestias vivas", str(main_node.gen_beasts_alive)],
+	]
+	var stats_rect := Rect2(x, y, width, 116.0)
+	draw_rect(stats_rect, UI.SURFACE_0, true)
+	draw_rect(stats_rect, UI.BORDER_SOFT, false, 1.0)
+	var stat_column_width := width * 0.5
+	for stat_index in range(stats.size()):
+		var column := stat_index % 2
+		var row := int(stat_index / 2)
+		var sx := x + float(column) * stat_column_width + 12.0
+		var sy := y + 22.0 + float(row) * 24.0
+		draw_string(_font, Vector2(sx, sy), str(stats[stat_index][0]),
+			HORIZONTAL_ALIGNMENT_LEFT, stat_column_width * 0.56, UI.FONT_SM, UI.TEXT_MUTED)
+		draw_string(_font, Vector2(sx + stat_column_width - 24.0, sy), str(stats[stat_index][1]),
+			HORIZONTAL_ALIGNMENT_RIGHT, stat_column_width * 0.38, UI.FONT_SM, UI.TEXT)
+	y += 132.0
+
+	draw_string(_font, Vector2(x, y + 14.0), "CRÓNICA EN TIEMPO REAL",
+		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_MD, UI.GOLD)
+	y += 24.0
+	var event_height := maxf(88.0, content.end.y - y - 52.0)
+	var event_rect := Rect2(x, y, width, event_height)
+	draw_rect(event_rect, Color("#F8F8F8"), true)
+	draw_rect(event_rect, UI.WIN_SHADOW, false, 1.0)
+	var event_y := y + 20.0
+	if main_node.gen_rolling_events.is_empty():
+		draw_string(_font, Vector2(x + 12.0, event_y), "Preparando topografía, cuencas y civilizaciones…",
+			HORIZONTAL_ALIGNMENT_LEFT, width - 24.0, UI.FONT_SM, Color("#303840"))
+	else:
+		var visible_events := mini(main_node.gen_rolling_events.size(), maxi(1, int((event_height - 16.0) / 17.0)))
+		for event_index in range(visible_events):
+			var source_index := main_node.gen_rolling_events.size() - visible_events + event_index
+			var event_text := str(main_node.gen_rolling_events[source_index])
+			var shown := event_text if event_text.length() <= 100 else event_text.substr(0, 97) + "…"
+			draw_string(_font, Vector2(x + 12.0, event_y), "• " + shown,
+				HORIZONTAL_ALIGNMENT_LEFT, width - 24.0, UI.FONT_SM, Color("#303840"))
+			event_y += 17.0
+
+	var footer := "Procesando regiones…" if building_terrain else "ENTER · Terminar la historia en el año actual"
+	draw_string(_font, Vector2(x, content.end.y - 16.0), footer,
+		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_XS, UI.TEXT_MUTED)
+
+func _draw_generating_screen_legacy() -> void:
 	_draw_premium_background(size)
 
 	var main_node = get_parent()
@@ -2574,11 +2818,12 @@ func _draw_tutorial_overlay() -> void:
 # =============================================================================
 func _draw_context_bar() -> void:
 	var vp = size
-	var bar_h = 18
+	var bar_h = 22
 	var bar_y = vp.y - bar_h
 
-	_draw_rounded_rect(Rect2(0, bar_y, vp.x, bar_h), Color(0.04, 0.03, 0.10, 0.92), 4)
-	draw_rect(Rect2(0, bar_y, vp.x, 1), Color(0.30, 0.25, 0.50, 0.8), true)
+	draw_rect(Rect2(0, bar_y, vp.x, bar_h), UI.WIN_FACE, true)
+	draw_line(Vector2(0, bar_y), Vector2(vp.x, bar_y), UI.WIN_HIGHLIGHT, 1.0)
+	draw_line(Vector2(0, bar_y + 1), Vector2(vp.x, bar_y + 1), UI.WIN_DARK_SHADOW, 1.0)
 
 	var main_nd = get_parent()
 	var is_possessed = main_nd != null and main_nd.get("possessed_dwarf") != null
@@ -2617,59 +2862,54 @@ func _draw_context_bar() -> void:
 		else:
 			controls = [["Flechas", "Cámara"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"], ["ESC", "Menú"]]
 
-	var cx = 12
+	var cx = 6
 	for ctrl in controls:
-		var kw = int(ctrl[0].length() * 6 + 10)
-		_draw_rounded_rect(Rect2(cx, bar_y + 3, kw, bar_h - 6), Color(0.16, 0.13, 0.28), 3)
-		_draw_rounded_rect(Rect2(cx, bar_y + 3, kw, bar_h - 6), Color(0.38, 0.32, 0.60), 3, false, 1.0)
-		draw_string(_font, Vector2(cx + kw / 2, bar_y + bar_h - 4), ctrl[0],
-			HORIZONTAL_ALIGNMENT_CENTER, kw, 8, Color(0.90, 0.88, 1.0))
+		var kw = int(ctrl[0].length() * 6 + 12)
+		var key_rect := Rect2(cx, bar_y + 4, kw, bar_h - 8)
+		draw_rect(key_rect, UI.WIN_FACE, true)
+		draw_line(key_rect.position, Vector2(key_rect.end.x, key_rect.position.y), UI.WIN_HIGHLIGHT, 1.0)
+		draw_line(key_rect.position, Vector2(key_rect.position.x, key_rect.end.y), UI.WIN_HIGHLIGHT, 1.0)
+		draw_line(Vector2(key_rect.position.x, key_rect.end.y), key_rect.end, UI.WIN_DARK_SHADOW, 1.0)
+		draw_line(Vector2(key_rect.end.x, key_rect.position.y), key_rect.end, UI.WIN_DARK_SHADOW, 1.0)
+		draw_string(_font, Vector2(cx + 4, bar_y + bar_h - 6), ctrl[0],
+			HORIZONTAL_ALIGNMENT_CENTER, kw - 8, UI.FONT_XS, UI.TEXT)
 		cx += kw + 4
-		# Label
-		draw_string(_font, Vector2(cx, bar_y + bar_h - 4), ctrl[1],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.50, 0.47, 0.62))
+		draw_string(_font, Vector2(cx, bar_y + bar_h - 6), ctrl[1],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
 		cx += int(ctrl[1].length() * 5.5 + 16)
 
 func _draw_loading_playing_screen() -> void:
-	_draw_premium_background(size)
-
 	var main_node = get_parent()
-	if main_node == null: return
-
-	var line_h = int(_char_size.y)
-	var center_x = size.x / 2
-
-	var box_w = 640
-	var box_h = 260
-	var box_x = center_x - box_w / 2
-	var box_y = (size.y - box_h) / 2
-	
-	draw_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.0, 0.04, 0.01, 0.9), true)
-	_draw_dashed_border(Rect2(box_x, box_y, box_w, box_h), Color(0.0, 2.5, 0.0), 4.0)
-
-	var y = box_y + 35
-	var pulse = 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.005)
-	draw_string(_font, Vector2(center_x, y), "◆ DESEMBARCANDO EN %s ◆" % main_node.world_name.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color(0.0, 2.5 * pulse, 0.0))
-	y += int(line_h * 2.0)
-
-	var pct = main_node.load_progress
-	var bar_w = 480
-	var bar_h = 18
-	var bar_x = center_x - bar_w / 2
-	
-	draw_rect(Rect2(bar_x, y, bar_w, bar_h), Color(0.0, 0.1, 0.02), true)
-	draw_rect(Rect2(bar_x, y, bar_w, bar_h), Color(0.0, 1.2, 0.0), false, 1.0)
-	
-	if pct > 0.0:
-		draw_rect(Rect2(bar_x + 2, y + 2, (bar_w - 4) * pct, bar_h - 4), Color(0.0, 2.5, 0.0), true)
-		
-	var pct_str = "%d%%" % int(pct * 100.0)
-	draw_string(_font, Vector2(center_x, y + 14), pct_str, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.0, 0.0, 0.0) if pct > 0.5 else Color(0.0, 2.5, 0.0))
-	y += int(line_h * 2.5)
-
-	var spinner = ["▖", "▘", "▝", "▗"][int(Time.get_ticks_msec() / 120) % 4]
-	var status_text = "❯ %s... %s" % [main_node.load_status, spinner]
-	draw_string(_font, Vector2(center_x, y), status_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color(0.0, 2.5, 0.0))
+	if main_node == null:
+		return
+	var viewport := size
+	_draw_menu_backdrop(viewport)
+	var width := UI.content_width(viewport, 680.0, 24.0)
+	var height := 280.0
+	var frame := Rect2(
+		UI.snap((viewport.x - width) * 0.5),
+		UI.snap((viewport.y - height) * 0.5),
+		width,
+		height
+	)
+	var content := _draw_classic_frame(frame, "Bigliworld")
+	draw_rect(content, UI.MENU_PANEL, true)
+	var x := content.position.x + UI.SPACE_XL
+	var inner_width := content.size.x - UI.SPACE_XL * 2.0
+	var y := content.position.y + 40.0
+	draw_string(_font, Vector2(x, y), "PREPARANDO EL DESEMBARCO",
+		HORIZONTAL_ALIGNMENT_CENTER, inner_width, UI.FONT_LG, UI.TEXT)
+	y += 28.0
+	draw_string(_font, Vector2(x, y), str(main_node.world_name).to_upper(),
+		HORIZONTAL_ALIGNMENT_CENTER, inner_width, UI.FONT_MD, UI.GOLD)
+	y += 36.0
+	var progress := clampf(float(main_node.load_progress), 0.0, 1.0)
+	_draw_progress_bar(Rect2(x, y, inner_width, 24.0), progress, "%d%%" % roundi(progress * 100.0))
+	y += 48.0
+	draw_string(_font, Vector2(x, y), str(main_node.load_status),
+		HORIZONTAL_ALIGNMENT_CENTER, inner_width, UI.FONT_SM, UI.TEXT_MUTED)
+	draw_string(_font, Vector2(x, content.end.y - 18.0), "Reconstruyendo terreno, población y sistemas persistentes",
+		HORIZONTAL_ALIGNMENT_CENTER, inner_width, UI.FONT_XS, UI.TEXT_DISABLED)
 
 func _draw_dialogue_overlay() -> void:
 	if not _dialogue_active:
@@ -2686,71 +2926,73 @@ func _draw_dialogue_overlay() -> void:
 	if box_w <= 0 or box_h <= 0:
 		return
 
-	var rad = 8
-	_draw_rounded_rect(Rect2(box_x + 4, box_y + 4, box_w, box_h), Color(0.0, 0.0, 0.0, 0.25), rad)
-	_draw_rounded_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.03, 0.03, 0.08, 0.97), rad)
-	_draw_rounded_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.35, 0.25, 0.55, 0.7), rad, false, 2.0)
-	draw_rect(Rect2(box_x, box_y + 2, box_w, 3), Color(0.45, 0.35, 0.65, 0.6), true)
+	var content := _draw_classic_frame(
+		Rect2(box_x, box_y, box_w, box_h),
+		"Conversación — %s" % _dialogue_target_name
+	)
+	draw_rect(content, UI.WIN_WINDOW, true)
+	box_x = int(content.position.x)
+	box_y = int(content.position.y)
+	box_w = int(content.size.x)
+	box_h = int(content.size.y)
 
 	var lh = int(_char_size.y)
-	var y = box_y + 10
-	var name_col = Color(0.85, 0.72, 0.20)
+	var y = box_y + 18
 
-	# Title with NPC name
-	draw_string(_font, Vector2(box_x + 10, y), "== DIALOGO: %s ==" % _dialogue_target_name,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, name_col)
+	draw_string(_font, Vector2(box_x + 10, y), _dialogue_target_name.to_upper(),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_MD, UI.GOLD)
 	y += int(lh * 1.8)
 
 	# Greeting
 	draw_string(_font, Vector2(box_x + 10, y), _dialogue_greeting,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.80, 0.78, 0.90))
+		HORIZONTAL_ALIGNMENT_LEFT, box_w - 20, UI.FONT_SM, UI.TEXT)
 	y += int(lh * 1.5)
 
 	# Separator
-	draw_line(Vector2(box_x + 10, y), Vector2(box_x + box_w - 10, y), Color(0.35, 0.28, 0.45), 1.0)
+	draw_line(Vector2(box_x + 10, y), Vector2(box_x + box_w - 10, y), UI.WIN_SHADOW, 1.0)
 	y += int(lh * 0.8)
 
 	match _dialogue_state:
 		1:  # TOPIC_SELECT
 			draw_string(_font, Vector2(box_x + 10, y), "SELECCIONA UN TEMA:",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.55, 0.72, 0.90))
+				HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_SM, UI.WIN_TITLE_END)
 			y += int(lh * 1.5)
 			for i in range(_dialogue_topics.size()):
 				var topic = _dialogue_topics[i]
 				var is_sel = (i == _dialogue_topic_selected)
 				var prefix = "▸ " if is_sel else "  "
-				var col = Color(0.90, 0.85, 1.0) if is_sel else Color(0.55, 0.50, 0.65)
-				var bg = Color(0.12, 0.09, 0.20) if is_sel else Color(0, 0, 0, 0)
+				var col = Color.WHITE if is_sel else UI.TEXT
+				var bg = UI.SELECTION if is_sel else Color(0, 0, 0, 0)
 				if is_sel:
 					draw_rect(Rect2(box_x + 8, y - 2, box_w - 16, lh + 4), bg, true)
 				draw_string(_font, Vector2(box_x + 16, y + lh), "%s %s %s" % [prefix, topic.get("icon", ""), topic.get("label", "")],
-					HORIZONTAL_ALIGNMENT_LEFT, -1, 11, col)
+					HORIZONTAL_ALIGNMENT_LEFT, box_w - 32, UI.FONT_SM, col)
 				y += int(lh * 1.3)
 
-			draw_line(Vector2(box_x + 10, y), Vector2(box_x + box_w - 10, y), Color(0.25, 0.20, 0.35), 1.0)
+			draw_line(Vector2(box_x + 10, y), Vector2(box_x + box_w - 10, y), UI.WIN_SHADOW, 1.0)
 			y += int(lh * 0.6)
 			draw_string(_font, Vector2(box_x + 10, y + lh), "Presiona T para cerrar",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.40, 0.38, 0.50))
+				HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
 
 		2:  # SHOW_RESPONSE
 			draw_string(_font, Vector2(box_x + 10, y), "RESPUESTA:",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.50, 0.85, 0.50))
+				HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_SM, UI.SUCCESS)
 			y += int(lh * 1.5)
 
 			# Draw response text with word wrap
 			var response_lines = _wrap_text(_dialogue_response, int(box_w / 7.5))
 			for rl in response_lines:
 				draw_string(_font, Vector2(box_x + 10, y + lh), rl,
-					HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.75, 0.73, 0.85))
+					HORIZONTAL_ALIGNMENT_LEFT, box_w - 20, UI.FONT_XS, UI.TEXT)
 				if y + lh > box_y + box_h - 30:
 					draw_string(_font, Vector2(box_x + 10, y + lh + 4), "...",
-						HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.40, 0.38, 0.50))
+						HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
 					break
 				y += int(lh * 1.1)
 
 			draw_string(_font, Vector2(box_x + 10, box_y + box_h - 14),
 				"T = Volver / Cerrar",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.40, 0.38, 0.50))
+				HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
 
 func _wrap_text(text: String, max_chars: int) -> Array:
 	var lines: Array = []
@@ -2881,25 +3123,25 @@ func _draw_quest_log_overlay() -> void:
 	var panel_h = int(vh * 0.75)
 	var panel_x = border_x
 	var panel_y = int(vh * 0.08)
-	var rad = 8
+	var content := _draw_classic_frame(Rect2(panel_x, panel_y, panel_w, panel_h), "Registro de misiones")
+	draw_rect(content, UI.WIN_WINDOW, true)
+	panel_x = int(content.position.x)
+	panel_y = int(content.position.y)
+	panel_w = int(content.size.x)
+	panel_h = int(content.size.y)
 	
-	_draw_rounded_rect(Rect2(panel_x + 4, panel_y + 4, panel_w, panel_h), Color(0.0, 0.0, 0.0, 0.25), rad)
-	_draw_rounded_rect(Rect2(panel_x, panel_y, panel_w, panel_h), Color(0.02, 0.02, 0.08, 0.92), rad)
-	_draw_rounded_rect(Rect2(panel_x, panel_y, panel_w, panel_h), Color(0.4, 0.3, 0.15, 0.8), rad, false, 2.0)
-	draw_rect(Rect2(panel_x, panel_y + 2, panel_w, 3), Color(0.6, 0.45, 0.2, 0.8), true)
-	
-	draw_string(_font, Vector2(panel_x + 14, panel_y + 26), "REGISTRO DE MISIONES", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, 16, Color(1.0, 0.8, 0.3))
+	draw_string(_font, Vector2(panel_x + 14, panel_y + 26), "REGISTRO DE MISIONES", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, UI.FONT_LG, UI.GOLD)
 	
 	var header = "Activas: %d  |  Completadas: %d" % [_quest_active_count, _quest_completed_count]
-	draw_string(_font, Vector2(panel_x + 14, panel_y + 50), header, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, 14, Color(0.8, 0.8, 0.8))
+	draw_string(_font, Vector2(panel_x + 14, panel_y + 50), header, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, UI.FONT_MD, UI.TEXT_MUTED)
 	
 	var content_y = panel_y + 68
 	var line_h = 20
 	var idx = 0
 	
 	if _quest_active_quests.size() > 0:
-		draw_string(_font, Vector2(panel_x + 14, content_y), "ACTIVAS", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 24, 14, Color(0.6, 1.0, 0.6))
-		draw_line(Vector2(panel_x + 14, content_y + 4), Vector2(panel_x + panel_w - 14, content_y + 4), Color(0.3, 0.5, 0.3, 0.4), 1.0)
+		draw_string(_font, Vector2(panel_x + 14, content_y), "ACTIVAS", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 24, UI.FONT_MD, UI.SUCCESS)
+		draw_line(Vector2(panel_x + 14, content_y + 4), Vector2(panel_x + panel_w - 14, content_y + 4), UI.WIN_SHADOW, 1.0)
 		content_y += line_h
 		for q in _quest_active_quests:
 			if content_y > panel_y + panel_h - 24:
@@ -2918,21 +3160,21 @@ func _draw_quest_log_overlay() -> void:
 			var cur = q.get("current_count", 0)
 			var line_color = Color(0.9, 0.9, 0.9)
 			if is_selected:
-				_draw_rounded_rect(Rect2(panel_x + 6, content_y - 14, panel_w - 12, line_h), Color(0.25, 0.25, 0.4, 0.5), 4)
-				line_color = Color(1.0, 1.0, 0.5)
+				draw_rect(Rect2(panel_x + 6, content_y - 14, panel_w - 12, line_h), UI.SELECTION, true)
+				line_color = Color.WHITE
 			var line_str = "%s - %s [%d/%d]" % [type_name, ttl, cur, tgt]
 			draw_string(_font, Vector2(panel_x + 16, content_y), line_str, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 40, 13, line_color)
 			content_y += line_h
 			idx += 1
 	else:
-		draw_string(_font, Vector2(panel_x + 14, content_y + 4), "(No hay misiones activas)", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 30, 13, Color(0.6, 0.6, 0.6))
+		draw_string(_font, Vector2(panel_x + 14, content_y + 4), "(No hay misiones activas)", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 30, UI.FONT_SM, UI.TEXT_MUTED)
 	
 	if _quest_completed_count > 0 and content_y < panel_y + panel_h - 30:
 		content_y += 16
-		draw_string(_font, Vector2(panel_x + 14, content_y), "COMPLETADAS (%d)" % _quest_completed_count, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 24, 14, Color(0.6, 0.6, 1.0))
-		draw_line(Vector2(panel_x + 14, content_y + 4), Vector2(panel_x + panel_w - 14, content_y + 4), Color(0.3, 0.3, 0.5, 0.4), 1.0)
+		draw_string(_font, Vector2(panel_x + 14, content_y), "COMPLETADAS (%d)" % _quest_completed_count, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 24, UI.FONT_MD, UI.WIN_TITLE_END)
+		draw_line(Vector2(panel_x + 14, content_y + 4), Vector2(panel_x + panel_w - 14, content_y + 4), UI.WIN_SHADOW, 1.0)
 	
-	draw_string(_font, Vector2(panel_x + 14, panel_y + panel_h - 6), "Flechas: Navegar  |  J/ESC: Cerrar", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, 12, Color(0.6, 0.6, 0.6))
+	draw_string(_font, Vector2(panel_x + 14, panel_y + panel_h - 6), "Flechas: Navegar  |  J/ESC: Cerrar", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, UI.FONT_SM, UI.TEXT_MUTED)
 func _draw_quest_notification() -> void:
 	if _quest_notification == "":
 		return
@@ -2943,9 +3185,10 @@ func _draw_quest_notification() -> void:
 	var notif_y = 4
 	var notif_h = 28
 	
-	_draw_rounded_rect(Rect2(notif_x, notif_y, notif_w, notif_h), Color(0.0, 0.0, 0.0, 0.7), 5)
-	_draw_rounded_rect(Rect2(notif_x, notif_y, notif_w, notif_h), Color(0.6, 0.5, 0.2, 0.9), 5, false, 1.5)
-	draw_string(_font, Vector2(notif_x + 8, notif_y + 18), _quest_notification, HORIZONTAL_ALIGNMENT_LEFT, notif_w - 16, 14, Color(1.0, 0.9, 0.5))
+	draw_rect(Rect2(notif_x, notif_y, notif_w, notif_h), UI.WIN_FACE, true)
+	draw_rect(Rect2(notif_x, notif_y, notif_w, notif_h), UI.WIN_DARK_SHADOW, false, 1.0)
+	draw_rect(Rect2(notif_x + 3, notif_y + 3, 4, notif_h - 6), UI.WARNING, true)
+	draw_string(_font, Vector2(notif_x + 13, notif_y + 19), _quest_notification, HORIZONTAL_ALIGNMENT_LEFT, notif_w - 20, UI.FONT_MD, UI.TEXT)
 
 func _draw_premium_background(vp: Vector2) -> void:
 	# 1. Dark deep night sky background
