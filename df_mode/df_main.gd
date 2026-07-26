@@ -1968,6 +1968,7 @@ func _possessed_drop_item() -> void:
 	var message: String = str(result.get("message", "No pudo soltar el objeto."))
 	if bool(result.get("success", false)):
 		story_director.record_action("drop", message, int(world.get_meta("simulation_minute", 0)), possessed_dwarf.tile_pos)
+	add_message(message)
 
 func _cycle_possessed_item() -> void:
 	if possessed_dwarf == null or possessed_dwarf.inventory.is_empty():
@@ -2013,7 +2014,7 @@ func _possessed_attack() -> void:
 	var direction := _held_move_direction
 	if direction == Vector2i.ZERO:
 		direction = Vector2i(1, 0)
-	var target_pos := possessed_dwarf.tile_pos + Vector3i(direction.x, 0, direction.y)
+	var target_pos: Vector3i = Vector3i(possessed_dwarf.tile_pos) + Vector3i(direction.x, 0, direction.y)
 	var target: Variant = world.get_entity_at(target_pos)
 	if target == null or target == possessed_dwarf or target.get("is_alive") == false:
 		add_message("No hay un objetivo vivo en esa dirección.")
@@ -2027,7 +2028,6 @@ func _possessed_attack() -> void:
 		outcome += " pero falla"
 	add_message("%s %s." % [possessed_dwarf.name, outcome])
 	story_director.record_action("attack", outcome, int(world.get_meta("simulation_minute", 0)), target_pos)
-	add_message(message)
 
 func _try_move_possessed(direction: Vector2i) -> bool:
 	if possessed_dwarf == null or world == null or direction == Vector2i.ZERO:
