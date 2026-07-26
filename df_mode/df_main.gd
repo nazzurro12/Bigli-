@@ -25,7 +25,6 @@ const DFDialogue = preload("res://df_mode/df_dialogue.gd")
 const DFFastTravel = preload("res://df_mode/df_fast_travel.gd")
 const DFQuestSystem = preload("res://df_mode/df_quest.gd")
 const DFSaveLoad = preload("res://df_mode/df_save_load.gd")
-const DFConsequenceSystem = preload("res://df_mode/df_consequence_system.gd")
 const DFWorldSimulationScript = preload("res://df_mode/core/simulation/world_simulation.gd")
 const WorldGenerationSettings = preload("res://world/world_generation_settings.gd")
 
@@ -257,7 +256,7 @@ func _ready() -> void:
 		setting_size = clampi(generation_defaults.default_world_size_index, 0, 3)
 	add_message("========================================")
 	add_message("  CREACION DE MUNDO BIGLI")
-	add_message("  ~ Cada vida deja consecuencias ~")
+	add_message("  ~ Clon de Dwarf Fortress ~")
 	add_message("========================================")
 	add_message("  Semilla: %d" % generation_seed)
 	
@@ -1463,7 +1462,7 @@ func _tick() -> void:
 		
 		var is_dwarf4: bool = e4.get("creature_type") == "dwarf"
 		var is_settlement_resident: bool = e4 is DFDwarf and bool(e4.get("is_world_settlement_resident"))
-		if is_dwarf4:
+		if is_dwarf4 and not is_settlement_resident:
 			# La existencia de la metadata no implica que el enano sea seguidor.
 			# Antes, is_follower=false también vaciaba su cola de trabajos.
 			var is_active_follower: bool = e4.has_meta("is_follower") and e4.get_meta("is_follower") == true
@@ -1693,25 +1692,16 @@ func _possess_dwarf(id: int) -> void:
 			possessed_dwarf = e
 			last_possessed_dwarf = e
 			possessed_dwarf.is_possessed = true
-			_ensure_consequence_system()
-			world.consequence_system.record_possession_started(possessed_dwarf)
 			add_message("! POSESION INICIADA ! (WASD para mover)")
 			renderer.follow_dwarf = -1
 			return
 			
 func _exit_possession() -> void:
 	if possessed_dwarf != null:
-		_ensure_consequence_system()
-		var consequence_event: Dictionary = world.consequence_system.record_possession_ended(possessed_dwarf)
-		_chronicle_events_game.append(consequence_event)
 		possessed_dwarf.is_possessed = false
 		possessed_dwarf = null
 		add_message("Posesion terminada. (L para volver)")
 		follow_time = 0.0
-
-func _ensure_consequence_system() -> void:
-	if world != null and world.consequence_system == null:
-		world.consequence_system = DFConsequenceSystem.new(world)
 
 func _try_move_possessed(direction: Vector2i) -> bool:
 	if possessed_dwarf == null or world == null or direction == Vector2i.ZERO:
