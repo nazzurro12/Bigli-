@@ -7,6 +7,7 @@ const DFMilitary = preload("res://df_mode/df_military.gd")
 const DFJobScript = preload("res://df_mode/df_job.gd")
 const DFQuestSystem = preload("res://df_mode/df_quest.gd")
 const DFCaravan = preload("res://df_mode/df_caravan.gd")
+const DFWorldSimulationScript = preload("res://df_mode/core/simulation/world_simulation.gd")
 
 const SAVE_DIR = "user://saves/"
 
@@ -1026,6 +1027,8 @@ static func _runtime_systems_to_dict(main) -> Dictionary:
 		result["quests"] = main.quest_system.export_state()
 	if main.caravan_system != null and main.caravan_system.has_method("export_state"):
 		result["caravans"] = main.caravan_system.export_state()
+	if main.world_simulation != null and main.world_simulation.has_method("export_state"):
+		result["world_simulation"] = main.world_simulation.export_state()
 	return result
 
 static func _restore_runtime_systems(main, world, data: Dictionary) -> void:
@@ -1041,6 +1044,15 @@ static func _restore_runtime_systems(main, world, data: Dictionary) -> void:
 		main.caravan_system = DFCaravan.new(main.generation_seed)
 	if data.has("caravans"):
 		main.caravan_system.import_state(data["caravans"])
+
+	var simulation_database = load("res://df_mode/resources/world_database.tres")
+	if main.world_simulation == null:
+		main.world_simulation = DFWorldSimulationScript.new(simulation_database)
+	else:
+		main.world_simulation.database = simulation_database
+	if data.has("world_simulation"):
+		main.world_simulation.import_state(data["world_simulation"])
+	main.world_simulation.initialize(world)
 
 static func _restore_runtime_links(
 	world,
