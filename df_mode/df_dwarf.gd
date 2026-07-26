@@ -2949,16 +2949,14 @@ func _execute_job(world) -> void:
 			if success and not workshop_was_complete and workshop_material_index >= 0:
 				inventory.remove_at(workshop_material_index)
 		DFJob.JobType.WORKSHOP_REACTION:
-			var reaction_id = current_job.reaction_id
-			if reaction_id == "": reaction_id = "smelt_iron"
-			var recipe = DFReactions.get_reaction(reaction_id)
-			if recipe.size() > 0:
-				for out_key in recipe.outputs.keys():
-					var amount = recipe.outputs[out_key]
-					var out_name = out_key.replace("_", " ").capitalize()
-					for i_2054 in range(amount):
-						world._spawn_item(current_job.tile_pos, out_name, out_key, 0, "-", Color.SILVER)
-				success = true
+			var reaction_id: String = current_job.reaction_id
+			if reaction_id.is_empty():
+				reaction_id = "smelt_iron"
+			var target_workshop = world.get_workshop_at(current_job.tile_pos)
+			if target_workshop != null:
+				# La orden solo entra en la cola. El operador recogerá insumos,
+				# trabajará el tiempo requerido y recién entonces creará salidas.
+				success = target_workshop.queue_recipe(reaction_id)
 		DFJob.JobType.BUILD_STAIRS_UP:
 			success = world.build_stairs_up(current_job.tile_pos)
 		DFJob.JobType.BUILD_STAIRS_DOWN:
