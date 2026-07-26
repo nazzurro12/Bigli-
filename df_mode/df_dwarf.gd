@@ -1862,7 +1862,7 @@ func _work_on_job(world) -> void:
 					continue
 				if ent.is_decayed or ent.is_inside_container or ent.carried_by_id >= 0:
 					continue
-				if ent.reserved_by_id >= 0 and ent.reserved_by_id != id:
+				if ent.is_reserved_for_other(id, simulation_minute):
 					continue
 				var d: int = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
 				if d < best_dist:
@@ -1870,11 +1870,11 @@ func _work_on_job(world) -> void:
 					best_item = ent
 
 			if best_item != null:
-				best_item.reserved_by_id = id
+				best_item.reserve_for(id, simulation_minute + 30)
 				current_task = "Llevando material para %s" % current_job.get_description().to_lower()
 				var dist_to_item: int = abs(tile_pos.x - best_item.tile_pos.x) + abs(tile_pos.z - best_item.tile_pos.z) + abs(tile_pos.y - best_item.tile_pos.y) * 2
 				if dist_to_item <= 1:
-					best_item.reserved_by_id = -1
+					best_item.release_reservation(id)
 					best_item.carried_by_id = id
 					world.remove_entity(best_item)
 					inventory.append(best_item)
