@@ -142,6 +142,13 @@ func _run_save_load_round_trip() -> void:
 	_change_phase("VERIFYING_SAVE")
 	var world = _game_main.world
 	var dwarf = world.dwarves[0]
+	world.combat_system.combat_log.append("[TEST] registro persistente")
+	world.invasion_system.threat_level = 3
+	world.invasion_system.fortress_kills = 17
+	if world.military_system.squads.is_empty():
+		var test_squad = world.military_system.create_squad("Guardia de Persistencia")
+		world.military_system.assign_dwarf_to_squad(dwarf.id, test_squad.id)
+	world.military_system.set_alert(1)
 	var expected_building_sizes: Array = world.buildings.map(
 		func(building): return [building.type, building.tile_pos, building.size]
 	)
@@ -164,6 +171,10 @@ func _run_save_load_round_trip() -> void:
 		"building_sizes": expected_building_sizes,
 		"stockpile_tiles": expected_stockpile_tiles,
 		"container_links": expected_container_links,
+		"combat_log": world.combat_system.combat_log.duplicate(),
+		"invasion_threat": world.invasion_system.threat_level,
+		"fortress_kills": world.invasion_system.fortress_kills,
+		"military_summary": world.military_system.get_military_summary(),
 	}
 	if not DFSaveLoad.save_game_slot(_game_main, TEST_SAVE_SLOT):
 		_fail("No se pudo crear el guardado de prueba")
@@ -193,6 +204,19 @@ func _run_save_load_round_trip() -> void:
 	_expect(world.combat_system != null, "El combate quedó desactivado al cargar")
 	_expect(world.invasion_system != null, "Las invasiones quedaron desactivadas al cargar")
 	_expect(world.military_system != null, "El ejército quedó desactivado al cargar")
+	_expect(world.combat_system.combat_log == expected.combat_log, "Se perdió el registro de combate")
+	_expect(
+		world.invasion_system.threat_level == expected.invasion_threat,
+		"Se reinició el nivel de amenaza"
+	)
+	_expect(
+		world.invasion_system.fortress_kills == expected.fortress_kills,
+		"Se reinició el historial defensivo"
+	)
+	_expect(
+		world.military_system.get_military_summary() == expected.military_summary,
+		"Se perdieron escuadras o alertas militares"
+	)
 	_expect(
 		world.buildings.map(func(building): return [building.type, building.tile_pos, building.size])
 		== expected.building_sizes,
