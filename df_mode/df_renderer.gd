@@ -3053,7 +3053,7 @@ func _draw_context_bar() -> void:
 	elif _dialogue_active:
 		controls = [["↑↓", "Tema"], ["ENTER", "Seleccionar"], ["T", "Cerrar"]]
 	elif is_possessed:
-		controls = [["WASD", "Mover"], ["E", "Actuar/usar"], ["R", "Soltar"], ["Q", "Liberar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
+		controls = [["WASD", "Mover"], ["TAB", "Objeto"], ["U", "Usar/equipar"], ["F", "Atacar"], ["E", "Contexto"], ["R", "Soltar"], ["Q", "Liberar"]]
 	elif desg_mode != "" and desg_mode != "View" and desg_mode != "Vista":
 		controls = [["Clic", "Marcar"], ["ESC", "Cancelar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
 	else:
