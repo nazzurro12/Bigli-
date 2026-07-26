@@ -607,15 +607,20 @@ func get_queue_count() -> int:
 func tick(progress_amount: float) -> Dictionary:
 	if production_queue.is_empty() or dwarf_assigned < 0:
 		return {"progress": false}
+	if current_recipe.is_empty():
+		# El operador debe comprometer los insumos antes de iniciar el tiempo de
+		# producción. DFDwarf establece current_recipe tras recogerlos.
+		return {"progress": false, "waiting_for_inputs": true}
 	
-	var recipe = production_queue[0]
-	var speed_mult = 1.0 + operator_skill * 0.15
+	var recipe: Dictionary = current_recipe
+	var speed_mult: float = 1.0 + operator_skill * 0.15
 	recipe_progress += progress_amount * speed_mult
 	
-	if recipe_progress >= recipe["time"]:
+	if recipe_progress >= float(recipe.get("time", 1.0)):
 		recipe_progress = 0.0
-		var completed = production_queue.pop_front()
+		var completed: Dictionary = production_queue.pop_front()
 		completed["quality_bonus"] = operator_skill
+		current_recipe = {}
 		return {"progress": true, "recipe": completed, "completed": true}
 	
 	return {"progress": true, "completed": false}
