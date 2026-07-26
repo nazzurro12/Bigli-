@@ -3760,6 +3760,18 @@ func _produce_workshop_outputs(world, recipe: Dictionary) -> void:
 	stats_tracker["items_crafted"] = int(stats_tracker.get("items_crafted", 0)) + 1
 	add_thought("Fabricó %s usando insumos reales." % str(recipe.get("name", "un objeto")), 0.04)
 
+func _workshop_skill_from_recipe(recipe: Dictionary) -> int:
+	match str(recipe.get("skill", "CRAFTSMAN")).to_upper():
+		"MINING": return Skill.MINING
+		"CARPENTRY": return Skill.CARPENTRY
+		"MASONRY": return Skill.MASONRY
+		"SMITHING": return Skill.SMITHING
+		"COOKING": return Skill.COOKING
+		"BREWING": return Skill.BREWING
+		"FARMING": return Skill.FARMING
+		"WEAVING": return Skill.MECHANICS
+		_: return Skill.CRAFTSMAN
+
 func _operate_workshop(world) -> void:
 	if is_possessed:
 		return
@@ -3789,7 +3801,7 @@ func _operate_workshop(world) -> void:
 		return
 
 	current_task = "Fabricando %s en %s" % [str(recipe.get("name", "producto")), operating_workshop.name]
-	var skill_id: int = current_job.get_required_skill() if current_job != null else Skill.CRAFTSMAN
+	var skill_id: int = _workshop_skill_from_recipe(recipe)
 	var operator_level: int = get_skill_level(skill_id)
 	operating_workshop.operator_skill = operator_level
 	var result: Dictionary = operating_workshop.tick(1.0)
