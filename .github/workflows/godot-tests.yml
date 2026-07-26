@@ -38,3 +38,6 @@ jobs:
 
       - name: Test fortress jobs and save-load round trip
         run: godot --headless --path . test_df_jobs.tscn
+
+      - name: Test possession consequences
+        run: godot --headless --path . test_df_consequences.tscn
