@@ -46,6 +46,9 @@ func _process(_delta: float) -> void:
 			if state == SETTINGS_MENU:
 				_game_main.generation_seed = 424242
 				_game_main.setting_size = 0
+				_game_main.setting_history_idx = 0
+				var test_generation_settings = load("res://world/world_generation_settings.tres")
+				test_generation_settings.local_map_size = 64
 				_game_main.set_meta("quick_start_pending", true)
 				_game_main.current_state = GENERATING_WORLD
 				_change_phase("GENERATING")
