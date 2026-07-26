@@ -48,6 +48,9 @@ class RuntimePerformanceContracts(unittest.TestCase):
             "_find_container_at",
             "_detach_item_from_container",
             "_execute_collect_job",
+            "_pick_up_nearby_item_by_types",
+            "_pick_up_items",
+            "_find_best_item_slot",
         ):
             body = self.dwarf.split("func " + method, 1)[1].split("\nfunc ", 1)[0]
             self.assertNotIn("in world.entities:", body, method)
@@ -67,6 +70,7 @@ class RuntimePerformanceContracts(unittest.TestCase):
             "_try_conceive",
             "_give_birth",
             "_get_parent_from_world",
+            "_complete_strange_mood",
         ):
             body = self.dwarf.split("func " + method, 1)[1].split("\nfunc ", 1)[0]
             self.assertNotIn("in world.entities:", body, method)
