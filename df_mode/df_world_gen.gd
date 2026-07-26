@@ -163,7 +163,40 @@ func _sample_local_elevation(x: int, z: int, local_w: int, local_d: int) -> floa
 	else:
 		local_height = 2.0 + ((raw_height - float(sea_level_value)) / maxf(1.0, 100.0 - float(sea_level_value))) * 10.0
 	var seed_offset: float = float(int(rng.seed) % 10007)
-	var detail: float = _octave_noise(float(x) + seed_offset, float(z) - seed_offset, 3, 0.55, 34.0) * 0.34
+	var biome: String = get_biome(x0, z0)
+	var rolling_noise: float = _octave_noise(
+		float(x) + seed_offset,
+		float(z) - seed_offset,
+		4,
+		0.56,
+		52.0
+	)
+	var ridge_noise: float = 1.0 - absf(_octave_noise(
+		float(x) - seed_offset * 0.37,
+		float(z) + seed_offset * 0.61,
+		3,
+		0.52,
+		24.0
+	))
+	var relief_strength: float = 0.75
+	match biome:
+		"mountain", "mountain_forest":
+			relief_strength = 3.4 * config_mountain_strength
+		"alpine_meadow", "badlands":
+			relief_strength = 2.2 * config_mountain_strength
+		"tundra", "taiga":
+			relief_strength = 1.35 * config_mountain_strength
+		"grassland", "savanna":
+			relief_strength = 0.95 * config_mountain_strength
+		"swamp", "beach":
+			relief_strength = 0.35
+	var detail: float = rolling_noise * relief_strength
+	if biome in ["mountain", "mountain_forest", "alpine_meadow", "badlands"]:
+		detail += maxf(0.0, ridge_noise - 0.42) * relief_strength * 1.45
+	# Keep oceans coherent; land receives enough vertical range to form visible
+	# hills, ridges and valleys instead of rounding every tile to the same level.
+	if raw_height <= float(sea_level_value):
+		detail *= 0.18
 	return clampf(local_height + detail, 0.0, 12.0)
 
 func _is_local_river(x: int, z: int, local_w: int, local_d: int) -> bool:
@@ -901,8 +934,20 @@ func _place_terrain_in_local(world) -> void:
 					"badlands": tile_type = DFWorld.TileType.DIRT; mat = DFWorld.MatType.CLAY
 					"tundra": tile_type = DFWorld.TileType.SNOW; mat = DFWorld.MatType.SOIL
 					"glacier": tile_type = DFWorld.TileType.ICE; mat = DFWorld.MatType.WATER
-					"alpine_meadow": tile_type = DFWorld.TileType.GRASS; mat = DFWorld.MatType.SOIL
-					"taiga": tile_type = DFWorld.TileType.GRASS; mat = DFWorld.MatType.SOIL
+					"mountain":
+						tile_type = DFWorld.TileType.STONE_FLOOR
+						mat = _geo_to_material(_get_geology_layers(wx, wz)[0])
+					"mountain_forest":
+						var exposed_mountain_rock := h >= 7 or _octave_noise(float(x), float(z), 2, 0.5, 15.0) > 0.28
+						tile_type = DFWorld.TileType.STONE_FLOOR if exposed_mountain_rock else DFWorld.TileType.GRASS
+						mat = _geo_to_material(_get_geology_layers(wx, wz)[0]) if exposed_mountain_rock else DFWorld.MatType.SOIL
+					"alpine_meadow":
+						var exposed_alpine_rock := h >= 8 or _octave_noise(float(x), float(z), 2, 0.5, 19.0) > 0.48
+						tile_type = DFWorld.TileType.STONE_FLOOR if exposed_alpine_rock else DFWorld.TileType.GRASS
+						mat = _geo_to_material(_get_geology_layers(wx, wz)[0]) if exposed_alpine_rock else DFWorld.MatType.SOIL
+					"taiga":
+						tile_type = DFWorld.TileType.STONE_FLOOR if h >= 9 else DFWorld.TileType.GRASS
+						mat = _geo_to_material(_get_geology_layers(wx, wz)[0]) if h >= 9 else DFWorld.MatType.SOIL
 					_: tile_type = DFWorld.TileType.GRASS; mat = DFWorld.MatType.SOIL
 
 			if (is_river or is_lake_tile) and h > 2:
