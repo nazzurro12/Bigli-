@@ -749,6 +749,20 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn('DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada', movement)
         self.assertIn("preferred_bed = Vector3i(-1, -1, -1)", movement)
 
+    def test_procedural_campaigns_are_systemic_and_persistent(self):
+        for token in (
+            "active_campaign",
+            "completed_campaigns",
+            "func _campaign_metrics",
+            "func _campaign_objective",
+            "func serialize_state",
+            "func deserialize_state",
+        ):
+            self.assertIn(token, self.story_director)
+        self.assertIn('data["story_director"] = main.story_director.serialize_state()', self.save)
+        self.assertIn('main.story_director.deserialize_state(data.get("story_director", {}))', self.save)
+        self.assertIn("CAMPAÑA PROCEDURAL", self.renderer)
+
 
 if __name__ == "__main__":
     unittest.main()
