@@ -1806,6 +1806,18 @@ func assign_job(job) -> void:
 	job.state = DFJob.JobState.ASSIGNED
 	job.assigned_dwarf_id = id
 
+func _job_requires_physical_progress(job_type: int) -> bool:
+	return job_type in [
+		DFJob.JobType.DIG,
+		DFJob.JobType.CHOP_TREE,
+		DFJob.JobType.BUILD_WALL,
+		DFJob.JobType.BUILD_FLOOR,
+		DFJob.JobType.BUILD_WORKSHOP,
+		DFJob.JobType.BUILD_STAIRS_UP,
+		DFJob.JobType.BUILD_STAIRS_DOWN,
+		DFJob.JobType.SMOOTH,
+	]
+
 func _work_on_job(world) -> void:
 	if is_possessed:
 		return
@@ -1816,7 +1828,10 @@ func _work_on_job(world) -> void:
 		current_job = null
 		current_task = "idle"
 		return
-	if current_job.state == DFJob.JobState.IN_PROGRESS:
+	if current_job.state == DFJob.JobState.IN_PROGRESS and not _job_requires_physical_progress(current_job.job_type):
+		# Transporte, almacenamiento y talleres son máquinas de estados: deben
+		# continuar su siguiente etapa cada tick. Los trabajos físicos, en cambio,
+		# pasan por la barra de progreso antes de modificar el mundo.
 		current_task = current_job.get_description()
 		_execute_job(world)
 		return
