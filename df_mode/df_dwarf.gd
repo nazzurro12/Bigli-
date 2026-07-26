@@ -122,6 +122,7 @@ var path: Array = []
 var path_index: int = 0
 var last_pos: Vector3i = Vector3i(-1, -1, -1)
 var stuck_counter: int = 0
+var path_replan_count: int = 0
 var move_tick_counter: int = 0
 var speed: float = 1.0
 var has_moved_this_tick: bool = false
@@ -3228,28 +3229,35 @@ func _move_toward(world, target: Vector3i) -> void:
 		stuck_counter += 1
 	else:
 		stuck_counter = 0
+		path_replan_count = 0
 	last_pos = tile_pos
 	if stuck_counter > 5:
-		if current_job != null:
-			current_job.state = DFJob.JobState.CANCELLED
-			current_job = null
-		if operating_workshop != null:
-			operating_workshop.unassign_dwarf()
-			operating_workshop = null
-		if not autonomous_plan.is_empty():
-			DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada durante demasiado tiempo")
+		# Un atasco corto suele ser tráfico entre habitantes. Primero se invalida
+		# la ruta y se vuelve a intentar; recién después de tres rutas fallidas se
+		# abandona la acción con una causa trazable.
+		path.clear()
+		path_index = 0
+		stuck_counter = 0
+		path_replan_count += 1
+		if path_replan_count < 3:
+			current_task = "Buscando una ruta alternativa"
+			return
+		path_replan_count = 0
 		if current_task == "Yendo a su cama":
-			# La cama reclamada no es utilizable: liberarla para no bloquear a
-			# toda la colonia y descansar provisionalmente donde haya espacio.
 			preferred_bed = Vector3i(-1, -1, -1)
 			claimed_bed = Vector3i(-1, -1, -1)
 			is_sleeping = true
 			current_task = "Durmiendo sin cama"
-		else:
-			current_task = "Recalculando ruta"
-		path.clear()
-		path_index = 0
-		stuck_counter = 0
+			return
+		if current_job != null:
+			_cancel_current_job("ruta bloqueada después de tres intentos")
+		if operating_workshop != null:
+			operating_workshop.unassign_dwarf()
+			operating_workshop = null
+		if not autonomous_plan.is_empty():
+			DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada después de tres intentos")
+		if current_job == null and operating_workshop == null and autonomous_plan.is_empty():
+			current_task = "Sin ruta accesible"
 		return
 
 	if path_index >= path.size() or path.is_empty():
