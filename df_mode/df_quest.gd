@@ -477,3 +477,79 @@ func get_active_count() -> int:
 
 func get_completed_count() -> int:
 	return completed_quests.size()
+
+func export_state() -> Dictionary:
+	var active_data: Array = []
+	for quest in active_quests:
+		active_data.append(_quest_to_dict(quest))
+	var completed_data: Array = []
+	for quest in completed_quests:
+		completed_data.append(_quest_to_dict(quest))
+	return {
+		"active_quests": active_data,
+		"completed_quests": completed_data,
+		"generation_cooldown": generation_cooldown,
+		"total_quests_generated": total_quests_generated,
+		"notification_queue": notification_queue.duplicate(true),
+		"notification_timer": notification_timer,
+	}
+
+func import_state(data: Dictionary) -> void:
+	active_quests.clear()
+	completed_quests.clear()
+	for quest_data in data.get("active_quests", []):
+		if quest_data is Dictionary:
+			active_quests.append(_dict_to_quest(quest_data))
+	for quest_data in data.get("completed_quests", []):
+		if quest_data is Dictionary:
+			completed_quests.append(_dict_to_quest(quest_data))
+	generation_cooldown = int(data.get("generation_cooldown", 0))
+	total_quests_generated = int(data.get("total_quests_generated", 0))
+	notification_queue = data.get("notification_queue", []).duplicate(true)
+	notification_timer = float(data.get("notification_timer", 0.0))
+	quest_log_open = false
+	quest_log_scroll = 0
+	quest_log_selected = 0
+
+func _quest_to_dict(quest: Quest) -> Dictionary:
+	return {
+		"id": quest.id,
+		"type": quest.type,
+		"difficulty": quest.difficulty,
+		"status": quest.status,
+		"title": quest.title,
+		"description": quest.description,
+		"target_name": quest.target_name,
+		"target_count": quest.target_count,
+		"current_count": quest.current_count,
+		"target_pos": [quest.target_pos.x, quest.target_pos.y, quest.target_pos.z],
+		"rewards": quest.rewards.duplicate(true),
+		"created_tick": quest.created_tick,
+		"time_limit": quest.time_limit,
+		"giver_name": quest.giver_name,
+	}
+
+func _dict_to_quest(data: Dictionary) -> Quest:
+	var target_data: Array = data.get("target_pos", [0, 0, 0])
+	var target_pos := Vector3i(
+		int(target_data[0]) if target_data.size() > 0 else 0,
+		int(target_data[1]) if target_data.size() > 1 else 0,
+		int(target_data[2]) if target_data.size() > 2 else 0
+	)
+	var quest := Quest.new(
+		int(data.get("id", 0)),
+		int(data.get("type", QuestType.EXPLORE)),
+		int(data.get("difficulty", QuestDifficulty.TRIVIAL)),
+		str(data.get("title", "Misión")),
+		str(data.get("description", "")),
+		str(data.get("target_name", "")),
+		int(data.get("target_count", 1)),
+		data.get("rewards", {}).duplicate(true),
+		target_pos,
+		str(data.get("giver_name", "")),
+		int(data.get("created_tick", 0)),
+		int(data.get("time_limit", 0))
+	)
+	quest.current_count = int(data.get("current_count", 0))
+	quest.status = int(data.get("status", QuestStatus.ACTIVE))
+	return quest
