@@ -162,6 +162,7 @@ var _mouse_tile_pos: Vector3i = Vector3i(-1, -1, -1)
 var settings_menu: Control = null
 var possessed_dwarf: Object = null
 var last_possessed_dwarf: Object = null
+var possessed_inventory_index: int = 0
 var follow_time: float = 0.0
 
 # Repetición controlada para movimiento mantenido durante la posesión.
@@ -1967,6 +1968,65 @@ func _possessed_drop_item() -> void:
 	var message: String = str(result.get("message", "No pudo soltar el objeto."))
 	if bool(result.get("success", false)):
 		story_director.record_action("drop", message, int(world.get_meta("simulation_minute", 0)), possessed_dwarf.tile_pos)
+
+func _cycle_possessed_item() -> void:
+	if possessed_dwarf == null or possessed_dwarf.inventory.is_empty():
+		add_message("No lleva objetos.")
+		return
+	possessed_inventory_index = posmod(possessed_inventory_index + 1, possessed_dwarf.inventory.size())
+	var item: Variant = possessed_dwarf.inventory[possessed_inventory_index]
+	add_message("Objeto seleccionado: %s" % str(item.get("name")))
+
+func _use_selected_possessed_item() -> void:
+	if possessed_dwarf == null or possessed_dwarf.inventory.is_empty():
+		add_message("No hay ningún objeto que usar.")
+		return
+	possessed_inventory_index = clampi(possessed_inventory_index, 0, possessed_dwarf.inventory.size() - 1)
+	var item: Variant = possessed_dwarf.inventory[possessed_inventory_index]
+	var item_type: String = str(item.get("item_type")).to_lower()
+	var item_name: String = str(item.get("name"))
+	if item_type in ["weapon", "tool"]:
+		var lower_name: String = item_name.to_lower()
+		possessed_dwarf.equipped_weapon = (
+			"pickaxe" if "pico" in lower_name
+			else "axe" if "hacha" in lower_name
+			else "crossbow" if "ballesta" in lower_name
+			else "sword" if "espada" in lower_name
+			else lower_name
+		)
+		add_message("%s equipa %s." % [possessed_dwarf.name, item_name])
+		return
+	if item_type in ["food", "meal", "meat", "plant"]:
+		possessed_dwarf.hunger = maxf(0.0, possessed_dwarf.hunger - 0.45)
+	elif item_type in ["drink", "water", "beer"]:
+		possessed_dwarf.thirst = maxf(0.0, possessed_dwarf.thirst - 0.55)
+	else:
+		add_message("%s no puede usarse directamente." % item_name)
+		return
+	possessed_dwarf.inventory.remove_at(possessed_inventory_index)
+	possessed_inventory_index = maxi(0, possessed_inventory_index - 1)
+	add_message("%s usa %s." % [possessed_dwarf.name, item_name])
+
+func _possessed_attack() -> void:
+	if possessed_dwarf == null or world == null or world.combat_system == null:
+		return
+	var direction := _held_move_direction
+	if direction == Vector2i.ZERO:
+		direction = Vector2i(1, 0)
+	var target_pos := possessed_dwarf.tile_pos + Vector3i(direction.x, 0, direction.y)
+	var target: Variant = world.get_entity_at(target_pos)
+	if target == null or target == possessed_dwarf or target.get("is_alive") == false:
+		add_message("No hay un objetivo vivo en esa dirección.")
+		return
+	var result: Dictionary = world.combat_system.creature_attack(possessed_dwarf, target)
+	var target_name: String = str(target.get("name"))
+	var outcome: String = "ataca a %s" % target_name
+	if bool(result.get("hit", false)):
+		outcome += " y acierta"
+	else:
+		outcome += " pero falla"
+	add_message("%s %s." % [possessed_dwarf.name, outcome])
+	story_director.record_action("attack", outcome, int(world.get_meta("simulation_minute", 0)), target_pos)
 	add_message(message)
 
 func _try_move_possessed(direction: Vector2i) -> bool:
@@ -4551,13 +4611,20 @@ func _handle_key(event: InputEvent) -> void:
 				if designation != null:
 					designation.set_mode(DFDesignation.DesignationMode.DECONSTRUCT)
 			KEY_F:
-				_cycle_follow()
+				if possessed_dwarf != null:
+					_possessed_attack()
+				else:
+					_cycle_follow()
 			KEY_P:
 				_possess_dwarf(renderer.follow_dwarf)
 			KEY_Y:
 				_focus_story_hook()
 			KEY_E:
 				_possessed_context_action()
+			KEY_U:
+				_use_selected_possessed_item()
+			KEY_TAB:
+				_cycle_possessed_item()
 			KEY_R:
 				_possessed_drop_item()
 			KEY_V:
