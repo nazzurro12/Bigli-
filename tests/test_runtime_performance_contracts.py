@@ -30,9 +30,11 @@ class RuntimePerformanceContracts(unittest.TestCase):
         self.assertIn("func _path_request_slot_is_due", self.dwarf)
         movement = self.dwarf.split("func _move_toward", 1)[1].split("\nfunc ", 1)[0]
         throttle = movement.index("needs_new_path and not _path_request_slot_is_due")
+        movement_timer = movement.index("if move_tick_counter > 0")
         stuck = movement.index("if tile_pos == last_pos")
         path_search = movement.index("DFPathfinding.find_path")
-        self.assertLess(throttle, stuck)
+        self.assertLess(throttle, movement_timer)
+        self.assertLess(movement_timer, stuck)
         self.assertLess(stuck, path_search)
         self.assertIn("if is_possessed:", self.dwarf)
         self.assertIn('has_meta("is_follower")', self.dwarf)
