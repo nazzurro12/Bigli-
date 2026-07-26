@@ -1610,19 +1610,11 @@ func _store_items(world: Object) -> void:
 		current_task = "idle"
 		return
 
-	var is_on_food_store = false
-	for b in world.buildings:
-		if b.type == DFBuilding.BuildingType.FOOD_STORE and b.tile_pos == tile_pos:
-			is_on_food_store = true
-			break
-
 	for sp in world.stockpiles:
 		if sp.has_tile(tile_pos) and not sp._has_item_at(world, tile_pos):
 			var item = inventory.pop_back()
 			item.tile_pos = tile_pos
 			item.is_in_stockpile = true
-			if is_on_food_store:
-				item.is_inside_container = true
 			world.add_entity(item)
 			current_task = "idle"
 			needs_display_update = true
@@ -1645,13 +1637,6 @@ func _store_items(world: Object) -> void:
 			var item_1352 = inventory.pop_back()
 			item_1352.tile_pos = tile_pos
 			item_1352.is_in_stockpile = true
-			var is_on_fs = false
-			for b_1356 in world.buildings:
-				if b_1356.type == DFBuilding.BuildingType.FOOD_STORE and b_1356.tile_pos == tile_pos:
-					is_on_fs = true
-					break
-			if is_on_fs:
-				item_1352.is_inside_container = true
 			world.add_entity(item_1352)
 			current_task = "idle"
 			needs_display_update = true
@@ -4040,7 +4025,7 @@ func _execute_store_in_container_job(world) -> bool:
 		if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
 		return false
 	carried_food.tile_pos = best_fs_pos
-	carried_food.is_inside_container = true
+	carried_food.is_in_stockpile = true
 	world.add_entity(carried_food)
 	inventory.erase(carried_food)
 	add_thought("Guardó " + carried_food.name + " en el almacén de comida.", 0.04)
