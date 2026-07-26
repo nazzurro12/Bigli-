@@ -2203,94 +2203,148 @@ func _draw_generating_screen() -> void:
 	var main_node = get_parent()
 	if main_node == null:
 		return
-	var viewport := size
+	var viewport: Vector2 = size
 	_draw_menu_backdrop(viewport)
-	var scale := UI.responsive_scale(viewport)
-	var panel_width := UI.content_width(viewport, 880.0 * scale, 24.0)
-	var panel_height := UI.snap(minf(600.0 * scale, viewport.y - 64.0))
-	var panel_rect := Rect2(
-		UI.snap((viewport.x - panel_width) * 0.5),
-		UI.snap((viewport.y - panel_height) * 0.5),
-		panel_width,
-		panel_height
+	var scale: float = UI.responsive_scale(viewport)
+	var outer_margin: float = maxf(28.0, 56.0 * scale)
+	var content_width: float = minf(1420.0 * scale, viewport.x - outer_margin * 2.0)
+	var content_height: float = minf(760.0 * scale, viewport.y - outer_margin * 2.0)
+	var origin := Vector2(
+		UI.snap((viewport.x - content_width) * 0.5),
+		UI.snap((viewport.y - content_height) * 0.5)
 	)
-	var content := _draw_classic_frame(panel_rect, "Bigli World Generator")
-	draw_rect(content, UI.MENU_PANEL, true)
-	var inset := UI.SPACE_LG
-	var x := content.position.x + inset
-	var width := content.size.x - inset * 2.0
-	var y := content.position.y + inset
-	var building_terrain := int(main_node.gen_year) <= 0 and float(main_node.load_progress) < 0.18
-	var phase_title := "CONSTRUYENDO EL PLANETA" if building_terrain else "SIMULANDO LA HISTORIA"
-	draw_string(_font, Vector2(x, y + 18.0), phase_title,
-		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_LG, UI.TEXT)
-	draw_string(_font, Vector2(x, y + 40.0), str(main_node.world_name).to_upper(),
-		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_MD, UI.GOLD)
-	y += 60.0
-
-	var progress := clampf(float(main_node.load_progress), 0.0, 1.0)
+	var building_terrain: bool = int(main_node.gen_year) <= 0 and float(main_node.load_progress) < 0.18
+	var progress: float = clampf(float(main_node.load_progress), 0.0, 1.0)
 	if not building_terrain and int(main_node.gen_max_years) > 0:
 		progress = maxf(progress, 0.18 + float(main_node.gen_year) / float(main_node.gen_max_years) * 0.70)
-	_draw_progress_bar(Rect2(x, y, width, 24.0), progress, "%d%%" % roundi(progress * 100.0))
-	y += 38.0
-	draw_string(_font, Vector2(x, y + 14.0), str(main_node.load_status),
-		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_SM, UI.TEXT_MUTED)
-	y += 34.0
 
-	var world_width := int(main_node.world_gen.world_width) if main_node.world_gen != null else 0
-	var world_depth := int(main_node.world_gen.world_depth) if main_node.world_gen != null else 0
-	var stats := [
-		["Mapa global", "%d × %d" % [world_width, world_depth]],
-		["Regiones", _format_world_region_count(world_width * world_depth)],
-		["Año histórico", "%d / %d" % [main_node.gen_year, main_node.gen_max_years]],
-		["Era", str(main_node.gen_current_age).capitalize()],
-		["Personajes", str(main_node.gen_historical_figures)],
-		["Asentamientos", str(main_node.gen_active_sites)],
-		["Conflictos", str(main_node.gen_active_wars)],
-		["Bestias vivas", str(main_node.gen_beasts_alive)],
+	# Encabezado editorial: sin barra de ventana ni botones falsos.
+	draw_string(_font, origin + Vector2(0.0, 24.0), "BIGLI · GÉNESIS",
+		HORIZONTAL_ALIGNMENT_LEFT, content_width, UI.FONT_MD, UI.GOLD)
+	draw_string(_font, origin + Vector2(0.0, 66.0), str(main_node.world_name).to_upper(),
+		HORIZONTAL_ALIGNMENT_LEFT, content_width, UI.FONT_XL, UI.TEXT)
+	var phase_title: String = "FORMANDO TIERRAS, MARES Y CLIMAS" if building_terrain else "DEJANDO QUE LA HISTORIA COBRE VIDA"
+	draw_string(_font, origin + Vector2(0.0, 92.0), phase_title,
+		HORIZONTAL_ALIGNMENT_LEFT, content_width, UI.FONT_MD, UI.TEXT_MUTED)
+	draw_string(_font, origin + Vector2(content_width - 150.0, 66.0), "%02d%%" % roundi(progress * 100.0),
+		HORIZONTAL_ALIGNMENT_RIGHT, 150.0, UI.FONT_XL, UI.GOLD)
+
+	var body_y: float = origin.y + 124.0
+	var gap: float = 20.0 * scale
+	var right_width: float = maxf(300.0, content_width * 0.32)
+	var left_width: float = content_width - right_width - gap
+	var body_height: float = content_height - 154.0
+	var left_rect := Rect2(origin.x, body_y, left_width, body_height)
+	var right_rect := Rect2(origin.x + left_width + gap, body_y, right_width, body_height)
+
+	_draw_rounded_rect(left_rect, Color(0.035, 0.065, 0.095, 0.94), 10.0)
+	_draw_rounded_rect(left_rect, Color(0.20, 0.32, 0.42, 0.9), 10.0, false, 1.0)
+	_draw_rounded_rect(right_rect, Color(0.035, 0.065, 0.095, 0.94), 10.0)
+	_draw_rounded_rect(right_rect, Color(0.20, 0.32, 0.42, 0.9), 10.0, false, 1.0)
+
+	var inset: float = 24.0 * scale
+	var lx: float = left_rect.position.x + inset
+	var ly: float = left_rect.position.y + inset
+	var inner_left_width: float = left_rect.size.x - inset * 2.0
+	draw_string(_font, Vector2(lx, ly + 16.0), "PROGRESO DEL MUNDO",
+		HORIZONTAL_ALIGNMENT_LEFT, inner_left_width, UI.FONT_MD, UI.TEXT)
+	ly += 34.0
+
+	# Barra continua oscura, sin el rectángulo blanco del estilo clásico.
+	var progress_rect := Rect2(lx, ly, inner_left_width, 12.0 * scale)
+	_draw_rounded_rect(progress_rect, Color("#172534"), 6.0)
+	var fill_width: float = maxf(10.0, progress_rect.size.x * progress)
+	_draw_rounded_rect(Rect2(progress_rect.position, Vector2(fill_width, progress_rect.size.y)), UI.GOLD, 6.0)
+	ly += 30.0
+	draw_string(_font, Vector2(lx, ly), str(main_node.load_status),
+		HORIZONTAL_ALIGNMENT_LEFT, inner_left_width, UI.FONT_SM, UI.TEXT_MUTED)
+
+	var stages: Array = [
+		["01", "GEOGRAFÍA", 0.18],
+		["02", "VIDA", 0.34],
+		["03", "PUEBLOS", 0.58],
+		["04", "HISTORIA", 0.88],
+		["05", "DESPERTAR", 1.0],
 	]
-	var stats_rect := Rect2(x, y, width, 116.0)
-	draw_rect(stats_rect, UI.SURFACE_0, true)
-	draw_rect(stats_rect, UI.BORDER_SOFT, false, 1.0)
-	var stat_column_width := width * 0.5
-	for stat_index in range(stats.size()):
-		var column := stat_index % 2
-		var row := int(stat_index / 2)
-		var sx := x + float(column) * stat_column_width + 12.0
-		var sy := y + 22.0 + float(row) * 24.0
-		draw_string(_font, Vector2(sx, sy), str(stats[stat_index][0]),
-			HORIZONTAL_ALIGNMENT_LEFT, stat_column_width * 0.56, UI.FONT_SM, UI.TEXT_MUTED)
-		draw_string(_font, Vector2(sx + stat_column_width - 24.0, sy), str(stats[stat_index][1]),
-			HORIZONTAL_ALIGNMENT_RIGHT, stat_column_width * 0.38, UI.FONT_SM, UI.TEXT)
-	y += 132.0
+	ly += 34.0
+	var stage_width: float = inner_left_width / float(stages.size())
+	for stage_index: int in range(stages.size()):
+		var stage: Array = stages[stage_index]
+		var threshold: float = float(stage[2])
+		var active: bool = progress >= threshold or (stage_index == 0 and progress > 0.0)
+		var current: bool = progress < threshold and (stage_index == 0 or progress >= float(stages[stage_index - 1][2]))
+		var stage_color: Color = UI.GOLD if active else (UI.TEXT if current else UI.TEXT_DISABLED)
+		var stage_x: float = lx + float(stage_index) * stage_width
+		draw_string(_font, Vector2(stage_x, ly), str(stage[0]),
+			HORIZONTAL_ALIGNMENT_LEFT, stage_width, UI.FONT_XS, stage_color)
+		draw_string(_font, Vector2(stage_x, ly + 18.0), str(stage[1]),
+			HORIZONTAL_ALIGNMENT_LEFT, stage_width - 4.0, UI.FONT_SM, stage_color)
+	ly += 60.0
 
-	draw_string(_font, Vector2(x, y + 14.0), "CRÓNICA EN TIEMPO REAL",
-		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_MD, UI.GOLD)
-	y += 24.0
-	var event_height := maxf(88.0, content.end.y - y - 52.0)
-	var event_rect := Rect2(x, y, width, event_height)
-	draw_rect(event_rect, Color("#F8F8F8"), true)
-	draw_rect(event_rect, UI.WIN_SHADOW, false, 1.0)
-	var event_y := y + 20.0
+	draw_string(_font, Vector2(lx, ly), "CRÓNICA DEL NACIMIENTO",
+		HORIZONTAL_ALIGNMENT_LEFT, inner_left_width, UI.FONT_MD, UI.GOLD)
+	ly += 24.0
+	var event_rect := Rect2(lx, ly, inner_left_width, maxf(120.0, left_rect.end.y - ly - inset))
+	_draw_rounded_rect(event_rect, Color("#0A121B"), 7.0)
+	_draw_rounded_rect(event_rect, UI.BORDER_SOFT, 7.0, false, 1.0)
+	var event_y: float = event_rect.position.y + 24.0
 	if main_node.gen_rolling_events.is_empty():
-		draw_string(_font, Vector2(x + 12.0, event_y), "Preparando topografía, cuencas y civilizaciones…",
-			HORIZONTAL_ALIGNMENT_LEFT, width - 24.0, UI.FONT_SM, Color("#303840"))
+		draw_string(_font, Vector2(event_rect.position.x + 18.0, event_y), "Preparando topografía, cuencas y primeras semillas de vida…",
+			HORIZONTAL_ALIGNMENT_LEFT, event_rect.size.x - 36.0, UI.FONT_SM, UI.TEXT_MUTED)
 	else:
 		var visible_events: int = mini(
 			int(main_node.gen_rolling_events.size()),
-			maxi(1, int((event_height - 16.0) / 17.0))
+			maxi(1, int((event_rect.size.y - 28.0) / 23.0))
 		)
 		for event_index in range(visible_events):
 			var source_index: int = int(main_node.gen_rolling_events.size()) - visible_events + event_index
 			var event_text: String = str(main_node.gen_rolling_events[source_index])
-			var shown: String = event_text if event_text.length() <= 100 else event_text.substr(0, 97) + "…"
-			draw_string(_font, Vector2(x + 12.0, event_y), "• " + shown,
-				HORIZONTAL_ALIGNMENT_LEFT, width - 24.0, UI.FONT_SM, Color("#303840"))
-			event_y += 17.0
+			var shown: String = event_text if event_text.length() <= 112 else event_text.substr(0, 109) + "…"
+			var event_color: Color = UI.TEXT if event_index == visible_events - 1 else UI.TEXT_MUTED
+			draw_circle(Vector2(event_rect.position.x + 19.0, event_y - 4.0), 2.5, UI.GOLD)
+			draw_string(_font, Vector2(event_rect.position.x + 32.0, event_y), shown,
+				HORIZONTAL_ALIGNMENT_LEFT, event_rect.size.x - 48.0, UI.FONT_SM, event_color)
+			event_y += 23.0
 
-	var footer := "Procesando regiones…" if building_terrain else "ENTER · Terminar la historia en el año actual"
-	draw_string(_font, Vector2(x, content.end.y - 16.0), footer,
-		HORIZONTAL_ALIGNMENT_LEFT, width, UI.FONT_XS, UI.TEXT_MUTED)
+	# Columna derecha: magnitudes principales en tarjetas legibles.
+	var world_width: int = int(main_node.world_gen.world_width) if main_node.world_gen != null else 0
+	var world_depth: int = int(main_node.world_gen.world_depth) if main_node.world_gen != null else 0
+	var rx: float = right_rect.position.x + inset
+	var ry: float = right_rect.position.y + inset
+	var inner_right_width: float = right_rect.size.x - inset * 2.0
+	draw_string(_font, Vector2(rx, ry + 16.0), "EL MUNDO AHORA",
+		HORIZONTAL_ALIGNMENT_LEFT, inner_right_width, UI.FONT_MD, UI.TEXT)
+	ry += 42.0
+	var headline_stats: Array = [
+		["REGIONES", _format_world_region_count(world_width * world_depth)],
+		["AÑO", "%d / %d" % [main_node.gen_year, main_node.gen_max_years]],
+		["ERA", str(main_node.gen_current_age).capitalize()],
+	]
+	for headline: Array in headline_stats:
+		draw_string(_font, Vector2(rx, ry), str(headline[0]),
+			HORIZONTAL_ALIGNMENT_LEFT, inner_right_width, UI.FONT_XS, UI.TEXT_MUTED)
+		draw_string(_font, Vector2(rx, ry + 28.0), str(headline[1]),
+			HORIZONTAL_ALIGNMENT_LEFT, inner_right_width, UI.FONT_LG, UI.GOLD)
+		ry += 64.0
+
+	draw_line(Vector2(rx, ry), Vector2(rx + inner_right_width, ry), UI.BORDER_SOFT, 1.0)
+	ry += 28.0
+	var living_stats: Array = [
+		["Personajes históricos", str(main_node.gen_historical_figures)],
+		["Asentamientos activos", str(main_node.gen_active_sites)],
+		["Conflictos abiertos", str(main_node.gen_active_wars)],
+		["Bestias legendarias", str(main_node.gen_beasts_alive)],
+	]
+	for living_stat: Array in living_stats:
+		draw_string(_font, Vector2(rx, ry), str(living_stat[0]),
+			HORIZONTAL_ALIGNMENT_LEFT, inner_right_width * 0.68, UI.FONT_SM, UI.TEXT_MUTED)
+		draw_string(_font, Vector2(rx + inner_right_width * 0.68, ry), str(living_stat[1]),
+			HORIZONTAL_ALIGNMENT_RIGHT, inner_right_width * 0.32, UI.FONT_MD, UI.TEXT)
+		ry += 34.0
+
+	var footer: String = "CREANDO GEOGRAFÍA PERSISTENTE" if building_terrain else "ENTER · FINALIZAR HISTORIA Y ENTRAR"
+	draw_string(_font, Vector2(right_rect.position.x + inset, right_rect.end.y - inset),
+		footer, HORIZONTAL_ALIGNMENT_LEFT, inner_right_width, UI.FONT_XS, UI.TEXT_MUTED)
 
 func _draw_generating_screen_legacy() -> void:
 	_draw_premium_background(size)
