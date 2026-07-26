@@ -1568,7 +1568,7 @@ func _find_nearest_ore_wall(world, radius: int) -> Vector3i:
 func _pick_up_nearby_item_by_types(world, accepted_types: Array) -> int:
 	var best_item: Variant = null
 	var best_distance: int = 999999
-	for entity in world.entities:
+	for entity in world.items:
 		if not "item_type" in entity or not "tile_pos" in entity:
 			continue
 		if str(entity.item_type) not in accepted_types:
@@ -1678,7 +1678,7 @@ func _pick_up_items(world) -> void:
 
 	# First, pick up any items on our current tile (if not already stored in a stockpile)
 	var items_to_remove = []
-	for ent in world.entities:
+	for ent in world.get_items_at(tile_pos):
 		if ent is DFItem and ent.tile_pos == tile_pos:
 			if ent.is_food or ent.is_drink:
 				continue
@@ -1730,7 +1730,7 @@ func _pick_up_items(world) -> void:
 
 	var best_item = null
 	var best_dist = 999999
-	for ent_h in world.entities:
+	for ent_h in world.items:
 		if ent_h is DFItem:
 			var _decayed = ent_h.get("is_decayed")
 			if _decayed == null or _decayed:
@@ -4313,7 +4313,7 @@ func _complete_strange_mood(world) -> void:
 	if strange_mood_type == StrangeMoodType.FELL:
 		world.messages.append("Un escalofrío recorre la fortaleza. El artefacto '%s' tiene un aura oscura..." % strange_mood_artifact_name)
 
-	for e in world.entities:
+	for e in world.dwarves:
 		if e.get("creature_type") == "dwarf" and e.get("is_alive") == true and e != self:
 			e.add_thought("Se maravilla ante la creación de %s: '%s'." % [name, strange_mood_artifact_name], 0.05)
 
@@ -4428,7 +4428,7 @@ func _find_best_item_slot(world, type_filter: String, name_keyword: String = "",
 				best_inv_idx = i
 				break
 	if best_item == null:
-		for e in world.entities:
+		for e in world.items:
 			if e is DFItem and e.item_type == type_filter:
 				if e.is_decayed:
 					continue
