@@ -566,10 +566,9 @@ func _pick_personality() -> void:
 func get_display_char() -> String:
 	if is_sleeping and ai_state == AIState.SLEEP:
 		return "z"
-	if ai_state == AIState.ATTACK or ai_state == AIState.HUNT:
-		return "!"
-	if is_hostile:
-		return "X"
+	# La especie nunca pierde su identidad visual. El estado de amenaza se
+	# comunica con color y barra de vida, no sustituyendo todos los animales
+	# por el mismo bloque X/!.
 	return glyph
 
 func get_display_color() -> Color:
