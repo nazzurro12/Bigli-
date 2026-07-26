@@ -14,6 +14,19 @@ const SUBSTANCE_COLORS: Dictionary = {
 	"poison":   Color(0.45, 0.05, 0.65, 1.0),
 }
 
+# Paleta de interfaz: contraste alto sin los verdes/magentas sobreexpuestos que
+# hacían competir el mapa, el HUD y las alertas por la atención del jugador.
+const UI_BG := Color("#101722")
+const UI_BG_RAISED := Color("#172231")
+const UI_BORDER := Color("#34465b")
+const UI_BORDER_SOFT := Color("#263647")
+const UI_TEXT := Color("#d8e2ee")
+const UI_TEXT_MUTED := Color("#8292a6")
+const UI_ACCENT := Color("#5fc4c9")
+const UI_GOLD := Color("#e0b85b")
+const UI_SUCCESS := Color("#65c985")
+const UI_WARNING := Color("#e5a84b")
+
 var world = null
 var camera_pos: Vector3i = Vector3i(64, 3, 64)
 var view_width: int = 80
@@ -270,11 +283,25 @@ func _ready() -> void:
 	legend_panel.anchor_bottom = 0.9
 	legend_panel.offset_right = 250
 	legend_panel.visible = false
+	var legend_style := StyleBoxFlat.new()
+	legend_style.bg_color = UI_BG_RAISED
+	legend_style.border_color = UI_BORDER
+	legend_style.set_border_width_all(1)
+	legend_style.corner_radius_top_right = 6
+	legend_style.corner_radius_bottom_right = 6
+	legend_style.content_margin_left = 12.0
+	legend_style.content_margin_top = 12.0
+	legend_panel.add_theme_stylebox_override("panel", legend_style)
 	add_child(legend_panel)
 	
 	var legend_lbl = Label.new()
 	legend_lbl.text = "LEYENDA\n\n# : Muro (Gris)\n. : Suelo\n= : Agua\nT : Arbol\n\nITEMS & RECURSOS\nb : Cama de madera\nc : Cofre / Almacen\n¤ : Fogata encendida\n* : Cenizas de fogata\n% : Plump Helmet (Comida)\n~ : Alcohol / Bebida\n═ : Tronco de Madera\n■ : Bloque de Piedra\n/ : Pico de Minero\n\\ : Hacha de Leñador\n\nCONTROLES (Dios)\nFlechas: Camara\n1: Minar\n2: Talar\n3: Muro\n4: Suelo\nF: Seguir aldeano\nP: Poseer aldeano seguido\nQ: Salir de posesión\nESC: Cerrar una capa / Opciones"
 	legend_lbl.position = Vector2(10, 10)
+	legend_lbl.add_theme_color_override("font_color", UI_TEXT)
+	legend_lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
+	legend_lbl.add_theme_constant_override("shadow_offset_x", 1)
+	legend_lbl.add_theme_constant_override("shadow_offset_y", 1)
+	legend_lbl.add_theme_font_size_override("font_size", 12)
 	legend_panel.add_child(legend_lbl)
 	
 	legend_btn = Button.new()
@@ -299,11 +326,44 @@ func _ready() -> void:
 	legend_btn.offset_top = -60
 	legend_btn.offset_right = 26
 	legend_btn.offset_bottom = 60
+	legend_btn.tooltip_text = "Abrir o cerrar la leyenda"
+	legend_btn.add_theme_color_override("font_color", UI_TEXT)
+	legend_btn.add_theme_color_override("font_hover_color", Color.WHITE)
+	var legend_button_style := StyleBoxFlat.new()
+	legend_button_style.bg_color = UI_BG_RAISED
+	legend_button_style.border_color = UI_BORDER
+	legend_button_style.set_border_width_all(1)
+	legend_button_style.corner_radius_top_right = 5
+	legend_button_style.corner_radius_bottom_right = 5
+	legend_btn.add_theme_stylebox_override("normal", legend_button_style)
+	var legend_button_hover := legend_button_style.duplicate()
+	legend_button_hover.bg_color = UI_BORDER_SOFT
+	legend_button_hover.border_color = UI_ACCENT
+	legend_btn.add_theme_stylebox_override("hover", legend_button_hover)
 
 func _apply_night_lighting(color: Color) -> Color:
 	# Sin filtro global de noche. La hora sigue visible en el HUD, pero los
 	# colores del mapa permanecen nítidos y con su brillo original.
 	return color
+
+func _normalize_map_color(color: Color, is_background: bool = false) -> Color:
+	# Algunos datos antiguos usan componentes por encima de 1.0 para simular
+	# brillo. En una cuadrícula densa eso produce el bloque neón de la captura.
+	var normalized := Color(
+		clampf(color.r, 0.0, 1.0),
+		clampf(color.g, 0.0, 1.0),
+		clampf(color.b, 0.0, 1.0),
+		clampf(color.a, 0.0, 1.0)
+	)
+	var hsv_value := normalized.v
+	var max_value := 0.48 if is_background else 0.88
+	if hsv_value > max_value:
+		normalized.v = max_value
+	if is_background:
+		normalized.s = minf(normalized.s, 0.62)
+	else:
+		normalized.s = minf(normalized.s, 0.82)
+	return normalized
 
 func _is_daytime_alt() -> float:
 	# Returns 0.0 (midnight) to 1.0 (noon)
@@ -321,6 +381,8 @@ func _draw_tile(pos: Vector2, char_str: String, fg: Color, bg: Color) -> void:
 	# Apply night lighting
 	fg = _apply_night_lighting(fg)
 	bg = _apply_night_lighting(bg)
+	fg = _normalize_map_color(fg)
+	bg = _normalize_map_color(bg, true)
 	
 	if bg != Color.BLACK and bg.a > 0.01:
 		var bg_rect = Rect2(pos.x, pos.y, _char_size.x, _char_size.y)
@@ -838,39 +900,36 @@ func _draw_sidebar(side_x: int) -> void:
 		return
 
 	var lh  = int(_char_size.y)
-	var x   = side_x
+	var x   = side_x + 10
 	var mw  = sidebar_width * _char_size.x
-	var y   = 2
+	var y   = 12
 	var sh = size.y
-	draw_rect(Rect2(x + 3, 3, mw, sh), Color(0.0, 0.0, 0.0, 0.2), true)
-	draw_rect(Rect2(x, 0, mw, sh), Color(0.01, 0.04, 0.01, 0.92), true)
+	draw_rect(Rect2(side_x + 4, 6, mw + 2, sh - 12), Color(0.0, 0.0, 0.0, 0.34), true)
+	draw_rect(Rect2(side_x, 0, mw + 10, sh), UI_BG, true)
+	draw_rect(Rect2(side_x, 0, mw + 10, 4), UI_ACCENT, true)
+	draw_line(Vector2(side_x, 0), Vector2(side_x, sh), UI_BORDER, 1.0)
 	
-	# Draw glowing dotted vertical separator
-	var sep_y = 0.0
-	while sep_y < sh:
-		draw_rect(Rect2(x - 2, sep_y, 2, 4), Color(0.0, 2.5, 0.0, 0.8), true)
-		sep_y += 8
-
 	# ── helper: draw section header with underline ──────────────────────────
 	# (GDScript closures can't modify outer y; we handle y inline after each call)
 
 	# ═══════════════════════════════════════════════
 	# 1. GAME TITLE
 	# ═══════════════════════════════════════════════
-	var title_col = Color(0.85, 0.72, 0.20)
+	var title_col = UI_GOLD
 	if _designation_mode_name not in ["View","Vista",""]:
 		title_col = _designation_mode_color
-	draw_string(_font, Vector2(x, y + lh), "▓ BIGLI", HORIZONTAL_ALIGNMENT_LEFT, mw, 14, title_col)
+	draw_string(_font, Vector2(x, y + lh), "BIGLI WORLD", HORIZONTAL_ALIGNMENT_LEFT, mw, 14, title_col)
 	y += lh
-	draw_string(_font, Vector2(x, y + lh), "  World Creation", HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(0.50, 0.45, 0.65))
+	draw_string(_font, Vector2(x, y + lh), "SIMULADOR DE COLONIA", HORIZONTAL_ALIGNMENT_LEFT, mw, 9, UI_TEXT_MUTED)
 	y += int(lh * 1.5)
 
 	# ═══════════════════════════════════════════════
 	# 2. PAUSE STATUS
 	# ═══════════════════════════════════════════════
-	var pause_col = Color(1.0, 0.85, 0.0) if paused else Color(0.3, 0.9, 0.4)
-	var pause_str = "■ PAUSADO" if paused else "▶ ACTIVO"
-	draw_rect(Rect2(x, y + 2, mw - 4, lh + 2), Color(0.06, 0.05, 0.12), true)
+	var pause_col = UI_WARNING if paused else UI_SUCCESS
+	var pause_str = "  PAUSADO" if paused else "  SIMULACIÓN ACTIVA"
+	draw_rect(Rect2(x, y + 2, mw - 14, lh + 4), UI_BG_RAISED, true)
+	draw_rect(Rect2(x, y + 2, 3, lh + 4), pause_col, true)
 	draw_string(_font, Vector2(x + 4, y + lh), pause_str, HORIZONTAL_ALIGNMENT_LEFT, mw, 10, pause_col)
 	y += int(lh * 1.6)
 
@@ -1369,15 +1428,18 @@ func _draw_message_log(start_y: int) -> void:
 	var bx  = _draw_border(view_width, view_height)
 	var mw  = view_width * _char_size.x
 	var lh  = int(_char_size.y)
-	var num = mini(5, _message_log.size())
+	var num = mini(4, _message_log.size())
 
-	var msg_h = num * int(lh * 1.18) + 6
+	var msg_h = num * int(lh * 1.25) + 24
 	_draw_rounded_rect(Rect2(bx, start_y - 2, mw, msg_h),
-		Color(0.02, 0.02, 0.06, 0.85), 4)
+		Color(UI_BG.r, UI_BG.g, UI_BG.b, 0.96), 5)
+	draw_rect(Rect2(bx, start_y - 2, 3, msg_h), UI_ACCENT, true)
 	draw_line(Vector2(bx, start_y - 2), Vector2(bx + mw, start_y - 2),
-		Color(0.25, 0.22, 0.40), 1.0)
+		UI_BORDER, 1.0)
+	draw_string(_font, Vector2(bx + 10, start_y + lh - 2), "REGISTRO DE SUCESOS",
+		HORIZONTAL_ALIGNMENT_LEFT, mw - 20, 9, UI_TEXT_MUTED)
 
-	var y = start_y
+	var y = start_y + 18
 	for i in range(num):
 		var idx = _message_log.size() - num + i
 		var msg = _message_log[idx]
@@ -1386,13 +1448,14 @@ func _draw_message_log(start_y: int) -> void:
 		if msg.length() > max_chars:
 			msg = msg.substr(0, max_chars - 3) + "..."
 		# Older messages fade, newest is fully bright
-		var alpha = 0.45 + 0.55 * float(i + 1) / float(num)
-		var col = Color(0.82, 0.80, 0.65, alpha)
+		var alpha = 0.58 + 0.42 * float(i + 1) / float(num)
+		var col = Color(UI_TEXT.r, UI_TEXT.g, UI_TEXT.b, alpha)
 		if i == num - 1:
-			col = Color(1.0, 0.97, 0.80, 1.0)  # Most recent: full brightness
-		draw_string(_font, Vector2(bx + 4, y + lh), msg,
-			HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 10, col)
-		y += int(lh * 1.18)
+			col = Color(0.92, 0.96, 1.0, 1.0)
+			draw_circle(Vector2(bx + 10, y + lh - 4), 2.0, UI_ACCENT)
+		draw_string(_font, Vector2(bx + 18, y + lh), msg,
+			HORIZONTAL_ALIGNMENT_LEFT, mw - 28, 10, col)
+		y += int(lh * 1.25)
 
 
 func _draw_help_overlay() -> void:
