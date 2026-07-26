@@ -2544,20 +2544,19 @@ func _satisfy_needs(world) -> bool:
 				if d > max_search_radius:
 					continue
 				# Buscar items en este tile del stockpile
-				for ent in world.entities:
-					if ent is DFItem and ent.tile_pos == stock_tile:
-						if ent.is_decayed:
-							continue
-						if d < best_dist:
-							if hunger > 0.5 and ent.is_edible:
-								best_dist = d
-								target_food = ent
-							elif thirst > 0.5 and ent.is_drink and target_food == null:
-								best_dist = d
-								target_drink = ent
+				for ent in world.get_items_at(stock_tile):
+					if ent.is_decayed:
+						continue
+					if d < best_dist:
+						if hunger > 0.5 and ent.is_edible:
+							best_dist = d
+							target_food = ent
+						elif thirst > 0.5 and ent.is_drink and target_food == null:
+							best_dist = d
+							target_drink = ent
 
 	# Buscar en el suelo (siempre, independientemente de stockpiles)
-	for ent_1754 in world.entities:
+	for ent_1754 in world.items:
 		if ent_1754 is DFItem:
 			if ent_1754.is_decayed:
 				continue
@@ -3920,7 +3919,7 @@ func _has_tool_for_job(job_type: int) -> bool:
 func _find_nearest_item_on_ground_matching(world, item_substring: String):
 	var nearest_item = null
 	var nearest_dist = 9999.0
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem and item_substring in e.name:
 			var d = abs(tile_pos.x - e.tile_pos.x) + abs(tile_pos.z - e.tile_pos.z)
 			if d < nearest_dist:
@@ -3962,7 +3961,7 @@ func _find_nearest_mineable_wall(world) -> Vector3i:
 func _find_nearest_item_matching_type(world, it_type: String):
 	var nearest = null
 	var nearest_dist = 9999.0
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem and e.get("item_type") == it_type:
 			var d = abs(tile_pos.x - e.tile_pos.x) + abs(tile_pos.z - e.tile_pos.z)
 			if d < nearest_dist:
@@ -4246,7 +4245,7 @@ func _gather_mood_materials(world) -> void:
 func _find_material_on_ground(world, mat_id: String) -> Object:
 	var found = null
 	var best_dist = 9999
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem and e.get("item_type") != null:
 			var name_lower = e.name.to_lower()
 			var type_lower = e.item_type.to_lower()
@@ -4626,7 +4625,7 @@ func _execute_store_in_container_job(world) -> bool:
 	if carried_food == null:
 		var requested_item_id: int = int(current_job.get_meta("target_item_id", -1)) if current_job != null else -1
 		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
-		for ent in world.entities:
+		for ent in world.items:
 			if ent is DFItem and (ent.is_food or ent.is_meat or ent.is_drink or ent.item_type == "fish") and not ent.is_inside_container and not ent.is_decayed:
 				if requested_item_id >= 0 and ent.id != requested_item_id:
 					continue
@@ -4694,7 +4693,7 @@ func _execute_store_in_container_job(world) -> bool:
 	return true
 
 func _find_container_at(world: Object, pos: Vector3i):
-	for entity in world.entities:
+	for entity in world.items:
 		if (
 			entity is DFItem
 			and entity.is_container
@@ -4707,7 +4706,7 @@ func _find_container_at(world: Object, pos: Vector3i):
 func _detach_item_from_container(world: Object, item: DFItem) -> void:
 	if not item.is_inside_container:
 		return
-	for entity in world.entities:
+	for entity in world.items:
 		if entity is DFItem and entity.is_container and entity.id == item.container_id:
 			entity.container_contents.erase(item)
 			entity.contained_volume = maxf(
@@ -4757,7 +4756,7 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 		# Encontrar el item suelto mas cercano en el mundo
 		var target_item = null
 		var best_d = 999999
-		for ent in world.entities:
+		for ent in world.items:
 			if ent is DFItem and ent.item_type == item_type_to_collect and not ent.is_inside_container:
 				# Verificar que no este ya en un stockpile
 				var already_in_sp = false
