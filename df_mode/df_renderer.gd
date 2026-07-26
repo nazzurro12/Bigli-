@@ -352,25 +352,6 @@ func _apply_night_lighting(color: Color) -> Color:
 	# colores del mapa permanecen nítidos y con su brillo original.
 	return color
 
-func _normalize_map_color(color: Color, is_background: bool = false) -> Color:
-	# Algunos datos antiguos usan componentes por encima de 1.0 para simular
-	# brillo. En una cuadrícula densa eso produce el bloque neón de la captura.
-	var normalized := Color(
-		clampf(color.r, 0.0, 1.0),
-		clampf(color.g, 0.0, 1.0),
-		clampf(color.b, 0.0, 1.0),
-		clampf(color.a, 0.0, 1.0)
-	)
-	var hsv_value := normalized.v
-	var max_value := 0.48 if is_background else 0.88
-	if hsv_value > max_value:
-		normalized.v = max_value
-	if is_background:
-		normalized.s = minf(normalized.s, 0.62)
-	else:
-		normalized.s = minf(normalized.s, 0.82)
-	return normalized
-
 func _draw_classic_frame(rect: Rect2, title: String, active: bool = true) -> Rect2:
 	# Four-line bevel used by Windows Classic controls.
 	draw_rect(rect, WIN_FACE, true)
@@ -429,8 +410,6 @@ func _draw_tile(pos: Vector2, char_str: String, fg: Color, bg: Color) -> void:
 	# Apply night lighting
 	fg = _apply_night_lighting(fg)
 	bg = _apply_night_lighting(bg)
-	fg = _normalize_map_color(fg)
-	bg = _normalize_map_color(bg, true)
 	
 	if bg != Color.BLACK and bg.a > 0.01:
 		var bg_rect = Rect2(pos.x, pos.y, _char_size.x, _char_size.y)
