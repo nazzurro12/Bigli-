@@ -85,6 +85,7 @@ var religion_id: int = -1
 var settlement_home_position: Vector3i = Vector3i(-1, -1, -1)
 var settlement_work_position: Vector3i = Vector3i(-1, -1, -1)
 var settlement_leisure_position: Vector3i = Vector3i(-1, -1, -1)
+var settlement_work_label: String = "Trabajando"
 var is_possessed: bool = false
 var body: Object = null
 var name: String = "Urist"
