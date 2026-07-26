@@ -190,6 +190,10 @@ var reputation: Dictionary = {}
 var life_history: Array = []
 var career_offers: Array = []
 var social_roles: Array = []
+var known_reputations: Dictionary = {}
+var rumors: Array = []
+var legal_record: Array = []
+var life_decisions: Array = []
 var possession_count: int = 0
 var last_possession_event_id: int = -1
 
