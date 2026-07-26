@@ -66,23 +66,29 @@ function Invoke-GodotChecked {
     }
 }
 
-Write-Host "1/3 Verificando ámbitos GDScript..."
+Write-Host "1/4 Verificando contratos de simulación..."
 $PythonCommand = Get-Command "python" -ErrorAction SilentlyContinue
 if ($null -eq $PythonCommand) {
-    throw "No encontré Python para ejecutar el verificador de ámbitos."
+    throw "No encontré Python para ejecutar los contratos y el verificador de ámbitos."
 }
+& $PythonCommand.Source -m unittest discover -s (Join-Path $ProjectRoot "tests") -p "test_*contracts.py"
+if ($LASTEXITCODE -ne 0) {
+    throw "Fallaron los contratos de simulación."
+}
+
+Write-Host "2/4 Verificando ámbitos GDScript..."
 & $PythonCommand.Source (Join-Path $ProjectRoot "check_gdscript.py") (Join-Path $ProjectRoot "df_mode") "--strict"
 if ($LASTEXITCODE -ne 0) {
     throw "El verificador encontró variables locales duplicadas."
 }
 
-Write-Host "2/3 Importando y validando el proyecto..."
+Write-Host "3/4 Importando y validando el proyecto..."
 Invoke-GodotChecked `
     -Arguments @("--headless", "--path", $ProjectRoot, "--editor", "--quit", "--log-file", $ImportLog) `
     -LogPath $ImportLog `
     -StageName "Importación"
 
-Write-Host "3/3 Ejecutando prueba nativa de arranque..."
+Write-Host "4/4 Ejecutando prueba nativa de arranque..."
 Invoke-GodotChecked `
     -Arguments @("--headless", "--path", $ProjectRoot, "--script", "res://tests/runtime_smoke.gd", "--log-file", $SmokeLog) `
     -LogPath $SmokeLog `
