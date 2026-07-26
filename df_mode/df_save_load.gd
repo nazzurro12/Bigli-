@@ -69,7 +69,9 @@ static func _dict_to_body(d: Dictionary):
 	body.nausea = d.get("nausea", 0.0)
 	body.is_vomiting = d.get("is_vomiting", false)
 	var parts_data = d.get("parts", [])
-	body.parts = []
+	# Conserva el tipo Array[BodyPart] declarado por DFAnatomy.Body.
+	# Asignar [] crea un Array genérico que Godot 4.7 rechaza.
+	body.parts.clear()
 	body.root = null
 	for pd in parts_data:
 		var bp = DFAnatomy.BodyPart.new(pd.get("name", ""), pd.get("is_vital", false))
