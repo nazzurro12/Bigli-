@@ -1163,10 +1163,9 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		return
 
 	# --- SISTEMA DE COMPORTAMIENTO DIARIO, RELIGIÓN Y APRENDIZAJE ---
-	var hour: int = 12
-	var main_node = world.get_parent() if world.has_method("get_parent") else (world.parent if "parent" in world else null)
-	if main_node != null and "_game_hour" in main_node:
-		hour = main_node._game_hour
+	# DFWorld no pertenece al árbol de escenas: la hora se comparte como metadata
+	# autoritativa desde DFMain para que dormir, trabajar y recrearse coincidan.
+	var hour: int = int(world.get_meta("game_hour", 12))
 
 	var is_sleep_time = (hour >= 22 or hour < 6)
 	var is_recreation_time = (hour >= 14 and hour < 22)
