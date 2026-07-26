@@ -2552,6 +2552,8 @@ func _build_large_initial_warehouse(settlement_pos: Vector3i, _rng: RandomNumber
 		)
 		if spawned_item != null:
 			spawned_item.is_in_stockpile = true
+			if str(resource_data[1]) in ["food", "drink"]:
+				spawned_item.is_inside_container = true
 
 	add_message("Gran almacén construido: 20x20 interiores, muros, dos puertas y %d estanterías." % shelf_tiles.size())
 	return true
@@ -3986,41 +3988,26 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 	match current_state:
 		GameState.SETTINGS_MENU:
 			if bt == MOUSE_BUTTON_LEFT:
-				# Check if clicked inside the Quick Start Box
-				var center_x = renderer.size.x / 2
-				var line_h = renderer._char_size.y
-				var logo_y = 30 + int(line_h * 1.1) * 6 + 4 + int(line_h * 0.9)
-				var qs_y = logo_y + int(line_h * 1.2) + 14
-				var qs_w = 380
-				var qs_h = 64
-				var qs_x = center_x - qs_w / 2
-				if pos.x >= qs_x and pos.x <= qs_x + qs_w and pos.y >= qs_y and pos.y <= qs_y + qs_h:
+				var regions: Dictionary = renderer.get_settings_menu_hit_regions()
+				var quick_start: Rect2 = regions.get("quick_start", Rect2())
+				var create_world: Rect2 = regions.get("create_world", Rect2())
+				if quick_start.has_point(pos):
 					_handle_menu_key(KEY_Q)
 					return
-				
-				# Check if clicked inside the Configuration Box
-				var cfg_y = qs_y + qs_h + 18 + int(line_h * 1.4)
-				var box_w = 520
-				var box_h = 145
-				var box_x = center_x - box_w / 2
-				if pos.x >= box_x and pos.x <= box_x + box_w and pos.y >= cfg_y and pos.y <= cfg_y + box_h:
-					var relative_y = pos.y - cfg_y - 10
-					var clicked_row = int(relative_y / (line_h * 1.25))
-					if clicked_row >= 0 and clicked_row < 5:
-						setting_selected_index = clicked_row
-						# If they clicked on the right side of the row, cycle the value!
-						if pos.x > center_x + 50:
-							_handle_menu_key(KEY_RIGHT)
-						else:
-							renderer.queue_redraw()
-						return
-				
-				# Check if clicked help bar "Crear Mundo"
-				var foot_y = cfg_y + box_h + 8 + 38 + 20
-				var help_x = center_x - 300
-				var cm_x = help_x + 360
-				if pos.x >= cm_x and pos.x <= cm_x + 110 and pos.y >= foot_y - 10 and pos.y <= foot_y + 16:
+				if create_world.has_point(pos):
 					_handle_menu_key(KEY_ENTER)
+					return
+				var rows: Array = regions.get("rows", [])
+				for clicked_row in range(rows.size()):
+					var row_rect: Rect2 = rows[clicked_row]
+					if not row_rect.has_point(pos):
+						continue
+					setting_selected_index = clicked_row
+					# La mitad izquierda retrocede; la derecha avanza.
+					_handle_menu_key(
+						KEY_LEFT if pos.x < row_rect.get_center().x else KEY_RIGHT
+					)
+					renderer.queue_redraw()
 					return
 					
 		GameState.MODE_SELECT:
