@@ -1445,6 +1445,17 @@ func _draw_sidebar(side_x: int) -> void:
 			y += lh
 		y += int(lh * 0.4)
 	elif not story_hook.is_empty():
+		var campaign: Dictionary = story_hook.get("campaign", {})
+		if not campaign.is_empty():
+			var campaign_objective: Dictionary = campaign.get("objective", {})
+			var campaign_progress: int = int(campaign.get("progress", 0))
+			var campaign_target: int = int(campaign_objective.get("target", 1))
+			draw_string(_font, Vector2(x, y + lh), "CAMPAÑA PROCEDURAL", HORIZONTAL_ALIGNMENT_LEFT, mw, 10, Color(0.42,0.82,1.0))
+			y += lh
+			draw_string(_font, Vector2(x + 4, y + lh), str(campaign.get("title", "Crónica")), HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 8, Color(0.72,0.88,1.0))
+			y += lh
+			draw_string(_font, Vector2(x + 8, y + lh), "%s  %d/%d" % [str(campaign_objective.get("label", "Objetivo")), campaign_progress, campaign_target], HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.62,0.82,0.92))
+			y += int(lh * 1.3)
 		draw_string(_font, Vector2(x, y + lh), "HISTORIA EN CURSO", HORIZONTAL_ALIGNMENT_LEFT, mw, 10, Color(0.95,0.68,0.28))
 		draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.55,0.36,0.12), 1.0)
 		y += int(lh * 1.3)
