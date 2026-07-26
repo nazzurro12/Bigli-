@@ -3173,19 +3173,20 @@ func _move_toward(world, target: Vector3i) -> void:
 		effective_speed *= maxf(0.25, 1.0 / carried_ratio)
 		fatigue = minf(1.25, fatigue + 0.0005 * carried_ratio)
 	effective_speed = maxf(0.3, effective_speed)
+
+	# A* era solicitado por todos los habitantes en el mismo fotograma al cambiar
+	# de tarea. Los cálculos iniciales se distribuyen; posesión y seguidores
+	# mantienen respuesta inmediata. Esta comprobación ocurre antes del temporizador
+	# de movimiento para garantizar un turno de ruta en un máximo de tres ticks.
+	var needs_new_path: bool = path.is_empty() or path_index >= path.size()
+	if needs_new_path and not _path_request_slot_is_due(world):
+		return
+
 	# Only move every N ticks: faster dwarves = more frequent moves
 	if move_tick_counter > 0:
 		move_tick_counter -= 1
 		return
 	move_tick_counter = ceil(2.0 / effective_speed)
-
-	# A* era solicitado por todos los habitantes en el mismo fotograma al cambiar
-	# de tarea. Los cálculos iniciales se distribuyen; posesión y seguidores
-	# mantienen respuesta inmediata. No se incrementa stuck_counter mientras
-	# simplemente se espera el turno de planificación.
-	var needs_new_path: bool = path.is_empty() or path_index >= path.size()
-	if needs_new_path and not _path_request_slot_is_due(world):
-		return
 
 	if tile_pos == last_pos:
 		stuck_counter += 1
