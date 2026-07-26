@@ -332,6 +332,12 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"family": dwarf.family.duplicate(),
 		"friends": dwarf.friends.duplicate(),
 		"rivals": dwarf.rivals.duplicate(),
+		"reputation": dwarf.reputation.duplicate(),
+		"life_history": dwarf.life_history.duplicate(true),
+		"career_offers": dwarf.career_offers.duplicate(true),
+		"social_roles": dwarf.social_roles.duplicate(),
+		"possession_count": dwarf.possession_count,
+		"last_possession_event_id": dwarf.last_possession_event_id,
 		"preferences": dwarf.preferences.duplicate(),
 		"memories": dwarf.memories.duplicate(),
 		"recent_events": dwarf.recent_events.duplicate(),
@@ -489,10 +495,16 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.emotion_intensity = d.get("emotion_intensity", 0.5)
 	df.stress = d.get("stress", 0.0)
 	df.trauma = d.get("trauma", []).duplicate()
-	df.relationships = d.get("relationships", {}).duplicate()
+	df.relationships = _restore_int_keys(d.get("relationships", {}), df.relationships)
 	df.family = d.get("family", {"mother": -1, "father": -1, "spouse": -1, "children": []}).duplicate()
 	df.friends = d.get("friends", []).duplicate()
 	df.rivals = d.get("rivals", []).duplicate()
+	df.reputation = d.get("reputation", {}).duplicate()
+	df.life_history = d.get("life_history", []).duplicate(true)
+	df.career_offers = d.get("career_offers", []).duplicate(true)
+	df.social_roles = d.get("social_roles", []).duplicate()
+	df.possession_count = d.get("possession_count", 0)
+	df.last_possession_event_id = d.get("last_possession_event_id", -1)
 	df.preferences = d.get("preferences", {}).duplicate()
 	df.memories = d.get("memories", []).duplicate()
 	df.recent_events = d.get("recent_events", []).duplicate()
