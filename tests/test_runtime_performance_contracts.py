@@ -39,6 +39,25 @@ class RuntimePerformanceContracts(unittest.TestCase):
         self.assertIn("if is_possessed:", self.dwarf)
         self.assertIn('has_meta("is_follower")', self.dwarf)
 
+    def test_item_searches_do_not_scan_every_world_entity(self):
+        for method in (
+            "_find_nearest_item_on_ground_matching",
+            "_find_nearest_item_matching_type",
+            "_find_material_on_ground",
+            "_execute_store_in_container_job",
+            "_find_container_at",
+            "_detach_item_from_container",
+            "_execute_collect_job",
+        ):
+            body = self.dwarf.split("func " + method, 1)[1].split("\nfunc ", 1)[0]
+            self.assertNotIn("in world.entities:", body, method)
+            self.assertIn("world.items", body, method)
+
+    def test_stockpile_need_search_uses_spatial_item_lookup(self):
+        needs = self.dwarf.split("func _satisfy_needs", 1)[1].split("\nfunc ", 1)[0]
+        self.assertIn("world.get_items_at(stock_tile)", needs)
+        self.assertNotIn("for ent in world.entities", needs)
+
     def test_spatial_queries_use_the_incremental_grid(self):
         for method in ("get_entity_at", "get_items_at", "is_actor_occupied"):
             method_body = self.world.split("func " + method, 1)[1].split("\nfunc ", 1)[0]
