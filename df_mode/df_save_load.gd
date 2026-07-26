@@ -241,6 +241,10 @@ static func _dict_to_item(d: Dictionary):
 	return item
 
 static func _dwarf_to_dict(dwarf) -> Dictionary:
+	var inventory_data: Array = []
+	for inventory_item in dwarf.inventory:
+		if inventory_item is DFItem:
+			inventory_data.append(_item_to_dict(inventory_item))
 	return {
 		"__type": "DFDwarf",
 		"home_z": dwarf.home_z,
@@ -254,7 +258,7 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"fatigue": dwarf.fatigue,
 		"happiness": dwarf.happiness,
 		"health": dwarf.health,
-		"inventory": [],
+		"inventory": inventory_data,
 		"thoughts": dwarf.thoughts.duplicate(),
 		"minutes_since_alcohol": dwarf.minutes_since_alcohol,
 		"skills": dwarf.skills.duplicate(),
@@ -409,6 +413,14 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.fatigue = d.get("fatigue", 0.0)
 	df.happiness = d.get("happiness", 0.8)
 	df.health = d.get("health", 1.0)
+	df.inventory.clear()
+	for inventory_data: Variant in d.get("inventory", []):
+		if not (inventory_data is Dictionary):
+			continue
+		var inventory_item = _dict_to_item(inventory_data)
+		if inventory_item != null:
+			inventory_item.carried_by_id = df.id
+			df.inventory.append(inventory_item)
 	df.thoughts = d.get("thoughts", []).duplicate()
 	df.minutes_since_alcohol = d.get("minutes_since_alcohol", 0)
 	df.skills = d.get("skills", {}).duplicate()
@@ -986,7 +998,6 @@ static func _restore_runtime_links(
 		world._index_entity(entity)
 		if entity is DFDwarf:
 			world.dwarves.append(entity)
-			entity.inventory.clear()
 			entity.current_job = null
 			entity.operating_workshop = null
 		elif entity is DFItem:
@@ -1005,7 +1016,11 @@ static func _restore_runtime_links(
 			continue
 		var owner = dwarves_by_id.get(item.carried_by_id)
 		if owner != null:
-			owner.inventory.append(item)
+			var already_linked: bool = owner.inventory.any(
+				func(inventory_item): return inventory_item.id == item.id
+			)
+			if not already_linked:
+				owner.inventory.append(item)
 		else:
 			# No dejar un objeto permanentemente oculto si su portador ya no existe.
 			item.carried_by_id = -1
