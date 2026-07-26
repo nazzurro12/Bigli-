@@ -35,9 +35,10 @@ class PhysicalJobContracts(unittest.TestCase):
 
     def test_construction_materials_are_reserved_and_not_duplicated(self):
         work = self.dwarf.split("func _work_on_job", 1)[1].split("\nfunc ", 1)[0]
-        self.assertIn("ent.reserved_by_id >= 0 and ent.reserved_by_id != id", work)
+        self.assertIn("ent.is_reserved_for_other(id, simulation_minute)", work)
         self.assertIn("ent.is_inside_container or ent.carried_by_id >= 0", work)
-        self.assertIn("best_item.reserved_by_id = id", work)
+        self.assertIn("best_item.reserve_for(id, simulation_minute + 30)", work)
+        self.assertIn("best_item.release_reservation(id)", work)
         self.assertIn("best_item.carried_by_id = id", work)
         self.assertLess(work.index("world.remove_entity(best_item)"), work.index("inventory.append(best_item)"))
 
