@@ -1,6 +1,11 @@
 extends RefCounted
 class_name DFSaveLoad
 
+const DFCombat = preload("res://df_mode/df_combat.gd")
+const DFInvasion = preload("res://df_mode/df_invasion.gd")
+const DFMilitary = preload("res://df_mode/df_military.gd")
+const DFJobScript = preload("res://df_mode/df_job.gd")
+
 const SAVE_DIR = "user://saves/"
 
 static func _v3i_to_arr(v: Vector3i) -> Array:
@@ -124,6 +129,12 @@ static func _item_to_dict(item) -> Dictionary:
 		"is_organic": item.is_organic,
 		"is_edible": item.is_edible,
 		"nutrition": item.nutrition,
+		"hydration": item.hydration,
+		"carried_by_id": item.carried_by_id,
+		"reserved_by_id": item.reserved_by_id,
+		"reservation_expiry_tick": item.reservation_expiry_tick,
+		"tool_tags": item.tool_tags.duplicate(),
+		"equipment_slot": item.equipment_slot,
 		"quality": item.quality,
 		"max_durability": item.max_durability,
 		"durability": item.durability,
@@ -178,6 +189,12 @@ static func _dict_to_item(d: Dictionary):
 	item.is_organic = d.get("is_organic", false)
 	item.is_edible = d.get("is_edible", false)
 	item.nutrition = d.get("nutrition", 0.3)
+	item.hydration = d.get("hydration", 0.0)
+	item.carried_by_id = d.get("carried_by_id", -1)
+	item.reserved_by_id = d.get("reserved_by_id", -1)
+	item.reservation_expiry_tick = d.get("reservation_expiry_tick", 0)
+	item.tool_tags = d.get("tool_tags", []).duplicate()
+	item.equipment_slot = d.get("equipment_slot", "")
 	item.quality = d.get("quality", 0)
 	item.quality_name = item.QUALITY_NAMES.get(item.quality, "Normal")
 	item.quality_color = item.QUALITY_COLORS.get(item.quality, Color.WHITE)
@@ -843,6 +860,57 @@ static func deserialize_entity(d: Dictionary):
 		"DFCreature": return _dict_to_creature(d)
 	return null
 
+static func _restore_runtime_links(world, designation, generation_seed: int) -> void:
+	# Los arrays tipados y el índice espacial no se reconstruyen al escribir
+	# directamente en world.entities. Rehacerlos evita enanos duplicados,
+	# objetos invisibles y búsquedas espaciales apuntando a la partida anterior.
+	world.dwarves.clear()
+	world.items.clear()
+	world.creatures.clear()
+	world._entity_grid.clear()
+	for entity in world.entities:
+		world._index_entity(entity)
+		if entity is DFDwarf:
+			world.dwarves.append(entity)
+			entity.inventory.clear()
+			entity.current_job = null
+			entity.operating_workshop = null
+		elif entity is DFItem:
+			world.items.append(entity)
+		elif entity is DFCreature:
+			world.creatures.append(entity)
+
+	var dwarves_by_id: Dictionary = {}
+	for dwarf in world.dwarves:
+		dwarves_by_id[dwarf.id] = dwarf
+
+	for item in world.items:
+		if item.carried_by_id < 0:
+			continue
+		var owner = dwarves_by_id.get(item.carried_by_id)
+		if owner != null:
+			owner.inventory.append(item)
+		else:
+			# No dejar un objeto permanentemente oculto si su portador ya no existe.
+			item.carried_by_id = -1
+			item.release_reservation()
+
+	if designation != null:
+		for job in designation.job_queue:
+			if job.state not in [DFJobScript.JobState.ASSIGNED, DFJobScript.JobState.IN_PROGRESS]:
+				continue
+			var worker = dwarves_by_id.get(job.assigned_dwarf_id)
+			if worker != null and worker.current_job == null:
+				worker.current_job = job
+			else:
+				# Una asignación sin trabajador válido vuelve a la cola.
+				job.state = DFJobScript.JobState.UNASSIGNED
+				job.assigned_dwarf_id = -1
+
+	world.combat_system = DFCombat.new()
+	world.invasion_system = DFInvasion.new(generation_seed)
+	world.military_system = DFMilitary.new(generation_seed)
+
 static func ensure_save_dir() -> void:
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
 
@@ -1219,6 +1287,7 @@ static func load_game(main) -> bool:
 		main.renderer.game_day = main._game_day
 		main.renderer.game_season = main._game_season
 
+	_restore_runtime_links(w, main.designation, main.generation_seed)
 	return true
 
 static func get_save_list() -> Array:
@@ -1619,6 +1688,4 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 		main.renderer.game_day = main._game_day
 		main.renderer.game_season = main._game_season
 
-	w.combat_system = null
-	w.invasion_system = null
-	w.military_system = null
+	_restore_runtime_links(w, main.designation, main.generation_seed)
