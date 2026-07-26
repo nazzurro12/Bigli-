@@ -40,6 +40,9 @@ func _process(_delta):
 			_game_main.set_meta("quick_start_pending", true)
 			_game_main.generation_seed = 424242
 			_game_main.setting_size = 0
+			_game_main.setting_history_idx = 0
+			var test_generation_settings = load("res://world/world_generation_settings.tres")
+			test_generation_settings.local_map_size = 64
 			_phase = "GENERATING"
 			_tick_count = 0
 			_phase_started_ms = Time.get_ticks_msec()
