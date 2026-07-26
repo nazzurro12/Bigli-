@@ -3243,20 +3243,23 @@ func _move_toward(world, target: Vector3i) -> void:
 			current_task = "Buscando una ruta alternativa"
 			return
 		path_replan_count = 0
-		if current_task == "Yendo a su cama":
+		if preferred_bed.x >= 0 and target == preferred_bed:
 			preferred_bed = Vector3i(-1, -1, -1)
 			claimed_bed = Vector3i(-1, -1, -1)
 			is_sleeping = true
 			current_task = "Durmiendo sin cama"
 			return
-		if current_job != null:
+		var abandoned_job: bool = current_job != null
+		var abandoned_workshop: bool = operating_workshop != null
+		var abandoned_plan: bool = not autonomous_plan.is_empty()
+		if abandoned_job:
 			_cancel_current_job("ruta bloqueada después de tres intentos")
-		if operating_workshop != null:
+		if abandoned_workshop:
 			operating_workshop.unassign_dwarf()
 			operating_workshop = null
-		if not autonomous_plan.is_empty():
+		if abandoned_plan:
 			DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada después de tres intentos")
-		if current_job == null and operating_workshop == null and autonomous_plan.is_empty():
+		if not abandoned_job and not abandoned_workshop and not abandoned_plan:
 			current_task = "Sin ruta accesible"
 		return
 
