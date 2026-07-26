@@ -470,7 +470,8 @@ func _process(delta: float) -> void:
 		var viewport_size = get_viewport_rect().size
 		var max_chars_x = int(viewport_size.x / cs_x)
 		var max_chars_y = int(viewport_size.y / cs_y)
-		var vw = max_chars_x - sidebar_width - 2 if max_chars_x > sidebar_width + 10 else 40
+		var reserved_sidebar: int = sidebar_width if show_sidebar and not show_help else 0
+		var vw = max_chars_x - reserved_sidebar - 2 if max_chars_x > reserved_sidebar + 10 else 40
 		var vh = max_chars_y - 6 if max_chars_y > 8 else 20
 		
 		var cam_x = camera_pos.x - vw / 2
@@ -534,9 +535,13 @@ func _draw() -> void:
 	var viewport_size = get_viewport_rect().size
 	var max_chars_x = int(viewport_size.x / _char_size.x)
 	var max_chars_y = int(viewport_size.y / _char_size.y)
-	
-	if max_chars_x > sidebar_width + 10:
-		view_width = max_chars_x - sidebar_width - 2
+
+	# Al ocultar el panel lateral, el mapa recupera inmediatamente todo ese
+	# ancho. Antes se reservaban 32 columnas invisibles incluso con el panel
+	# cerrado, haciendo que el mundo pareciera pequeño.
+	var reserved_sidebar: int = sidebar_width if show_sidebar and not show_help else 0
+	if max_chars_x > reserved_sidebar + 10:
+		view_width = max_chars_x - reserved_sidebar - 2
 	else:
 		view_width = 40
 		
@@ -547,8 +552,8 @@ func _draw() -> void:
 
 	var vw = view_width
 	var vh = view_height
-	var cam_x = camera_pos.x - vw / 2
-	var cam_z = camera_pos.z - vh / 2
+	var cam_x: int = clampi(camera_pos.x - vw / 2, 0, maxi(0, world.width - vw)) if world != null else camera_pos.x - vw / 2
+	var cam_z: int = clampi(camera_pos.z - vh / 2, 0, maxi(0, world.depth - vh)) if world != null else camera_pos.z - vh / 2
 	var cam_y = camera_pos.y
 	var border_x = _draw_border(vw, vh)
 
