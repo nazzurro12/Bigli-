@@ -877,7 +877,106 @@ static func deserialize_entity(d: Dictionary):
 		"DFCreature": return _dict_to_creature(d)
 	return null
 
-static func _restore_runtime_links(world, designation, generation_seed: int) -> void:
+static func _invasion_wave_to_dict(wave) -> Dictionary:
+	return {
+		"invasion_type": wave.invasion_type,
+		"force": wave.force,
+		"enemy_type": wave.enemy_type,
+		"remaining": wave.remaining,
+		"spawned": wave.spawned,
+		"prep_ticks": wave.prep_ticks,
+		"wave_ticks": wave.wave_ticks,
+		"active": wave.active,
+		"complete": wave.complete,
+		"spawn_interval": wave.spawn_interval,
+		"spawn_counter": wave.spawn_counter,
+		"has_commander": wave.has_commander,
+		"commander_name": wave.commander_name,
+		"morale": wave.morale,
+		"kills_by_invaders": wave.kills_by_invaders,
+		"losses": wave.losses,
+		"is_siege": wave.is_siege,
+		"siege_engines": wave.siege_engines,
+		"necromancer_id": wave.necromancer_id,
+	}
+
+static func _dict_to_invasion_wave(data: Dictionary):
+	var wave = DFInvasion.InvasionWave.new(
+		data.get("invasion_type", 0),
+		data.get("force", 1),
+		data.get("enemy_type", "goblin")
+	)
+	for property_name: String in [
+		"remaining", "spawned", "prep_ticks", "wave_ticks", "active", "complete",
+		"spawn_interval", "spawn_counter", "has_commander", "commander_name",
+		"morale", "kills_by_invaders", "losses", "is_siege", "siege_engines",
+		"necromancer_id",
+	]:
+		if data.has(property_name):
+			wave.set(property_name, data[property_name])
+	return wave
+
+static func _strategic_systems_to_dict(world) -> Dictionary:
+	var result := {"combat": {}, "invasion": {}, "military": {}}
+	if world.combat_system != null:
+		result.combat = {
+			"combat_log": world.combat_system.combat_log.duplicate(),
+			"weapon_tables": world.combat_system.weapon_tables.duplicate(true),
+			"armor_tables": world.combat_system.armor_tables.duplicate(true),
+			"combat_stats": world.combat_system.combat_stats.duplicate(true),
+		}
+	if world.invasion_system != null:
+		var invasion = world.invasion_system
+		result.invasion = {
+			"invasion_cooldown": invasion._invasion_cooldown,
+			"ticks_since_last": invasion._ticks_since_last,
+			"invasions_defeated": invasion._invasions_defeated,
+			"invasions_survived": invasion._invasions_survived,
+			"season_tick": invasion._season_tick,
+			"last_season": invasion._last_season,
+			"active_invasions": invasion.active_invasions.map(
+				func(wave): return _invasion_wave_to_dict(wave)
+			),
+			"pending_invasions": invasion.pending_invasions.map(
+				func(wave): return _invasion_wave_to_dict(wave)
+			),
+			"historical_invasions": invasion.historical_invasions.duplicate(true),
+			"notification": invasion.notification,
+			"threat_level": invasion.threat_level,
+			"fortress_kills": invasion.fortress_kills,
+		}
+	if world.military_system != null:
+		var military = world.military_system
+		var serialized_squads: Array = []
+		for squad in military.squads:
+			var patrol_points: Array = []
+			for patrol_point: Variant in squad.patrol_points:
+				patrol_points.append(_v3i_to_arr(patrol_point))
+			serialized_squads.append({
+				"id": squad.id,
+				"name": squad.name,
+				"members": squad.members.duplicate(),
+				"role": squad.role,
+				"formation": _v3i_to_arr(squad.formation),
+				"is_active": squad.is_active,
+				"is_patrolling": squad.is_patrolling,
+				"patrol_points": patrol_points,
+				"patrol_index": squad.patrol_index,
+				"alert_level": squad.alert_level,
+			})
+		result.military = {
+			"next_squad_id": military._next_squad_id,
+			"alert_level": military.alert_level,
+			"squads": serialized_squads,
+		}
+	return result
+
+static func _restore_runtime_links(
+	world,
+	designation,
+	generation_seed: int,
+	strategic_data: Dictionary = {}
+) -> void:
 	# Los arrays tipados y el índice espacial no se reconstruyen al escribir
 	# directamente en world.entities. Rehacerlos evita enanos duplicados,
 	# objetos invisibles y búsquedas espaciales apuntando a la partida anterior.
@@ -952,6 +1051,56 @@ static func _restore_runtime_links(world, designation, generation_seed: int) -> 
 	world.combat_system = DFCombat.new()
 	world.invasion_system = DFInvasion.new(generation_seed)
 	world.military_system = DFMilitary.new(generation_seed)
+
+	var combat_data: Dictionary = strategic_data.get("combat", {})
+	world.combat_system.combat_log = combat_data.get("combat_log", []).duplicate()
+	world.combat_system.weapon_tables = combat_data.get("weapon_tables", {}).duplicate(true)
+	world.combat_system.armor_tables = combat_data.get("armor_tables", {}).duplicate(true)
+	world.combat_system.combat_stats = combat_data.get("combat_stats", {}).duplicate(true)
+
+	var invasion_data: Dictionary = strategic_data.get("invasion", {})
+	var invasion = world.invasion_system
+	invasion._invasion_cooldown = invasion_data.get("invasion_cooldown", 0)
+	invasion._ticks_since_last = invasion_data.get("ticks_since_last", 0)
+	invasion._invasions_defeated = invasion_data.get("invasions_defeated", 0)
+	invasion._invasions_survived = invasion_data.get("invasions_survived", 0)
+	invasion._season_tick = invasion_data.get("season_tick", 0)
+	invasion._last_season = invasion_data.get("last_season", "Primavera")
+	invasion.active_invasions = invasion_data.get("active_invasions", []).map(
+		func(wave_data): return _dict_to_invasion_wave(wave_data)
+	)
+	invasion.pending_invasions = invasion_data.get("pending_invasions", []).map(
+		func(wave_data): return _dict_to_invasion_wave(wave_data)
+	)
+	invasion.historical_invasions = invasion_data.get("historical_invasions", []).duplicate(true)
+	invasion.notification = invasion_data.get("notification", "")
+	invasion.threat_level = invasion_data.get("threat_level", 0)
+	invasion.fortress_kills = invasion_data.get("fortress_kills", 0)
+	invasion._current_invasion = invasion.active_invasions[0] if not invasion.active_invasions.is_empty() else null
+
+	var military_data: Dictionary = strategic_data.get("military", {})
+	var military = world.military_system
+	military.alert_level = military_data.get("alert_level", 0)
+	military._next_squad_id = military_data.get("next_squad_id", 1)
+	for squad_data: Dictionary in military_data.get("squads", []):
+		var squad = DFMilitary.Squad.new(
+			squad_data.get("id", military._next_squad_id),
+			squad_data.get("name", "Escuadra"),
+			squad_data.get("role", DFMilitary.SquadRole.SOLDIER)
+		)
+		squad.members = squad_data.get("members", []).duplicate()
+		squad.formation = _arr_to_v3i(squad_data.get("formation", [-1, -1, -1]))
+		squad.is_active = squad_data.get("is_active", false)
+		squad.is_patrolling = squad_data.get("is_patrolling", false)
+		squad.patrol_points = []
+		for patrol_value: Variant in squad_data.get("patrol_points", []):
+			squad.patrol_points.append(_arr_to_v3i(patrol_value))
+		squad.patrol_index = squad_data.get("patrol_index", 0)
+		squad.alert_level = squad_data.get("alert_level", 0)
+		military.squads.append(squad)
+		for member_id: Variant in squad.members:
+			if dwarves_by_id.has(member_id):
+				military.dwarves_in_military[member_id] = squad
 
 static func ensure_save_dir() -> void:
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
@@ -1115,6 +1264,7 @@ static func save_game(main) -> bool:
 		else:
 			riv_arr.append(rv)
 	data["world"]["rivers"] = riv_arr
+	data["strategic_systems"] = _strategic_systems_to_dict(w)
 
 	data["entities"] = []
 	for e in w.entities:
@@ -1329,7 +1479,12 @@ static func load_game(main) -> bool:
 		main.renderer.game_day = main._game_day
 		main.renderer.game_season = main._game_season
 
-	_restore_runtime_links(w, main.designation, main.generation_seed)
+	_restore_runtime_links(
+		w,
+		main.designation,
+		main.generation_seed,
+		data.get("strategic_systems", {})
+	)
 	return true
 
 static func get_save_list() -> Array:
@@ -1537,6 +1692,7 @@ static func _build_save_data(main) -> Dictionary:
 		else:
 			riv_arr.append(rv)
 	data["world"]["rivers"] = riv_arr
+	data["strategic_systems"] = _strategic_systems_to_dict(w)
 
 	data["entities"] = []
 	for e in w.entities:
@@ -1730,4 +1886,9 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 		main.renderer.game_day = main._game_day
 		main.renderer.game_season = main._game_season
 
-	_restore_runtime_links(w, main.designation, main.generation_seed)
+	_restore_runtime_links(
+		w,
+		main.designation,
+		main.generation_seed,
+		data.get("strategic_systems", {})
+	)
