@@ -12,6 +12,9 @@ var active_hook: Dictionary = {}
 var last_refresh_minute: int = -REFRESH_MINUTES
 var possession_session: Dictionary = {}
 var last_consequence_report: Dictionary = {}
+var active_campaign: Dictionary = {}
+var completed_campaigns: Array = []
+var campaign_serial: int = 0
 
 func refresh(world, minute: int, force: bool = false) -> Dictionary:
 	if world == null:
@@ -20,8 +23,120 @@ func refresh(world, minute: int, force: bool = false) -> Dictionary:
 	if not force and minute - last_refresh_minute < REFRESH_MINUTES:
 		return active_hook
 	last_refresh_minute = minute
+	_refresh_campaign(world, minute)
 	active_hook = _find_best_hook(world)
+	if not active_campaign.is_empty():
+		active_hook["campaign"] = active_campaign.duplicate(true)
 	return active_hook
+
+func _refresh_campaign(world, minute: int) -> void:
+	var metrics := _campaign_metrics(world)
+	if active_campaign.is_empty():
+		active_campaign = _create_campaign(metrics, minute)
+		return
+	var objective: Dictionary = active_campaign.get("objective", {})
+	var metric_name: String = str(objective.get("metric", "population"))
+	var progress: int = int(metrics.get(metric_name, 0))
+	active_campaign["progress"] = progress
+	if progress < int(objective.get("target", 1)):
+		return
+	var chapter: int = int(active_campaign.get("chapter", 0)) + 1
+	active_campaign["chapter"] = chapter
+	if chapter >= 5:
+		active_campaign["completed_minute"] = minute
+		completed_campaigns.append(active_campaign.duplicate(true))
+		if completed_campaigns.size() > 40:
+			completed_campaigns.pop_front()
+		active_campaign = {}
+		return
+	active_campaign["objective"] = _campaign_objective(active_campaign.get("theme", "prosperity"), chapter, metrics)
+	active_campaign["progress"] = int(metrics.get(active_campaign.objective.metric, 0))
+
+func _create_campaign(metrics: Dictionary, minute: int) -> Dictionary:
+	campaign_serial += 1
+	var themes: Array[String] = ["refugio", "prosperidad", "industria", "exploracion", "legado", "comunidad"]
+	var theme: String = themes[posmod(campaign_serial + int(metrics.get("population", 0)), themes.size())]
+	return {
+		"id": campaign_serial,
+		"title": _campaign_title(theme, campaign_serial),
+		"theme": theme,
+		"chapter": 0,
+		"started_minute": minute,
+		"objective": _campaign_objective(theme, 0, metrics),
+		"progress": 0,
+	}
+
+func _campaign_title(theme: String, serial: int) -> String:
+	var names := {
+		"refugio": "Hogares bajo las estrellas",
+		"prosperidad": "La despensa de las estaciones",
+		"industria": "Manos que transforman el mundo",
+		"exploracion": "Más allá del horizonte",
+		"legado": "Una obra para la memoria",
+		"comunidad": "Vidas entrelazadas",
+	}
+	return "%s · Ciclo %d" % [str(names.get(theme, "Crónica de la colonia")), serial]
+
+func _campaign_objective(theme: String, chapter: int, metrics: Dictionary) -> Dictionary:
+	var chains := {
+		"refugio": ["beds", "floors", "buildings", "beds", "population"],
+		"prosperidad": ["food", "water", "food", "containers", "population"],
+		"industria": ["workshops", "wood", "stone", "metal", "workshops"],
+		"exploracion": ["stone", "metal", "workshops", "buildings", "population"],
+		"legado": ["buildings", "floors", "workshops", "beds", "population"],
+		"comunidad": ["beds", "food", "buildings", "containers", "population"],
+	}
+	var labels := {
+		"beds": "Instalar camas utilizables",
+		"floors": "Construir espacios habitables",
+		"buildings": "Completar edificios",
+		"food": "Asegurar reservas de comida",
+		"water": "Asegurar reservas de bebida",
+		"containers": "Instalar almacenamiento",
+		"workshops": "Levantar talleres productivos",
+		"wood": "Reunir madera",
+		"stone": "Extraer piedra",
+		"metal": "Descubrir y almacenar metal",
+		"population": "Sostener una comunidad mayor",
+	}
+	var chain: Array = chains.get(theme, chains["comunidad"])
+	var metric: String = str(chain[clampi(chapter, 0, chain.size() - 1)])
+	var baseline: int = int(metrics.get(metric, 0))
+	var increase: int = maxi(1, 2 + chapter * 2)
+	return {"metric": metric, "label": labels.get(metric, metric), "baseline": baseline, "target": baseline + increase}
+
+func _campaign_metrics(world) -> Dictionary:
+	var result := {"population": 0, "beds": 0, "floors": 0, "buildings": 0, "food": 0, "water": 0, "containers": 0, "workshops": 0, "wood": 0, "stone": 0, "metal": 0}
+	for dwarf in world.dwarves:
+		if dwarf.get("is_alive") != false:
+			result.population += 1
+	result.buildings = world.buildings.size()
+	result.workshops = world.workshops.size()
+	for building in world.buildings:
+		var type_name: String = str(building.get("name")).to_lower()
+		if "almac" in type_name or "cofre" in type_name:
+			result.containers += 1
+	for item in world.items:
+		var item_name: String = str(item.get("name")).to_lower()
+		var item_type: String = str(item.get("item_type")).to_lower()
+		if item.get("is_bed") == true or "cama" in item_name: result.beds += 1
+		if item_type in ["food", "meat", "plant", "meal"]: result.food += 1
+		if item_type in ["water", "drink", "beer"]: result.water += 1
+		if item_type in ["wood", "plank"]: result.wood += 1
+		if item_type == "stone": result.stone += 1
+		if "ore" in item_type or item_type in ["bar", "metal"]: result.metal += 1
+	for tile_data in world.tile_data.values():
+		if tile_data is Dictionary and bool(tile_data.get("constructed_floor", false)):
+			result.floors += 1
+	return result
+
+func serialize_state() -> Dictionary:
+	return {"active_campaign": active_campaign.duplicate(true), "completed_campaigns": completed_campaigns.duplicate(true), "campaign_serial": campaign_serial}
+
+func deserialize_state(data: Dictionary) -> void:
+	active_campaign = data.get("active_campaign", {}).duplicate(true)
+	completed_campaigns = data.get("completed_campaigns", []).duplicate(true)
+	campaign_serial = int(data.get("campaign_serial", 0))
 
 func _find_best_hook(world) -> Dictionary:
 	var best: Dictionary = {}
