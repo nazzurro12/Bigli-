@@ -3650,6 +3650,112 @@ func _get_best_skill() -> int:
 func get_body() -> Object:
 	return body
 
+func _workshop_item_matches(item: DFItem, requirement: Dictionary) -> bool:
+	if item == null or item.is_decayed or item.is_inside_container or item.carried_by_id >= 0:
+		return false
+	var item_type_lower: String = item.item_type.to_lower()
+	var material_lower: String = item.material_name.to_lower()
+	if bool(requirement.get("fuel", false)):
+		return item_type_lower in ["fuel", "charcoal", "coal", "coal_ore", "wood"]
+	var required_type: String = str(requirement.get("type", "")).to_lower()
+	if not required_type.is_empty() and item_type_lower != required_type:
+		return false
+	var materials: Array = requirement.get("material", [])
+	if not materials.is_empty():
+		var material_ok: bool = false
+		for candidate in materials:
+			var candidate_lower: String = str(candidate).to_lower()
+			if candidate_lower == material_lower or candidate_lower == item_type_lower or item_type_lower.begins_with(candidate_lower + "_"):
+				material_ok = true
+				break
+		if not material_ok:
+			return false
+	var specifics: Array = requirement.get("specific", [])
+	if not specifics.is_empty():
+		var specific_ok: bool = false
+		for candidate in specifics:
+			var candidate_lower: String = str(candidate).to_lower()
+			if candidate_lower in item_type_lower or candidate_lower in material_lower or candidate_lower in item.name.to_lower():
+				specific_ok = true
+				break
+		if not specific_ok:
+			return false
+	return true
+
+func _prepare_workshop_inputs(world, recipe: Dictionary) -> bool:
+	var selected_indices: Array[int] = []
+	var missing_requirement: Dictionary = {}
+	for requirement in recipe.get("inputs", []):
+		var required_count: int = int(requirement.get("count", 1))
+		var matched_count: int = 0
+		for inventory_index in range(inventory.size()):
+			if inventory_index in selected_indices:
+				continue
+			var inventory_item = inventory[inventory_index]
+			if _workshop_item_matches(inventory_item, requirement):
+				selected_indices.append(inventory_index)
+				matched_count += 1
+				if matched_count >= required_count:
+					break
+		if matched_count < required_count and not bool(requirement.get("optional", false)):
+			missing_requirement = requirement
+			break
+
+	if not missing_requirement.is_empty():
+		var nearest_item: DFItem = null
+		var nearest_distance: int = 999999
+		for ground_item in world.items:
+			if not _workshop_item_matches(ground_item, missing_requirement):
+				continue
+			if ground_item.is_reserved_for_other(id, simulation_minute):
+				continue
+			var ground_distance: int = abs(ground_item.tile_pos.x - tile_pos.x) + abs(ground_item.tile_pos.z - tile_pos.z) + abs(ground_item.tile_pos.y - tile_pos.y) * 2
+			if ground_distance < nearest_distance:
+				nearest_distance = ground_distance
+				nearest_item = ground_item
+		if nearest_item == null:
+			current_task = "Esperando insumos para %s" % str(recipe.get("name", "el taller"))
+			return false
+		nearest_item.reserve_for(id, simulation_minute + 30)
+		if nearest_distance <= 1:
+			nearest_item.release_reservation(id)
+			nearest_item.carried_by_id = id
+			world.remove_entity(nearest_item)
+			inventory.append(nearest_item)
+			current_task = "Llevando insumo a %s" % operating_workshop.name
+		else:
+			current_task = "Recogiendo insumo para %s" % operating_workshop.name
+			_move_toward(world, nearest_item.tile_pos)
+		return false
+
+	selected_indices.sort()
+	selected_indices.reverse()
+	for inventory_index in selected_indices:
+		inventory.remove_at(inventory_index)
+	operating_workshop.current_recipe = recipe.duplicate(true)
+	needs_display_update = true
+	return true
+
+func _produce_workshop_outputs(world, recipe: Dictionary) -> void:
+	for output in recipe.get("outputs", []):
+		if bool(output.get("optional", false)):
+			continue
+		var output_count: int = int(output.get("count", 1))
+		for output_index in range(output_count):
+			var produced: DFItem = world._spawn_item(
+				operating_workshop.tile_pos,
+				str(output.get("name", "Producto")),
+				str(output.get("type", "craft")),
+				0,
+				"*",
+				Color("#FFD27F")
+			)
+			produced.created_by_entity_id = id
+			produced.production_recipe_id = str(recipe.get("id", ""))
+			produced.production_site = operating_workshop.tile_pos
+	stats_tracker["items_crafted"] = int(stats_tracker.get("items_crafted", 0)) + 1
+	add_thought("Fabricó %s usando insumos reales." % str(recipe.get("name", "un objeto")), 0.04)
+
 func _operate_workshop(world) -> void:
 	if is_possessed:
 		return
@@ -3668,14 +3774,29 @@ func _operate_workshop(world) -> void:
 		current_task = "idle"
 		return
 
-	var dist = abs(tile_pos.x - operating_workshop.tile_pos.x) + abs(tile_pos.z - operating_workshop.tile_pos.z)
-	if dist <= 1 and tile_pos.y == operating_workshop.tile_pos.y:
-		current_task = "Operando " + operating_workshop.name
-		add_skill_xp(Skill.SMITHING, 1)
-		operating_workshop.operator_skill = get_skill_level(Skill.SMITHING)
-	else:
+	var dist: int = abs(tile_pos.x - operating_workshop.tile_pos.x) + abs(tile_pos.z - operating_workshop.tile_pos.z)
+	if dist > 1 or tile_pos.y != operating_workshop.tile_pos.y:
 		current_task = "Yendo a " + operating_workshop.name
 		_move_toward(world, operating_workshop.tile_pos)
+		return
+
+	var recipe: Dictionary = operating_workshop.production_queue[0]
+	if operating_workshop.current_recipe.is_empty() and not _prepare_workshop_inputs(world, recipe):
+		return
+
+	current_task = "Fabricando %s en %s" % [str(recipe.get("name", "producto")), operating_workshop.name]
+	var skill_id: int = current_job.get_required_skill() if current_job != null else Skill.CRAFTSMAN
+	var operator_level: int = get_skill_level(skill_id)
+	operating_workshop.operator_skill = operator_level
+	var result: Dictionary = operating_workshop.tick(1.0)
+	if bool(result.get("completed", false)):
+		var completed_recipe: Dictionary = result.get("recipe", {})
+		_produce_workshop_outputs(world, completed_recipe)
+		add_skill_xp(skill_id, 8)
+		if operating_workshop.production_queue.is_empty():
+			operating_workshop.unassign_dwarf()
+			operating_workshop = null
+			current_task = "idle"
 
 func _check_workshops(world) -> void:
 	if is_possessed or operating_workshop != null:
