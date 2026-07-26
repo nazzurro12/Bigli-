@@ -1991,7 +1991,7 @@ func _draw_settings_menu() -> void:
 		["Megabestias", ["Pocas", "Moderadas", "Abundantes"][main_node.setting_beast_density]],
 	]
 	for option_index in range(options.size()):
-		var selected := main_node.setting_selected_index == option_index
+		var selected: bool = int(main_node.setting_selected_index) == option_index
 		var row_rect := Rect2(inner_x, row_y, inner_width, UI.ROW_HEIGHT)
 		if selected:
 			draw_rect(row_rect, UI.WIN_TITLE_START, true)
@@ -2281,11 +2281,14 @@ func _draw_generating_screen() -> void:
 		draw_string(_font, Vector2(x + 12.0, event_y), "Preparando topografía, cuencas y civilizaciones…",
 			HORIZONTAL_ALIGNMENT_LEFT, width - 24.0, UI.FONT_SM, Color("#303840"))
 	else:
-		var visible_events := mini(main_node.gen_rolling_events.size(), maxi(1, int((event_height - 16.0) / 17.0)))
+		var visible_events: int = mini(
+			int(main_node.gen_rolling_events.size()),
+			maxi(1, int((event_height - 16.0) / 17.0))
+		)
 		for event_index in range(visible_events):
-			var source_index := main_node.gen_rolling_events.size() - visible_events + event_index
-			var event_text := str(main_node.gen_rolling_events[source_index])
-			var shown := event_text if event_text.length() <= 100 else event_text.substr(0, 97) + "…"
+			var source_index: int = int(main_node.gen_rolling_events.size()) - visible_events + event_index
+			var event_text: String = str(main_node.gen_rolling_events[source_index])
+			var shown: String = event_text if event_text.length() <= 100 else event_text.substr(0, 97) + "…"
 			draw_string(_font, Vector2(x + 12.0, event_y), "• " + shown,
 				HORIZONTAL_ALIGNMENT_LEFT, width - 24.0, UI.FONT_SM, Color("#303840"))
 			event_y += 17.0
