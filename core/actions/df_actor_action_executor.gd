@@ -212,6 +212,9 @@ static func _gain_skill(actor, skill_id: int, amount: int) -> void:
 static func _record_consequence(actor, world, action_type: int, target: Vector3i, result: Dictionary, data: Dictionary) -> void:
 	if world.consequence_system == null:
 		return
+	# Caminar y subir escaleras son ruido de alta frecuencia, no hechos sociales.
+	if action_type in [ActionType.MOVE, ActionType.CLIMB_UP, ActionType.CLIMB_DOWN]:
+		return
 	var action_names: Dictionary = {
 		ActionType.MOVE: "move",
 		ActionType.CHOP_TREE: "chop_tree",
