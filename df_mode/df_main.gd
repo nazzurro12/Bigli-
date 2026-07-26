@@ -404,11 +404,19 @@ func _consume_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> void:
 func _add_message_async(msg: String) -> void:
 	add_message(msg)
 
+func _ensure_runtime_systems() -> void:
+	if world == null:
+		return
+	if world.combat_system == null:
+		world.combat_system = DFCombat.new()
+	if world.invasion_system == null:
+		world.invasion_system = DFInvasion.new(generation_seed)
+	if world.military_system == null:
+		world.military_system = DFMilitary.new(generation_seed)
+
 func _place_dwarves_and_setup() -> void:
 	world.world_name = world_name
-	world.combat_system = DFCombat.new()
-	world.invasion_system = DFInvasion.new(generation_seed)
-	world.military_system = DFMilitary.new(generation_seed)
+	_ensure_runtime_systems()
 
 	# Encontrar punto de partida sólido en la superficie
 	var center_raw = Vector3i(int(world.width / 2.0), 3, int(world.depth / 2.0))
@@ -2101,6 +2109,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	# Step 7
 	load_status = "Fundando asentamiento inicial"
 	await get_tree().process_frame
+	_ensure_runtime_systems()
 	designation = DFDesignation.new(world)
 	_build_initial_settlement(local_center_surface)
 	_auto_designate_initial_jobs(local_center_surface)
