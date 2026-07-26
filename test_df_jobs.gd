@@ -153,6 +153,15 @@ func _run_save_load_round_trip() -> void:
 		var test_squad = world.military_system.create_squad("Guardia de Persistencia")
 		world.military_system.assign_dwarf_to_squad(dwarf.id, test_squad.id)
 	world.military_system.set_alert(1)
+	if _game_main.quest_system.active_quests.is_empty():
+		var test_quest = _game_main.quest_system.generate_quest()
+		test_quest.current_count = mini(1, test_quest.target_count)
+		_game_main.quest_system.active_quests.append(test_quest)
+	_game_main.quest_system.generation_cooldown = 321
+	_game_main.caravan_system.total_trades = 7
+	_game_main.caravan_system.total_wealth_traded = 4321.5
+	_game_main.caravan_system.relations["human"] = 42.5
+	var tracked_quest = _game_main.quest_system.active_quests[0]
 	var expected_building_sizes: Array = world.buildings.map(
 		func(building): return [building.type, building.tile_pos, building.size]
 	)
@@ -179,6 +188,12 @@ func _run_save_load_round_trip() -> void:
 		"invasion_threat": world.invasion_system.threat_level,
 		"fortress_kills": world.invasion_system.fortress_kills,
 		"military_summary": world.military_system.get_military_summary(),
+		"quest_id": tracked_quest.id,
+		"quest_progress": tracked_quest.current_count,
+		"quest_cooldown": _game_main.quest_system.generation_cooldown,
+		"caravan_trades": _game_main.caravan_system.total_trades,
+		"caravan_wealth": _game_main.caravan_system.total_wealth_traded,
+		"human_relation": _game_main.caravan_system.relations["human"],
 	}
 	if not DFSaveLoad.save_game_slot(_game_main, TEST_SAVE_SLOT):
 		_fail("No se pudo crear el guardado de prueba")
@@ -192,6 +207,8 @@ func _run_save_load_round_trip() -> void:
 	world.combat_system = null
 	world.invasion_system = null
 	world.military_system = null
+	_game_main.quest_system = null
+	_game_main.caravan_system = null
 
 	if not DFSaveLoad.load_game_slot(_game_main, TEST_SAVE_SLOT):
 		DFSaveLoad.delete_save(TEST_SAVE_SLOT)
@@ -221,6 +238,28 @@ func _run_save_load_round_trip() -> void:
 		world.military_system.get_military_summary() == expected.military_summary,
 		"Se perdieron escuadras o alertas militares"
 	)
+	_expect(_game_main.quest_system != null, "El sistema de misiones no se reconstruyó")
+	_expect(_game_main.caravan_system != null, "El sistema de caravanas no se reconstruyó")
+	if _game_main.quest_system != null:
+		_expect(not _game_main.quest_system.active_quests.is_empty(), "Se perdieron las misiones activas")
+		if not _game_main.quest_system.active_quests.is_empty():
+			var loaded_quest = _game_main.quest_system.active_quests[0]
+			_expect(loaded_quest.id == expected.quest_id, "Cambió la identidad de la misión")
+			_expect(loaded_quest.current_count == expected.quest_progress, "Se perdió el progreso de la misión")
+		_expect(
+			_game_main.quest_system.generation_cooldown == expected.quest_cooldown,
+			"Se reinició el temporizador de misiones"
+		)
+	if _game_main.caravan_system != null:
+		_expect(_game_main.caravan_system.total_trades == expected.caravan_trades, "Se perdió el historial comercial")
+		_expect(
+			is_equal_approx(_game_main.caravan_system.total_wealth_traded, expected.caravan_wealth),
+			"Se perdió la riqueza comerciada"
+		)
+		_expect(
+			is_equal_approx(_game_main.caravan_system.relations.get("human", 0.0), expected.human_relation),
+			"Se reiniciaron las relaciones comerciales"
+		)
 	_expect(
 		world.buildings.map(func(building): return [building.type, building.tile_pos, building.size])
 		== expected.building_sizes,
