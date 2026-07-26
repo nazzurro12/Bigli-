@@ -57,10 +57,10 @@ func _process(_delta):
 				_tick_count = 0
 				_phase = "TICKING"
 				print("[TEST] Iniciando monitoreo de " + str(_ticks_to_wait) + " ticks...")
-				else:
-					_phase = "WAITING_LOAD"
-					_tick_count = 0
-					_phase_started_ms = Time.get_ticks_msec()
+			else:
+				_phase = "WAITING_LOAD"
+				_tick_count = 0
+				_phase_started_ms = Time.get_ticks_msec()
 		
 		_tick_count += 1
 		if Time.get_ticks_msec() - _phase_started_ms > GENERATION_TIMEOUT_MS:
