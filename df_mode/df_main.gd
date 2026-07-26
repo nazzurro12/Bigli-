@@ -4983,7 +4983,7 @@ func _simulate_embark_demographics(years: int) -> Array:
 	var list_dwarves = []
 	for founder_index in range(7):
 		var dname = ""
-		if i < config_dwarf_names.size() and config_dwarf_names[founder_index] != "":
+		if founder_index < config_dwarf_names.size() and config_dwarf_names[founder_index] != "":
 			dname = config_dwarf_names[founder_index]
 		else:
 			dname = world_gen.namegen.generate_dwarf_name() if world_gen and world_gen.namegen else "Enano Fundador %d" % (founder_index + 1)
@@ -4991,7 +4991,7 @@ func _simulate_embark_demographics(years: int) -> Array:
 		var is_male = founder_index % 2 == 0
 		var age = rng.randi_range(20, 45)
 		var prof = DFDwarf.Profession.CRAFTSMAN
-		if i < config_dwarf_professions.size():
+		if founder_index < config_dwarf_professions.size():
 			prof = config_dwarf_professions[founder_index]
 		else:
 			# Standard starting professions
@@ -5092,8 +5092,8 @@ func _simulate_embark_demographics(years: int) -> Array:
 	# Filter survivors
 	var survivors = []
 	for final_resident in list_dwarves:
-		if population_member.alive:
-			survivors.append(population_member)
+		if final_resident.alive:
+			survivors.append(final_resident)
 			
 	# Limit survivors to a reasonable maximum (e.g. 50) to avoid crowding, but usually it stabilizes around 7-30
 	if survivors.size() > 50:
