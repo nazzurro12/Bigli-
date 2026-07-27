@@ -40,6 +40,7 @@ var view_width: int = 80
 var view_height: int = 25
 var show_sidebar: bool = true
 var sidebar_width: int = 32
+const SIDEBAR_PIXEL_WIDTH: int = 512
 var follow_dwarf: int = -1
 var paused: bool = false
 var designation: DFDesignation = null
@@ -55,7 +56,9 @@ var total_ticks: int = 0
 
 var _tileset: DFTileset = null
 var _font: Font = null
-var _char_size: Vector2 = Vector2(16, 16)
+const GAME_ZOOM_LEVELS: Array[int] = [16, 20, 24, 32]
+var _game_zoom_index: int = 2
+var _char_size: Vector2 = Vector2(24, 24)
 var _sidebar_text: String = ""
 var _message_log: Array = []
 var _tick_count: int = 0
@@ -66,6 +69,8 @@ var _job_active: int = 0
 var _highlighted_tile: Vector3i = Vector3i(-1, -1, -1)
 var _world_curse: String = ""
 var _world_curse_desc: String = ""
+var _world_age_label: String = ""
+var _legendary_beasts_alive: int = 0
 var _biome_at_cursor: String = ""
 var _layer_at_cursor: String = ""
 var _aquifer_at_cursor: bool = false
@@ -279,7 +284,7 @@ var legend_btn: Button = null
 func _ready() -> void:
 	_tileset = DFTileset.new()
 	_font = ThemeDB.fallback_font
-	_char_size = Vector2(16, 16)
+	_apply_game_zoom()
 
 	# Creacion de Leyenda interactiva (Lado Izquierdo)
 	legend_panel = Panel.new()
@@ -420,7 +425,18 @@ func _draw_tile(pos: Vector2, char_str: String, fg: Color, bg: Color) -> void:
 		var region = _tileset.get_tile_region(char_str)
 		if region.size.x > 0:
 			var mod = Color(fg.r, fg.g, fg.b, 1.0)
-			draw_texture_rect_region(_tileset.texture, Rect2(pos, Vector2(16, 16)), region, mod)
+			draw_texture_rect_region(_tileset.texture, Rect2(pos, _char_size), region, mod)
+
+
+func _apply_game_zoom() -> void:
+	var tile_pixels: int = GAME_ZOOM_LEVELS[clampi(_game_zoom_index, 0, GAME_ZOOM_LEVELS.size() - 1)]
+	_char_size = Vector2(tile_pixels, tile_pixels)
+	queue_redraw()
+
+
+func adjust_game_zoom(direction: int) -> void:
+	_game_zoom_index = clampi(_game_zoom_index + direction, 0, GAME_ZOOM_LEVELS.size() - 1)
+	_apply_game_zoom()
 
 func _process(delta: float) -> void:
 	# El estado lógico sigue actualizándose cada frame, pero el mapa se redibuja
@@ -470,7 +486,7 @@ func _process(delta: float) -> void:
 		var viewport_size = get_viewport_rect().size
 		var max_chars_x = int(viewport_size.x / cs_x)
 		var max_chars_y = int(viewport_size.y / cs_y)
-		var reserved_sidebar: int = sidebar_width if show_sidebar and not show_help else 0
+		var reserved_sidebar: int = ceili(float(SIDEBAR_PIXEL_WIDTH) / cs_x) if show_sidebar and not show_help else 0
 		var vw = max_chars_x - reserved_sidebar - 2 if max_chars_x > reserved_sidebar + 10 else 40
 		var vh = max_chars_y - 6 if max_chars_y > 8 else 20
 		
@@ -539,7 +555,7 @@ func _draw() -> void:
 	# Al ocultar el panel lateral, el mapa recupera inmediatamente todo ese
 	# ancho. Antes se reservaban 32 columnas invisibles incluso con el panel
 	# cerrado, haciendo que el mundo pareciera pequeño.
-	var reserved_sidebar: int = sidebar_width if show_sidebar and not show_help else 0
+	var reserved_sidebar: int = ceili(float(SIDEBAR_PIXEL_WIDTH) / _char_size.x) if show_sidebar and not show_help else 0
 	if max_chars_x > reserved_sidebar + 10:
 		view_width = max_chars_x - reserved_sidebar - 2
 	else:
@@ -822,7 +838,7 @@ func _draw() -> void:
 	if world != null and not show_help:
 		var outline_w = vw * _char_size.x
 		if show_sidebar:
-			outline_w += sidebar_width * _char_size.x + 8
+			outline_w += SIDEBAR_PIXEL_WIDTH + 8
 		var outline_rect = UI.snapped_rect(Rect2(border_x - 4, 2, outline_w + 8, vh * _char_size.y + 4))
 		draw_rect(outline_rect, UI.WIN_DARK_SHADOW, false, 1.0)
 		draw_line(outline_rect.position + Vector2(1, 1), Vector2(outline_rect.end.x - 1, outline_rect.position.y + 1), UI.WIN_SHADOW, 1.0)
@@ -842,7 +858,7 @@ func _draw() -> void:
 func _draw_border(vw: int, vh: int) -> int:
 	var total_w = vw * _char_size.x
 	if show_sidebar and not show_help:
-		total_w += sidebar_width * _char_size.x + 8
+		total_w += SIDEBAR_PIXEL_WIDTH + 8
 	total_w += 20
 	var start_x = maxf((size.x - total_w) / 2, 4)
 	return int(start_x)
@@ -926,7 +942,7 @@ func _draw_sidebar(side_x: int) -> void:
 		return
 
 	var lh  = int(_char_size.y)
-	var mw  = sidebar_width * _char_size.x
+	var mw  = SIDEBAR_PIXEL_WIDTH
 	var sh = size.y
 	var content_rect := _draw_classic_frame(
 		Rect2(side_x, 2, mw + 10, sh - 4),
@@ -961,6 +977,17 @@ func _draw_sidebar(side_x: int) -> void:
 	draw_rect(Rect2(x, y + 2, 3, lh + 4), pause_col, true)
 	draw_string(_font, Vector2(x + 4, y + lh), pause_str, HORIZONTAL_ALIGNMENT_LEFT, mw, 10, pause_col)
 	y += int(lh * 1.6)
+	if _world_age_label != "":
+		draw_string(
+			_font,
+			Vector2(x, y + lh),
+			"ERA: %s · %d BESTIAS" % [_world_age_label.to_upper(), _legendary_beasts_alive],
+			HORIZONTAL_ALIGNMENT_LEFT,
+			mw,
+			9,
+			UI_GOLD
+		)
+		y += lh
 
 	# ═══════════════════════════════════════════════
 	# 3. TIME / SEASON
@@ -1985,7 +2012,6 @@ func _draw_settings_menu() -> void:
 
 	var options = [
 		["Semilla", "Aleatoria" if main_node.generation_seed == -1 else str(main_node.generation_seed)],
-		["Continente", ["Pequeño · 128²", "Estándar · 256²", "Grande · 512²", "Gigantesco · 1024²"][clampi(main_node.setting_size, 0, 3)]],
 		["Historia", "%d años" % main_node.setting_history_options[main_node.setting_history_idx]],
 		["Civilizaciones", ["Baja", "Media", "Alta"][main_node.setting_civ_density]],
 		["Megabestias", ["Pocas", "Moderadas", "Abundantes"][main_node.setting_beast_density]],
@@ -2012,12 +2038,11 @@ func _draw_settings_menu() -> void:
 	draw_rect(description_rect, UI.BORDER_SOFT, false, 1.0)
 	var descriptions := [
 		"Determina la identidad reproducible del planeta.",
-		"Define la extensión global; las zonas cercanas se materializan con máximo detalle.",
 		"Simula reinos, guerras, migraciones, ruinas y linajes antes del desembarco.",
 		"Controla cuántas culturas compiten por territorio y recursos.",
 		"Regula la presencia histórica de dragones y criaturas legendarias.",
 	]
-	var description_lines := _wrap_text(descriptions[clampi(main_node.setting_selected_index, 0, 4)], int((inner_width - 24.0) / 7.0))
+	var description_lines := _wrap_text(descriptions[clampi(main_node.setting_selected_index, 0, 3)], int((inner_width - 24.0) / 7.0))
 	var description_y := description_rect.position.y + 20.0
 	for description_line in description_lines:
 		draw_string(_font, Vector2(description_rect.position.x + 12.0, description_y), description_line,
@@ -2055,7 +2080,7 @@ func get_settings_menu_hit_regions() -> Dictionary:
 	var inner_width := content.size.x - UI.SPACE_LG * 2.0
 	var row_y := content.position.y + UI.SPACE_LG + 28.0
 	var rows: Array[Rect2] = []
-	for option_index in range(5):
+	for option_index in range(4):
 		rows.append(Rect2(inner_x, row_y + option_index * UI.ROW_HEIGHT, inner_width, UI.ROW_HEIGHT))
 	var action_y := content.end.y - UI.BUTTON_HEIGHT - UI.SPACE_LG
 	var gap := UI.SPACE_SM
@@ -2135,7 +2160,6 @@ func _draw_settings_menu_legacy() -> void:
 
 	var options = [
 		["Semilla del Mundo",     "%s" % ("Aleatoria" if main_node.generation_seed == -1 else str(main_node.generation_seed))],
-		["Tamaño del Continente", ["Pequeño (128²)", "Estándar (256²)", "Grande (512²)", "Gigantesco (1024²)"][clampi(main_node.setting_size, 0, 3)]],
 		["Duración de Historia",  "%d años" % main_node.setting_history_options[main_node.setting_history_idx]],
 		["Civilizaciones",        ["Baja", "Media", "Alta"][main_node.setting_civ_density]],
 		["Megabestias",           ["Pocas", "Moderadas", "Abundantes"][main_node.setting_beast_density]],
@@ -2168,10 +2192,9 @@ func _draw_settings_menu_legacy() -> void:
 	var s_desc = ""
 	match main_node.setting_selected_index:
 		0: s_desc = "Semilla del Mundo: Establece el valor inicial generador. Si es aleatorio, cada partida generará un continente totalmente diferente."
-		1: s_desc = "Tamaño del Continente: Controla el ancho del mapa. El modo Gigantesco contiene 1.048.576 regiones globales. Usa simulación abstracta y solo materializa en detalle la zona jugada; tarda más al crear el mundo."
-		2: s_desc = "Duración de Historia: Años simulados antes de jugar. A mayor historia, habrá más ruinas, reyes muertos, reliquias y megabestias."
-		3: s_desc = "Civilizaciones: Determina la densidad de reinos de enanos, elfos, humanos y goblins en el continente."
-		4: s_desc = "Megabestias: Cantidad de dragones y monstruos gigantescos iniciales. Afecta los ataques históricos a aldeas."
+		1: s_desc = "Duración de Historia: Años simulados antes de jugar. A mayor historia, habrá más ruinas, reyes muertos, reliquias y megabestias."
+		2: s_desc = "Civilizaciones: Determina la densidad de reinos de enanos, elfos, humanos y goblins en el continente."
+		3: s_desc = "Megabestias: Cantidad de dragones y monstruos gigantescos iniciales. Afecta los ataques históricos a aldeas."
 	
 	var s_desc_lines = _wrap_text(s_desc, 65)
 	var s_dy = s_desc_y + 14

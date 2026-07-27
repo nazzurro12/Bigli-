@@ -165,6 +165,21 @@ func _run_save_load_round_trip() -> void:
 	_game_main.world_simulation.set_relation("dwarves", "humans", 37)
 	_game_main.world_simulation.record("[TEST] decisión regional persistente")
 	_game_main.world_simulation.settlement.last_decision = "Mantener las reservas."
+	_game_main.world_simulation.regional_states["128:128"] = {
+		"x": 128, "z": 128, "discovered": true, "visited": true, "population": 7,
+	}
+	_game_main.world_simulation.regional_routes["128:128>129:128"] = {
+		"from": [128, 128], "to": [129, 128], "traffic": 2, "level": 1,
+	}
+	_game_main.world_simulation.regional_journeys.append({
+		"dwarf_id": dwarf.id,
+		"dwarf_name": dwarf.name,
+		"origin": [128, 128],
+		"target": [129, 128],
+		"stage": "outbound",
+		"remaining_minutes": 240,
+		"started_minute": 720,
+	})
 	var tracked_quest = _game_main.quest_system.active_quests[0]
 	var expected_building_sizes: Array = world.buildings.map(
 		func(building): return [building.type, building.tile_pos, building.size]
@@ -202,6 +217,9 @@ func _run_save_load_round_trip() -> void:
 		"regional_relation": _game_main.world_simulation.get_relation("dwarves", "humans"),
 		"regional_history": _game_main.world_simulation.history.duplicate(true),
 		"settlement_decision": _game_main.world_simulation.settlement.last_decision,
+		"regional_states": _game_main.world_simulation.regional_states.duplicate(true),
+		"regional_routes": _game_main.world_simulation.regional_routes.duplicate(true),
+		"regional_journeys": _game_main.world_simulation.regional_journeys.duplicate(true),
 	}
 	if not DFSaveLoad.save_game_slot(_game_main, TEST_SAVE_SLOT):
 		_fail("No se pudo crear el guardado de prueba")
@@ -286,6 +304,18 @@ func _run_save_load_round_trip() -> void:
 		_expect(
 			_game_main.world_simulation.settlement.last_decision == expected.settlement_decision,
 			"Se perdió la última decisión del asentamiento"
+		)
+		_expect(
+			_game_main.world_simulation.regional_states == expected.regional_states,
+			"Se perdieron las regiones descubiertas"
+		)
+		_expect(
+			_game_main.world_simulation.regional_routes == expected.regional_routes,
+			"Se perdió la evolución de caminos regionales"
+		)
+		_expect(
+			_game_main.world_simulation.regional_journeys == expected.regional_journeys,
+			"Se perdieron los viajes regionales activos"
 		)
 	_expect(
 		world.buildings.map(func(building): return [building.type, building.tile_pos, building.size])

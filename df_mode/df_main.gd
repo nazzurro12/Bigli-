@@ -168,7 +168,10 @@ var load_status: String = ""
 var load_step: int = 0
 var load_play_now: bool = false
 
-var setting_size: int = 3
+const FIXED_WORLD_REGION_SIZE: int = 257
+# Conservado solo para compatibilidad con partidas y pantallas antiguas.
+# Ya no es editable: Bigli usa siempre la escala "Large" de 257² regiones.
+var setting_size: int = 0
 var setting_history_options = [5, 50, 125, 250, 500]
 var setting_history_idx = 2
 var setting_civ_density: int = 1
@@ -252,9 +255,6 @@ func _ready() -> void:
 	add_child(audio)
 
 	generation_seed = randi()
-	var generation_defaults := load("res://world/world_generation_settings.tres") as WorldGenerationSettings
-	if generation_defaults != null:
-		setting_size = clampi(generation_defaults.default_world_size_index, 0, 3)
 	add_message("========================================")
 	add_message("  CREACION DE MUNDO BIGLI")
 	add_message("  ~ Clon de Dwarf Fortress ~")
@@ -1154,6 +1154,9 @@ func _process(delta: float) -> void:
 		renderer._family_tree_data = {}
 
 	renderer.camera_pos = camera_pos
+	if history_gen != null:
+		renderer._world_age_label = history_gen.get_current_age_label()
+		renderer._legendary_beasts_alive = history_gen.get_alive_megabeast_count()
 	if dialogue != null:
 		renderer._dialogue_active = dialogue.is_active()
 		renderer._dialogue_state = dialogue.state
@@ -1206,10 +1209,8 @@ func _run_world_generation_loop() -> void:
 	await get_tree().process_frame
 	
 	world_gen = DFWorldGen.new(generation_seed)
-	var sizes: Array = [128, 256, 512, 1024]
-	var selected_size: int = clampi(setting_size, 0, sizes.size() - 1)
-	world_gen.world_width = int(sizes[selected_size])
-	world_gen.world_depth = int(sizes[selected_size])
+	world_gen.world_width = FIXED_WORLD_REGION_SIZE
+	world_gen.world_depth = FIXED_WORLD_REGION_SIZE
 	world_gen.setting_civ_density = setting_civ_density
 	world_gen.setting_beast_density = setting_beast_density
 	var local_size: int = world_gen.config_local_map_size
@@ -1871,16 +1872,15 @@ func _handle_menu_key(kc: int) -> void:
 	match current_state:
 		GameState.SETTINGS_MENU:
 			match kc:
-				KEY_UP: setting_selected_index = posmod(setting_selected_index - 1, 5)
-				KEY_DOWN: setting_selected_index = posmod(setting_selected_index + 1, 5)
+				KEY_UP: setting_selected_index = posmod(setting_selected_index - 1, 4)
+				KEY_DOWN: setting_selected_index = posmod(setting_selected_index + 1, 4)
 				KEY_LEFT, KEY_RIGHT:
 					var step = 1 if kc == KEY_RIGHT else -1
 					match setting_selected_index:
 						0: generation_seed = -1 if generation_seed != -1 else randi()
-						1: setting_size = posmod(setting_size + step, 4)
-						2: setting_history_idx = posmod(setting_history_idx + step, 5)
-						3: setting_civ_density = posmod(setting_civ_density + step, 3)
-						4: setting_beast_density = posmod(setting_beast_density + step, 3)
+						1: setting_history_idx = posmod(setting_history_idx + step, 5)
+						2: setting_civ_density = posmod(setting_civ_density + step, 3)
+						3: setting_beast_density = posmod(setting_beast_density + step, 3)
 				KEY_R: generation_seed = randi()
 				KEY_Q:
 					if generation_seed < 0: generation_seed = randi()
@@ -4038,6 +4038,11 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 		return
 	var bt = event.button_index
 	var pos = event.position
+	if current_state == GameState.PLAYING and bt in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		renderer.adjust_game_zoom(1 if bt == MOUSE_BUTTON_WHEEL_UP else -1)
+		add_message("Zoom del mapa: %d px" % int(renderer._char_size.x))
+		get_viewport().set_input_as_handled()
+		return
 	
 	match current_state:
 		GameState.SETTINGS_MENU:

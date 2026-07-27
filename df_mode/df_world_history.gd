@@ -1376,6 +1376,55 @@ func materialize_near_embark(world: Object, world_gen: Object, embark_cursor: Ve
 			world.add_entity(creature)
 			creatures_spawned += 1
 
+	# La era no puede ser solo una estadística. Si ninguna guarida cayó dentro
+	# de la región elegida, materializar una bestia viva en la periferia local
+	# mantiene la Edad del Mito visible sin colocarla junto a la colonia.
+	if creatures_spawned == 0:
+		for fallback_beast_value: Variant in beast_instances:
+			if not (fallback_beast_value is Dictionary):
+				continue
+			var fallback_beast: Dictionary = fallback_beast_value
+			if not bool(fallback_beast.get("alive", false)):
+				continue
+			var edge_candidates: Array[Vector2i] = [
+				Vector2i(8, 8),
+				Vector2i(local_w - 9, 8),
+				Vector2i(8, local_d - 9),
+				Vector2i(local_w - 9, local_d - 9),
+				Vector2i(local_w / 2, 8),
+				Vector2i(local_w / 2, local_d - 9),
+			]
+			var fallback_pos := Vector3i(-1, -1, -1)
+			for edge_candidate: Vector2i in edge_candidates:
+				var edge_y: int = world.get_surface_height(edge_candidate.x, edge_candidate.y)
+				var candidate_pos := Vector3i(edge_candidate.x, edge_y, edge_candidate.y)
+				if not world.is_blocked(candidate_pos) and not world.is_water(candidate_pos):
+					fallback_pos = candidate_pos
+					break
+			if fallback_pos.x < 0:
+				continue
+			var fallback_creature = DFCreature.new(
+				fallback_pos,
+				str(fallback_beast.get("name", "bestia_mitica")).to_lower().replace(" ", "_"),
+				str(fallback_beast.get("glyph", "D")),
+				fallback_beast.get("color", Color.RED),
+				str(fallback_beast.get("size", "mega"))
+			)
+			fallback_creature.name = str(fallback_beast.get("name", "Bestia mítica"))
+			fallback_creature.is_hostile = bool(fallback_beast.get("is_hostile", true))
+			fallback_creature.combat_skill = 10.0
+			fallback_creature.attack_damage = float(fallback_beast.get("attack_damage", 20.0))
+			fallback_creature.health = 1.0
+			fallback_creature.territory_center = fallback_pos
+			fallback_creature.home_pos = fallback_pos
+			fallback_creature.territory_radius = 12
+			fallback_creature.ai_state = DFCreature.AIState.IDLE
+			fallback_creature.set_meta("beast_instance_id", int(fallback_beast.get("hf_id", -1)))
+			fallback_creature.set_meta("mythic_presence", true)
+			world.add_entity(fallback_creature)
+			creatures_spawned += 1
+			break
+
 	for cs in corpse_sites:
 		var local_pos_1325 = _world_to_local(cs["world_x"], cs["world_z"], world_gen, embark_cursor, local_w, local_d)
 		if local_pos_1325.x < 0:
