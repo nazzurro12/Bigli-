@@ -4,6 +4,7 @@ class_name DFDwarf
 # Carga diferida para romper dependencia circular con df_job.gd
 const DFActorActionExecutor = preload("res://core/actions/df_actor_action_executor.gd")
 const DFAutonomousPlan = preload("res://core/ai/df_autonomous_plan.gd")
+const DFDwarfPsychology = preload("res://df_mode/core/simulation/dwarf_psychology.gd")
 
 enum Skill {
 	MINING, CARPENTRY, MASONRY, SMITHING, COOKING, BREWING, FARMING, FISHING,
@@ -458,89 +459,16 @@ func modify_relationship(other_id: int, delta: float) -> void:
 	relationships[other_id] = clampf(current + delta, -1.0, 1.0)
 
 func update_emotions() -> void:
-	var stress_factor = stress
-	var need_penalty = 0.0
-	for n in needs.values():
-		if n > 0.7:
-			need_penalty += n * 0.1
-
-	var total_unhappiness = stress_factor * 0.3 + need_penalty + (1.0 - happiness) * 0.5
-
-	if total_unhappiness > 0.8:
-		current_emotion = Emotion.ANGRY
-		emotion_intensity = total_unhappiness
-		if mood != MoodState.BESERK and randi() % 100 < int(total_unhappiness * 30):
-			mood = MoodState.TANTRUM if randi() % 2 == 0 else MoodState.BESERK
-			mood_counter = 50 + randi() % 100
-	elif total_unhappiness > 0.5:
-		current_emotion = Emotion.SAD
-		emotion_intensity = total_unhappiness
-		if randi() % 100 < 5:
-			mood = MoodState.MELANCHOLY
-			mood_counter = 100 + randi() % 200
-	elif total_unhappiness < 0.2 and happiness > 0.7:
-		current_emotion = Emotion.HAPPY
-		emotion_intensity = 1.0 - total_unhappiness
-	else:
-		current_emotion = Emotion.CONTENT
-		emotion_intensity = 0.5
-
-	if stress < 0.1 and mood != MoodState.NORMAL:
-		mood = MoodState.NORMAL
-		mood_counter = 0
+	DFDwarfPsychology.update_emotions(self, Emotion, MoodState)
 
 func update_stress(delta: float) -> void:
-	var stress_change = 0.0
-	var has_violent_trait = get_trait(PersonalityTrait.VIOLENCE) > 0.6
-	var has_anxious_trait = get_trait(PersonalityTrait.FEAR) > 0.6
-
-	for n_key in needs:
-		var n_val = needs[n_key]
-		if n_val > 0.8:
-			stress_change += n_val * 0.02
-		elif n_val < 0.2:
-			stress_change -= 0.005
-
-	if has_violent_trait and kill_count > 0:
-		stress_change -= 0.01 * min(kill_count, 10)
-	if has_anxious_trait:
-		stress_change += 0.01
-
-	if mood == MoodState.STRANGE_MOOD or mood == MoodState.FELL_MOOD:
-		stress_change += 0.05
-
-	var room_bonus = room_quality * 0.01
-	stress_change -= room_bonus
-
-	stress = clampf(stress + stress_change * delta, 0.0, 1.0)
+	DFDwarfPsychology.update_stress(self, delta, PersonalityTrait, MoodState)
 
 func update_needs(delta: float) -> void:
-	needs[Need.FOOD] = minf(1.0, needs[Need.FOOD] + 0.0002 * delta * 60)
-	needs[Need.DRINK] = minf(1.0, needs[Need.DRINK] + 0.0003 * delta * 60)
-	needs[Need.SLEEP] = minf(1.0, needs[Need.SLEEP] + 0.0004 * delta * 60)
-	needs[Need.COMFORT] = minf(1.0, needs[Need.COMFORT] + 0.0001 * delta * 60)
-
-	if relationships.size() > 0:
-		needs[Need.SOCIAL] = minf(1.0, needs[Need.SOCIAL] + 0.0001 * delta * 60)
-	if is_military:
-		needs[Need.SECURITY] = minf(1.0, needs[Need.SECURITY] + 0.0002 * delta * 60)
-	if is_noble:
-		needs[Need.ESTEEM] = minf(1.0, needs[Need.ESTEEM] + 0.0003 * delta * 60)
-	if religious_fervor > 0.6:
-		needs[Need.RELIGION] = minf(1.0, needs[Need.RELIGION] + 0.0002 * delta * 60)
-
-	needs[Need.SECURITY] = minf(1.0, needs[Need.SECURITY] + 0.0001 * delta * 60)
-	needs[Need.ORDER] = minf(1.0, needs[Need.ORDER] + 0.00005 * delta * 60)
+	DFDwarfPsychology.update_needs(self, delta, Need)
 
 func get_most_pressing_need() -> int:
-	var highest = Need.FOOD
-	var highest_val = -1.0
-	for n in needs:
-		var v = needs[n]
-		if v > highest_val:
-			highest_val = v
-			highest = n
-	return highest
+	return DFDwarfPsychology.get_most_pressing_need(needs, Need.FOOD)
 
 func get_need_name(need: int) -> String:
 	var names = {
