@@ -1309,6 +1309,12 @@ func _run_world_generation_loop() -> void:
 func _tick() -> void:
 	if world == null:
 		return
+	if not bool(world.get_meta("environment_stabilized_v1", false)):
+		world.set_meta("environment_stabilized_v1", true)
+		var stabilization: Dictionary = world.stabilize_environment_state()
+		var removed_environment_entries: int = int(stabilization.get("weather_items", 0)) + int(stabilization.get("fluid_tiles", 0))
+		if removed_environment_entries > 0:
+			add_message("Entorno estabilizado: %d acumulaciones antiguas retiradas." % removed_environment_entries)
 	world._grid_version = -1  # force spatial grid rebuild this tick
 	var minute_ticked = false
 	var dwarves_count = 0
