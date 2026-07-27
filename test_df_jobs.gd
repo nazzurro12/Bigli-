@@ -165,11 +165,25 @@ func _run_save_load_round_trip() -> void:
 	_game_main.world_simulation.set_relation("dwarves", "humans", 37)
 	_game_main.world_simulation.record("[TEST] decisión regional persistente")
 	_game_main.world_simulation.settlement.last_decision = "Mantener las reservas."
-	_game_main.world_simulation.regional_states["128:128"] = {
-		"x": 128, "z": 128, "discovered": true, "visited": true, "population": 7,
+	_game_main.world_simulation.regional_states["129:128"] = {
+		"x": 129,
+		"z": 128,
+		"discovered": true,
+		"visited": false,
+		"population": 7,
+		"food": 120.0,
+		"wood": 45.0,
+		"housing": 12,
+		"safety": 0.75,
+		"outpost_level": 1,
+		"last_update_minute": 777,
 	}
 	_game_main.world_simulation.regional_routes["128:128>129:128"] = {
-		"from": [128, 128], "to": [129, 128], "traffic": 2, "level": 1,
+		"from": [128, 128],
+		"to": [129, 128],
+		"traffic": 2,
+		"level": 1,
+		"last_used_minute": 777,
 	}
 	_game_main.world_simulation.regional_journeys.append({
 		"dwarf_id": dwarf.id,
@@ -180,6 +194,8 @@ func _run_save_load_round_trip() -> void:
 		"remaining_minutes": 240,
 		"started_minute": 720,
 	})
+	var active_region_state: Dictionary = _game_main.world_simulation.regional_states.get("128:128", {})
+	active_region_state["last_update_minute"] = _game_main.world_simulation.elapsed_minutes
 	var tracked_quest = _game_main.quest_system.active_quests[0]
 	var expected_building_sizes: Array = world.buildings.map(
 		func(building): return [building.type, building.tile_pos, building.size]
@@ -189,7 +205,7 @@ func _run_save_load_round_trip() -> void:
 		expected_stockpile_tiles.append(stockpile.tiles.duplicate())
 	var expected_container_links: Dictionary = {}
 	for item in world.items:
-		if item.is_inside_container:
+		if item.is_inside_container and item.container_id >= 0:
 			expected_container_links[item.id] = item.container_id
 	var expected := {
 		"minute": _game_main._game_minute,

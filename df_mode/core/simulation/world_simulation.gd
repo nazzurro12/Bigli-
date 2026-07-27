@@ -378,17 +378,69 @@ func import_state(data: Dictionary) -> void:
 	history.clear()
 	for entry: Variant in data.get("history", []):
 		if entry is Dictionary:
-			history.append(entry.duplicate(true))
+			history.append({
+				"minute": int(entry.get("minute", 0)),
+				"description": str(entry.get("description", "")),
+			})
 	initialized = bool(data.get("initialized", true))
 	var settlement_data: Variant = data.get("settlement", {})
 	if settlement_data is Dictionary:
 		settlement.import_state(settlement_data)
 	var states_value: Variant = data.get("regional_states", {})
-	regional_states = states_value.duplicate(true) if states_value is Dictionary else {}
+	regional_states.clear()
+	if states_value is Dictionary:
+		for state_key: Variant in states_value:
+			var state_value: Variant = states_value[state_key]
+			if state_value is Dictionary:
+				regional_states[str(state_key)] = _normalize_region_state(state_value)
 	var routes_value: Variant = data.get("regional_routes", {})
-	regional_routes = routes_value.duplicate(true) if routes_value is Dictionary else {}
+	regional_routes.clear()
+	if routes_value is Dictionary:
+		for route_key: Variant in routes_value:
+			var route_value: Variant = routes_value[route_key]
+			if route_value is Dictionary:
+				regional_routes[str(route_key)] = _normalize_route(route_value)
 	regional_journeys.clear()
 	for journey: Variant in data.get("regional_journeys", []):
 		if journey is Dictionary:
-			regional_journeys.append(journey.duplicate(true))
+			regional_journeys.append(_normalize_journey(journey))
 	regional_update_cursor = int(data.get("regional_update_cursor", 0))
+
+func _normalize_region_state(state: Dictionary) -> Dictionary:
+	return {
+		"x": int(state.get("x", 0)),
+		"z": int(state.get("z", 0)),
+		"discovered": bool(state.get("discovered", false)),
+		"visited": bool(state.get("visited", false)),
+		"population": int(state.get("population", 0)),
+		"food": float(state.get("food", 0.0)),
+		"wood": float(state.get("wood", 0.0)),
+		"housing": int(state.get("housing", 0)),
+		"safety": float(state.get("safety", 0.5)),
+		"outpost_level": int(state.get("outpost_level", 0)),
+		"last_update_minute": int(state.get("last_update_minute", 0)),
+	}
+
+func _normalize_route(route: Dictionary) -> Dictionary:
+	var from_region: Vector2i = _array_to_region(route.get("from", []))
+	var to_region: Vector2i = _array_to_region(route.get("to", []))
+	return {
+		"from": [from_region.x, from_region.y],
+		"to": [to_region.x, to_region.y],
+		"traffic": int(route.get("traffic", 0)),
+		"level": int(route.get("level", 0)),
+		"last_used_minute": int(route.get("last_used_minute", 0)),
+	}
+
+func _normalize_journey(journey: Dictionary) -> Dictionary:
+	var origin: Vector2i = _array_to_region(journey.get("origin", []))
+	var target: Vector2i = _array_to_region(journey.get("target", []))
+	return {
+		"dwarf_id": int(journey.get("dwarf_id", -1)),
+		"dwarf_name": str(journey.get("dwarf_name", "")),
+		"origin": [origin.x, origin.y],
+		"target": [target.x, target.y],
+		"stage": str(journey.get("stage", "outbound")),
+		"remaining_minutes": int(journey.get("remaining_minutes", 0)),
+		"started_minute": int(journey.get("started_minute", 0)),
+	}
