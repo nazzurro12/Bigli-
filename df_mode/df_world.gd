@@ -184,6 +184,11 @@ var ambient_temperature: float = 0.5
 var ground_temperature: float = 0.5
 var humidity: float = 0.5
 var precipitation_intensity: float = 0.0
+const ENVIRONMENT_TILE_BUDGET: int = 768
+const MAX_ACTIVE_FLUID_TILES: int = 2048
+const FLUID_TILE_BUDGET: int = 512
+var environment_scan_cursor: int = 0
+var fluid_scan_cursor: int = 0
 
 # ---- SEASON / TIME SYSTEM ----
 var current_season: int = Season.SPRING
@@ -814,18 +819,25 @@ func _apply_weather_effects() -> void:
 	_wind_evaporate_splatters()
 
 func _apply_rain() -> void:
-	for z in range(depth):
-		for x in range(width):
-			var pos = Vector3i(x, get_surface_height(x, z), z)
-			if get_tile(pos) not in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.SNOW]:
-				continue
-			if randi() % 100 < int(precipitation_intensity * 15):
-				var td = tile_data.get(pos, {})
-				td["wetness"] = td.get("wetness", 0.0) + precipitation_intensity * 0.1
-				tile_data[pos] = td
-				if td["wetness"] >= 1.0 and get_tile(pos) == TileType.GRASS:
-					if randi() % 200 == 0:
-						_spawn_item(pos, "Agua Estancada", "water", MatType.WATER, "~", Color("#4444FF"))
+	var total_tiles: int = maxi(1, width * depth)
+	var sample_count: int = mini(ENVIRONMENT_TILE_BUDGET, total_tiles)
+	for sample_index: int in range(sample_count):
+		var linear_index: int = (environment_scan_cursor + sample_index) % total_tiles
+		var x: int = linear_index % width
+		var z: int = floori(float(linear_index) / float(width))
+		var pos := Vector3i(x, get_surface_height(x, z), z)
+		if get_tile(pos) not in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.SNOW]:
+			continue
+		if randi() % 100 < int(precipitation_intensity * 15):
+			var td: Dictionary = tile_data.get(pos, {})
+			td["wetness"] = minf(float(td.get("wetness", 0.0)) + precipitation_intensity * 0.1, 1.0)
+			tile_data[pos] = td
+			# El agua ambiental pertenece al sistema de fluidos. Crear un DFItem
+			# por charco multiplicaba entidades hasta agotar memoria.
+			if td["wetness"] >= 1.0 and randi() % 300 == 0:
+				if fluid_levels.has(pos) or fluid_levels.size() < MAX_ACTIVE_FLUID_TILES:
+					_increase_fluid_level(pos, 0.25)
+	environment_scan_cursor = (environment_scan_cursor + sample_count) % total_tiles
 	var water_tiles_to_add = int(precipitation_intensity * 2)
 	for i in range(water_tiles_to_add):
 		var rx = randi() % width; var rz = randi() % depth
@@ -835,25 +847,35 @@ func _apply_rain() -> void:
 			_increase_fluid_level(rp, precipitation_intensity)
 
 func _apply_snow() -> void:
-	for z in range(depth):
-		for x in range(width):
-			if randi() % 30 < int(precipitation_intensity * 10):
-				var pos = Vector3i(x, get_surface_height(x, z), z)
-				if get_tile(pos) in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.FLOOR]:
-					var td = tile_data.get(pos, {})
-					td["snow_cover"] = minf(td.get("snow_cover", 0.0) + 0.1, 1.0)
-					tile_data[pos] = td
-					if td["snow_cover"] >= 0.8:
-						set_tile(pos, TileType.SNOW)
-						set_material(pos, MatType.WATER)
+	var total_tiles: int = maxi(1, width * depth)
+	var sample_count: int = mini(ENVIRONMENT_TILE_BUDGET, total_tiles)
+	for sample_index: int in range(sample_count):
+		var linear_index: int = (environment_scan_cursor + sample_index) % total_tiles
+		var x: int = linear_index % width
+		var z: int = floori(float(linear_index) / float(width))
+		if randi() % 30 < int(precipitation_intensity * 10):
+			var pos := Vector3i(x, get_surface_height(x, z), z)
+			if get_tile(pos) in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.FLOOR]:
+				var td: Dictionary = tile_data.get(pos, {})
+				td["snow_cover"] = minf(float(td.get("snow_cover", 0.0)) + 0.1, 1.0)
+				tile_data[pos] = td
+				if td["snow_cover"] >= 0.8:
+					set_tile(pos, TileType.SNOW)
+					set_material(pos, MatType.WATER)
+	environment_scan_cursor = (environment_scan_cursor + sample_count) % total_tiles
 
 func _apply_dust_storm() -> void:
-	for z in range(depth):
-		for x in range(width):
-			if randi() % 50 == 0:
-				var pos = Vector3i(x, get_surface_height(x, z), z)
-				if get_tile(pos) == TileType.GRASS:
-					set_tile(pos, TileType.DIRT)
+	var total_tiles: int = maxi(1, width * depth)
+	var sample_count: int = mini(ENVIRONMENT_TILE_BUDGET, total_tiles)
+	for sample_index: int in range(sample_count):
+		var linear_index: int = (environment_scan_cursor + sample_index) % total_tiles
+		var x: int = linear_index % width
+		var z: int = floori(float(linear_index) / float(width))
+		if randi() % 50 == 0:
+			var pos := Vector3i(x, get_surface_height(x, z), z)
+			if get_tile(pos) == TileType.GRASS:
+				set_tile(pos, TileType.DIRT)
+	environment_scan_cursor = (environment_scan_cursor + sample_count) % total_tiles
 
 func _apply_lightning_strike() -> void:
 	var lx = randi() % width; var lz = randi() % depth
@@ -968,12 +990,39 @@ func _decrease_fluid_level(pos: Vector3i, amount: float) -> void:
 func get_fluid_level(pos: Vector3i) -> float:
 	return fluid_levels.get(pos, 0.0)
 
+
+func stabilize_environment_state() -> Dictionary:
+	var removed_weather_items: int = 0
+	for item_value: Variant in items.duplicate():
+		if item_value is DFItem and str(item_value.name) == "Agua Estancada":
+			remove_entity(item_value)
+			removed_weather_items += 1
+
+	var removed_fluid_tiles: int = 0
+	if fluid_levels.size() > MAX_ACTIVE_FLUID_TILES:
+		var fluid_positions: Array = fluid_levels.keys()
+		for fluid_index: int in range(MAX_ACTIVE_FLUID_TILES, fluid_positions.size()):
+			fluid_levels.erase(fluid_positions[fluid_index])
+			removed_fluid_tiles += 1
+	return {
+		"weather_items": removed_weather_items,
+		"fluid_tiles": removed_fluid_tiles,
+	}
+
+
 func tick_fluids() -> void:
 	fluid_tick_counter += 1
 	if fluid_tick_counter < fluid_update_interval: return
 	fluid_tick_counter = 0
 	var flow_changes = {}
-	for pos in fluid_levels.keys():
+	var fluid_positions: Array = fluid_levels.keys()
+	var fluid_count: int = fluid_positions.size()
+	if fluid_count == 0:
+		return
+	var processed_count: int = mini(FLUID_TILE_BUDGET, fluid_count)
+	for fluid_offset: int in range(processed_count):
+		var fluid_index: int = (fluid_scan_cursor + fluid_offset) % fluid_count
+		var pos: Vector3i = fluid_positions[fluid_index]
 		var level = fluid_levels[pos]
 		if level <= 0: continue
 		var lowest_dir = Vector3i(0, -1, 0)
@@ -1009,6 +1058,7 @@ func tick_fluids() -> void:
 				set_tile(flow_pos, TileType.WATER_SHALLOW)
 			if new_level > 5:
 				set_tile(flow_pos, TileType.WATER_DEEP)
+	fluid_scan_cursor = (fluid_scan_cursor + processed_count) % maxi(1, fluid_count)
 	_evaporate_fluids()
 	_check_fluid_flooding()
 	tick_splatters()
@@ -1030,12 +1080,20 @@ func _evaporate_fluids() -> void:
 		fluid_levels.erase(pos2)
 
 func _check_fluid_flooding() -> void:
+	if fluid_levels.size() >= MAX_ACTIVE_FLUID_TILES:
+		return
+	var additions_left: int = mini(64, MAX_ACTIVE_FLUID_TILES - fluid_levels.size())
 	for pos in fluid_levels.keys():
+		if additions_left <= 0:
+			break
 		if fluid_levels[pos] >= 6.0:
 			for d in [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1)]:
+				if additions_left <= 0:
+					break
 				var n = pos + d
 				if not fluid_levels.has(n) and not is_blocked(n):
 					fluid_levels[n] = 0.5
+					additions_left -= 1
 
 # ---- FIRE SYSTEM ----
 var fire_spread_counter: int = 0
