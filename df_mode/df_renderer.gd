@@ -2340,6 +2340,48 @@ func _translate_race_fast(race: String) -> String:
 		"megabeast": return "Bestia"
 	return race
 
+func _draw_classic_frame(rect: Rect2, title: String, active: bool = true) -> Rect2:
+	# Four-line bevel used by Windows Classic controls.
+	draw_rect(rect, UI.WIN_FACE, true)
+	draw_line(rect.position, Vector2(rect.end.x, rect.position.y), UI.WIN_LIGHT, 1.0)
+	draw_line(rect.position, Vector2(rect.position.x, rect.end.y), UI.WIN_LIGHT, 1.0)
+	draw_line(Vector2(rect.position.x, rect.end.y - 1), rect.end - Vector2(0, 1), UI.WIN_DARK_SHADOW, 1.0)
+	draw_line(Vector2(rect.end.x - 1, rect.position.y), rect.end - Vector2(1, 0), UI.WIN_DARK_SHADOW, 1.0)
+	draw_line(rect.position + Vector2(1, 1), Vector2(rect.end.x - 2, rect.position.y + 1), Color("#dfdfdf"), 1.0)
+	draw_line(rect.position + Vector2(1, 1), Vector2(rect.position.x + 1, rect.end.y - 2), Color("#dfdfdf"), 1.0)
+	var title_rect := Rect2(rect.position + Vector2(3, 3), Vector2(rect.size.x - 6, 21))
+	var title_color := UI.WIN_TITLE_START if active else UI.WIN_SHADOW
+	draw_rect(title_rect, title_color, true)
+	# Subtle period-correct title gradient.
+	var gradient_steps := 18
+	for step in range(gradient_steps):
+		var ratio := float(step) / float(gradient_steps - 1)
+		var strip_x := title_rect.position.x + title_rect.size.x * ratio
+		draw_line(
+			Vector2(strip_x, title_rect.position.y),
+			Vector2(strip_x, title_rect.end.y),
+			title_color.lerp(UI.WIN_TITLE_END, ratio),
+			maxf(1.0, title_rect.size.x / float(gradient_steps))
+		)
+	draw_string(_font, title_rect.position + Vector2(6, 15), title,
+		HORIZONTAL_ALIGNMENT_LEFT, title_rect.size.x - 70, 11, Color.WHITE)
+	for button_index in range(3):
+		var button_rect := Rect2(
+			title_rect.end.x - 17.0 * float(3 - button_index),
+			title_rect.position.y + 3,
+			15,
+			15
+		)
+		draw_rect(button_rect, UI.WIN_FACE, true)
+		draw_line(button_rect.position, Vector2(button_rect.end.x, button_rect.position.y), UI.WIN_LIGHT, 1.0)
+		draw_line(button_rect.position, Vector2(button_rect.position.x, button_rect.end.y), UI.WIN_LIGHT, 1.0)
+		draw_line(Vector2(button_rect.position.x, button_rect.end.y - 1), button_rect.end - Vector2(0, 1), UI.WIN_DARK_SHADOW, 1.0)
+		draw_line(Vector2(button_rect.end.x - 1, button_rect.position.y), button_rect.end - Vector2(1, 0), UI.WIN_DARK_SHADOW, 1.0)
+	var close_center := Vector2(title_rect.end.x - 9.5, title_rect.position.y + 10.5)
+	draw_line(close_center - Vector2(3, 3), close_center + Vector2(3, 3), Color.BLACK, 1.0)
+	draw_line(close_center + Vector2(3, -3), close_center + Vector2(-3, 3), Color.BLACK, 1.0)
+	return Rect2(rect.position + Vector2(3, 27), rect.size - Vector2(6, 30))
+
 func _draw_menu_backdrop(viewport: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, viewport), UI.MENU_SKY_TOP, true)
 	var bands := 28
