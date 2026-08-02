@@ -248,6 +248,7 @@ var fast_travel: DFFastTravel = null
 var quest_system: DFQuestSystem = null
 var _world_gen_in_progress: bool = false
 var _loading_in_progress: bool = false
+var _interactive_tutorial_requested: bool = false
 
 func _ready() -> void:
 	randomize()
@@ -298,7 +299,14 @@ func _ready() -> void:
 	_generating = false
 
 func _on_tutorial_requested() -> void:
-	add_message("Tutorial no implementado aun.")
+	_interactive_tutorial_requested = true
+	settings_menu.visible = false
+	if generation_seed < 0:
+		generation_seed = randi()
+	current_state = GameState.GENERATING_WORLD
+	gen_step = 0
+	set_meta("quick_start_pending", true)
+	add_message("Tutorial: preparando una colonia guiada...")
 
 func _on_settings_close() -> void:
 	settings_menu.visible = false
@@ -2636,6 +2644,10 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	renderer.paused = false
 	current_state = GameState.PLAYING
 	renderer.show_sidebar = true
+	if _interactive_tutorial_requested:
+		_interactive_tutorial_requested = false
+		renderer.start_interactive_tutorial(camera_pos)
+		add_message("TUTORIAL ACTIVO: completa la acción indicada para avanzar.")
 	var audio = get_node("DFAudio") as DFAudio
 	if audio != null:
 		audio.play_music("main_theme")
@@ -4550,6 +4562,10 @@ func _handle_key(event: InputEvent) -> void:
 					renderer._legend_mode = 0
 					renderer._family_tree_data = {}
 					add_message("Cronicas cerradas.")
+			return
+		if kc == KEY_F10 and renderer.is_tutorial_active():
+			renderer.skip_interactive_tutorial()
+			add_message("Tutorial omitido. Puedes reabrirlo desde el menú principal.")
 			return
 		match kc:
 			KEY_UP, KEY_W:
