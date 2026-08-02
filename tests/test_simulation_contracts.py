@@ -45,6 +45,12 @@ class SimulationContracts(unittest.TestCase):
         self.assertIn("serialize_state()", source)
         self.assertIn("restore_state(", source)
 
+    def test_world_initializes_consequence_system(self) -> None:
+        source = self.read("df_mode/df_world.gd")
+        self.assertIn('const DFConsequenceSystem = preload("res://df_mode/df_consequence_system.gd")', source)
+        self.assertIn("var consequence_system: DFConsequenceSystem = null", source)
+        self.assertIn("consequence_system = DFConsequenceSystem.new(self)", source)
+
     def test_memories_use_world_time(self) -> None:
         source = self.read("df_mode/df_dwarf.gd")
         self.assertNotIn("return Time.get_ticks_msec()", source)
