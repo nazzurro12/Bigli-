@@ -32,14 +32,14 @@ enum Season { SPRING, SUMMER, AUTUMN, WINTER }
 enum DisasterType { NONE, CAVE_IN, FLOOD, FIRE, EARTHQUAKE, MAGMA_FLOOD, TORNADO }
 
 const TILE_CHARS = {
-	TileType.FLOOR: ".", TileType.WALL: "#", TileType.WATER_DEEP: "~",
-	TileType.WATER_SHALLOW: "=", TileType.TREE: "\u25A3", TileType.RAMP: "\u25B2",
+	TileType.FLOOR: "\u00B7", TileType.WALL: "#", TileType.WATER_DEEP: "~",
+	TileType.WATER_SHALLOW: "\u2248", TileType.TREE: "\u2663", TileType.RAMP: "\u25B2",
 	TileType.STAIRS_UP: "<", TileType.STAIRS_DOWN: ">",
-	TileType.STAIRS_UPDOWN: "\u25A1", TileType.CAVE_FLOOR: ".",
+	TileType.STAIRS_UPDOWN: "\u25A1", TileType.CAVE_FLOOR: ",",
 	TileType.CAVE_WALL: "#", TileType.MAGMA: "\u2588", TileType.BRIDGE: "=",
-	TileType.GRASS: "\"", TileType.DIRT: ".", TileType.SAND: "\u2022",
+	TileType.GRASS: ",", TileType.DIRT: "\u00B7", TileType.SAND: "\u2022",
 	TileType.SNOW: "\u2219", TileType.ICE: "\u2591", TileType.STONE_FLOOR: "\u2591",
-	TileType.SOIL: "\u2591", TileType.FARM_SOIL: "\u2592",
+	TileType.SOIL: ":", TileType.FARM_SOIL: "\u2592",
 	TileType.MURKY_POOL: "o", TileType.BROOK: "\u2581",
 	TileType.FORTIFICATION: "%", TileType.CONSTRUCTED_WALL: "\u2588",
 	TileType.CONSTRUCTED_FLOOR: "\u2593", TileType.PATH: "\u2591"
@@ -48,11 +48,11 @@ const TILE_CHARS = {
 const TILE_COLORS = {
 	TileType.FLOOR: Color("#808080"), TileType.WALL: Color("#A0A0A0"),
 	TileType.WATER_DEEP: Color("#0000AA"), TileType.WATER_SHALLOW: Color("#4444FF"),
-	TileType.TREE: Color("#008000"), TileType.RAMP: Color("#8B4513"),
+	TileType.TREE: Color("#35B84A"), TileType.RAMP: Color("#A06F3C"),
 	TileType.STAIRS_UP: Color("#FFFFFF"), TileType.STAIRS_DOWN: Color("#FFFFFF"),
 	TileType.STAIRS_UPDOWN: Color("#FFFFFF"), TileType.CAVE_FLOOR: Color("#505050"),
 	TileType.CAVE_WALL: Color("#606060"), TileType.MAGMA: Color("#FF4400"),
-	TileType.BRIDGE: Color("#8B7355"), TileType.GRASS: Color("#00AA00"),
+	TileType.BRIDGE: Color("#8B7355"), TileType.GRASS: Color("#3D8F45"),
 	TileType.DIRT: Color("#8B6914"), TileType.SAND: Color("#DDCC55"),
 	TileType.SNOW: Color("#FFFFFF"), TileType.ICE: Color("#CCFFFF"),
 	TileType.STONE_FLOOR: Color("#707070"), TileType.SOIL: Color("#6B4226"),
@@ -178,6 +178,8 @@ var wind_strength: float = 0.5
 var fog_density: float = 0.0
 var cloud_cover: float = 0.0
 var lightning_flash: bool = false
+var weather_surface_cursor: int = 0
+const WEATHER_SURFACE_BUDGET: int = 1024
 var lightning_timer: int = 0
 var ambient_temperature: float = 0.5
 var ground_temperature: float = 0.5
@@ -266,15 +268,17 @@ func get_material_density_at(pos: Vector3i) -> float:
 	return props.get("density", 2.5)
 const SUBSTANCE_COLORS = {
 	"beer": Color("#DAA520"), "blood": Color("#CC0000"), "vomit": Color("#8B8B00"),
+	"urine": Color("#D6C84A"), "feces": Color("#70502D"),
 	"water": Color("#4488FF"), "mud": Color("#8B6914"), "poison": Color("#AA00AA"),
 	"pathogen": Color("#00AA44"), "alcohol": Color("#DAA520"), "pus": Color("#88AA44"),
-	"miasma": Color("#8A2BE2") # Purple gas
+	"miasma": Color("#8A2BE2"), "compost": Color("#6B4F2A")
 }
 const SUBSTANCE_NAMES = {
 	"beer": "Cerveza", "blood": "Sangre", "vomit": "Vómito",
+	"urine": "Orina", "feces": "Residuos orgánicos",
 	"water": "Agua", "mud": "Lodo", "poison": "Veneno",
 	"pathogen": "Patógeno", "alcohol": "Alcohol", "pus": "Pus",
-	"miasma": "Miasma"
+	"miasma": "Miasma", "compost": "Compost sanitario"
 }
 
 func _init(w: int = 128, d: int = 128, h: int = 16):
@@ -457,6 +461,24 @@ func _unindex_entity(e) -> void:
 	if at_pos != null:
 		at_pos.erase(e)
 
+func is_actor_occupied(pos: Vector3i, exclude = null) -> bool:
+	_rebuild_grid_if_needed()
+	var key := "%d,%d,%d" % [pos.x, pos.y, pos.z]
+	for entity_value: Variant in _entity_grid.get(key, []):
+		if entity_value == exclude or entity_value is DFItem:
+			continue
+		if entity_value.get("is_alive") != false:
+			return true
+	return false
+
+func move_entity(entity_value, new_pos: Vector3i) -> void:
+	if entity_value == null or entity_value.tile_pos == new_pos:
+		return
+	_rebuild_grid_if_needed()
+	_unindex_entity(entity_value)
+	entity_value.tile_pos = new_pos
+	_index_entity(entity_value)
+
 func add_entity(e) -> void:
 	entities.append(e)
 	_index_entity(e)
@@ -595,6 +617,8 @@ func _spawn_item(pos: Vector3i, iname: String, itype: String, mat: int, glyph: S
 
 # ---- CONSTRUCTION ----
 func build_wall(pos: Vector3i, mat_id: int = MatType.CONSTRUCTION) -> bool:
+	if get_tile(pos) == TileType.CONSTRUCTED_WALL:
+		return true
 	if is_floor(pos) or is_open_space(pos):
 		var old_t = get_tile(pos)
 		set_tile(pos, TileType.CONSTRUCTED_WALL)
@@ -610,7 +634,11 @@ func build_wall(pos: Vector3i, mat_id: int = MatType.CONSTRUCTION) -> bool:
 	return false
 
 func build_floor(pos: Vector3i, mat_id: int = MatType.CONSTRUCTION) -> bool:
-	if is_open_space(pos) or is_wall(pos):
+	if get_tile(pos) == TileType.CONSTRUCTED_FLOOR:
+		return true
+	# Un suelo construido reemplaza pasto, tierra, arena, roca excavada u otro
+	# suelo natural. Antes solo aceptaba vacío/muro y fallaba en toda vivienda.
+	if is_open_space(pos) or is_wall(pos) or is_floor(pos):
 		set_tile(pos, TileType.CONSTRUCTED_FLOOR)
 		set_material(pos, mat_id)
 		set_revealed(pos, true)
@@ -747,17 +775,13 @@ func tick_weather() -> void:
 func _change_weather() -> void:
 	var weather_weights = {}
 	for wt in WeatherType.values():
-		weather_weights[wt] = 1.0
+		weather_weights[wt] = 0.0
 	weather_weights[WeatherType.CLEAR] = 25.0
 	weather_weights[WeatherType.CLOUDY] = 20.0
 	weather_weights[WeatherType.RAIN] = 10.0
 	weather_weights[WeatherType.DRIZZLE] = 8.0
 	weather_weights[WeatherType.FOG] = 5.0
 	weather_weights[WeatherType.WINDY] = 5.0
-	if ambient_temperature < 0.3:
-		weather_weights[WeatherType.SNOW] = 12.0
-		weather_weights[WeatherType.BLIZZARD] = 3.0
-		weather_weights[WeatherType.RAIN] = 2.0
 	if ambient_temperature > 0.7 and humidity < 0.3:
 		weather_weights[WeatherType.DUST_STORM] = 2.0
 	if humidity > 0.7:
@@ -766,8 +790,10 @@ func _change_weather() -> void:
 		weather_weights[WeatherType.STORM] = 5.0
 	if current_season == Season.WINTER:
 		weather_weights[WeatherType.CLEAR] = 10.0
-		weather_weights[WeatherType.SNOW] = 18.0
 		weather_weights[WeatherType.RAIN] = 2.0
+		if ambient_temperature <= 0.42:
+			weather_weights[WeatherType.SNOW] = 18.0
+			weather_weights[WeatherType.BLIZZARD] = 3.0
 	elif current_season == Season.SUMMER:
 		weather_weights[WeatherType.RAIN] = 12.0
 		weather_weights[WeatherType.HEAVY_RAIN] = 8.0
@@ -777,7 +803,7 @@ func _change_weather() -> void:
 	var roll = randf() * total
 	var cumulative = 0.0
 	for wt2 in WeatherType.values():
-		cumulative += weather_weights.get(wt2, 1.0)
+		cumulative += weather_weights.get(wt2, 0.0)
 		if roll <= cumulative:
 			current_weather = wt2
 			break
@@ -803,30 +829,68 @@ func _change_weather() -> void:
 		wind_strength *= 0.8 + randf() * 0.4
 
 func _apply_weather_effects() -> void:
+	if (
+		current_weather in [WeatherType.SNOW, WeatherType.BLIZZARD]
+		and (current_season != Season.WINTER or ambient_temperature > 0.42)
+	):
+		current_weather = WeatherType.RAIN if humidity >= 0.55 else WeatherType.CLOUDY
+		precipitation_intensity = 0.35 if current_weather == WeatherType.RAIN else 0.0
+	var surface_batch: Array = _take_weather_surface_batch()
 	if current_weather in [WeatherType.RAIN, WeatherType.HEAVY_RAIN, WeatherType.STORM]:
-		_apply_rain()
+		_apply_rain(surface_batch)
 		_rain_wash_splatters()
 	elif current_weather in [WeatherType.SNOW, WeatherType.BLIZZARD]:
-		_apply_snow()
+		_apply_snow(surface_batch)
 	if current_weather == WeatherType.DUST_STORM:
-		_apply_dust_storm()
+		_apply_dust_storm(surface_batch)
 	if current_weather == WeatherType.WINDY or current_weather == WeatherType.STORM:
 		_wind_spread_pathogens()
 	_wind_evaporate_splatters()
 
-func _apply_rain() -> void:
-	for z in range(depth):
-		for x in range(width):
-			var pos = Vector3i(x, get_surface_height(x, z), z)
-			if get_tile(pos) not in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.SNOW]:
-				continue
-			if randi() % 100 < int(precipitation_intensity * 15):
-				var td = tile_data.get(pos, {})
-				td["wetness"] = td.get("wetness", 0.0) + precipitation_intensity * 0.1
-				tile_data[pos] = td
-				if td["wetness"] >= 1.0 and get_tile(pos) == TileType.GRASS:
-					if randi() % 200 == 0:
-						_spawn_item(pos, "Agua Estancada", "water", MatType.WATER, "~", Color("#4444FF"))
+func reconcile_seasonal_weather() -> void:
+	if current_season == Season.WINTER:
+		return
+	if current_weather in [WeatherType.SNOW, WeatherType.BLIZZARD]:
+		current_weather = WeatherType.RAIN if humidity >= 0.55 else WeatherType.CLOUDY
+		precipitation_intensity = 0.35 if current_weather == WeatherType.RAIN else 0.0
+	for position_value: Variant in tiles.keys():
+		if not (position_value is Vector3i):
+			continue
+		var position: Vector3i = position_value
+		if get_tile(position) != TileType.SNOW:
+			continue
+		set_tile(position, TileType.GRASS)
+		set_material(position, MatType.SOIL)
+		var seasonal_data: Dictionary = tile_data.get(position, {})
+		seasonal_data.erase("snow_cover")
+		tile_data[position] = seasonal_data
+
+func _take_weather_surface_batch() -> Array:
+	var result: Array = []
+	var total_cells: int = width * depth
+	if total_cells <= 0:
+		return result
+	var budget: int = mini(WEATHER_SURFACE_BUDGET, total_cells)
+	for _sample_index in range(budget):
+		var linear_index: int = weather_surface_cursor
+		var x: int = linear_index % width
+		var z: int = linear_index / width
+		result.append(Vector3i(x, get_surface_height(x, z), z))
+		weather_surface_cursor = (weather_surface_cursor + 1) % total_cells
+	return result
+
+func _apply_rain(surface_batch: Array) -> void:
+	for pos_value in surface_batch:
+		var pos: Vector3i = pos_value
+		if get_tile(pos) not in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.SNOW]:
+			continue
+		if randi() % 100 < int(precipitation_intensity * 15):
+			var td = tile_data.get(pos, {})
+			td["wetness"] = minf(1.5, td.get("wetness", 0.0) + precipitation_intensity * 0.25)
+			tile_data[pos] = td
+			if td["wetness"] >= 1.0 and get_tile(pos) == TileType.GRASS:
+				if randi() % 200 == 0:
+					_spawn_item(pos, "Agua Estancada", "water", MatType.WATER, "~", Color("#4444FF"))
 	var water_tiles_to_add = int(precipitation_intensity * 2)
 	for i in range(water_tiles_to_add):
 		var rx = randi() % width; var rz = randi() % depth
@@ -835,26 +899,25 @@ func _apply_rain() -> void:
 		if get_tile(rp) == TileType.MURKY_POOL:
 			_increase_fluid_level(rp, precipitation_intensity)
 
-func _apply_snow() -> void:
-	for z in range(depth):
-		for x in range(width):
-			if randi() % 30 < int(precipitation_intensity * 10):
-				var pos = Vector3i(x, get_surface_height(x, z), z)
-				if get_tile(pos) in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.FLOOR]:
-					var td = tile_data.get(pos, {})
-					td["snow_cover"] = minf(td.get("snow_cover", 0.0) + 0.1, 1.0)
-					tile_data[pos] = td
-					if td["snow_cover"] >= 0.8:
-						set_tile(pos, TileType.SNOW)
-						set_material(pos, MatType.WATER)
+func _apply_snow(surface_batch: Array) -> void:
+	if current_season != Season.WINTER or ambient_temperature > 0.42:
+		return
+	for pos_value in surface_batch:
+		var pos: Vector3i = pos_value
+		if randi() % 30 < int(precipitation_intensity * 10):
+			if get_tile(pos) in [TileType.GRASS, TileType.DIRT, TileType.SOIL, TileType.SAND, TileType.FLOOR]:
+				var td = tile_data.get(pos, {})
+				td["snow_cover"] = minf(td.get("snow_cover", 0.0) + 0.25, 1.0)
+				tile_data[pos] = td
+				if td["snow_cover"] >= 0.8:
+					set_tile(pos, TileType.SNOW)
+					set_material(pos, MatType.WATER)
 
-func _apply_dust_storm() -> void:
-	for z in range(depth):
-		for x in range(width):
-			if randi() % 50 == 0:
-				var pos = Vector3i(x, get_surface_height(x, z), z)
-				if get_tile(pos) == TileType.GRASS:
-					set_tile(pos, TileType.DIRT)
+func _apply_dust_storm(surface_batch: Array) -> void:
+	for pos_value in surface_batch:
+		var pos: Vector3i = pos_value
+		if randi() % 50 == 0 and get_tile(pos) == TileType.GRASS:
+			set_tile(pos, TileType.DIRT)
 
 func _apply_lightning_strike() -> void:
 	var lx = randi() % width; var lz = randi() % depth
@@ -1335,7 +1398,32 @@ func get_tile_name(pos: Vector3i) -> String:
 func get_tile_char(pos: Vector3i) -> String:
 	var t = get_tile(pos)
 	if fire_tiles.has(pos): return "\u2588"
+	if t in [TileType.WALL, TileType.CAVE_WALL] and bool(tile_data.get(pos, {}).get("natural_outcrop", false)):
+		return "\u25B2"
+	if t in [TileType.CONSTRUCTED_WALL, TileType.FORTIFICATION]:
+		return _connected_wall_char(pos)
 	return TILE_CHARS.get(t, " ")
+
+func _connected_wall_char(pos: Vector3i) -> String:
+	var mask: int = 0
+	var directions: Array[Vector3i] = [
+		Vector3i(0, 0, -1),
+		Vector3i(1, 0, 0),
+		Vector3i(0, 0, 1),
+		Vector3i(-1, 0, 0),
+	]
+	for direction_index in range(directions.size()):
+		var neighbor_type: int = get_tile(pos + directions[direction_index])
+		if neighbor_type in [TileType.CONSTRUCTED_WALL, TileType.FORTIFICATION]:
+			mask |= 1 << direction_index
+	var connected: Dictionary = {
+		1: "\u2502", 4: "\u2502", 5: "\u2502",
+		2: "\u2500", 8: "\u2500", 10: "\u2500",
+		3: "\u2514", 6: "\u250C", 9: "\u2518", 12: "\u2510",
+		7: "\u251C", 11: "\u2534", 13: "\u2524", 14: "\u252C",
+		15: "\u253C",
+	}
+	return str(connected.get(mask, "#"))
 
 func get_tile_color(pos: Vector3i) -> Color:
 	var t = get_tile(pos)
@@ -1393,12 +1481,15 @@ func tick_splatters() -> void:
 			evap_rate = 0.005 * (1.0 + ambient_temperature)
 		
 		# Organic decomposition into miasma
-		if puddle.has("blood") or puddle.has("vomit"):
+		if puddle.has("blood") or puddle.has("vomit") or puddle.has("feces"):
 			var rot_chance = 0.05 if not is_outdoor(pos) else 0.01
 			if randf() < rot_chance:
 				var emit_vol = 0.05
 				if puddle.has("blood"): puddle["blood"] = maxf(0.0, puddle["blood"] - 0.005)
 				if puddle.has("vomit"): puddle["vomit"] = maxf(0.0, puddle["vomit"] - 0.01)
+				if puddle.has("feces"):
+					puddle["feces"] = maxf(0.0, puddle["feces"] - 0.003)
+					add_splatter_substance(pos, "pathogen", 0.003)
 				# 50% emit locally, 50% emit adjacent
 				var target_pos = pos
 				if randf() < 0.5:
@@ -1520,3 +1611,34 @@ func absorb_from_tile(pos: Vector3i, substance: String, max_amount: float) -> fl
 	if splatters[pos].is_empty():
 		splatters.erase(pos)
 	return take
+
+func clean_sanitary_tile(pos: Vector3i, max_amount: float = 0.18) -> float:
+	var remaining: float = maxf(0.0, max_amount)
+	var removed: float = 0.0
+	for substance in ["feces", "urine", "vomit", "pathogen", "miasma", "mud"]:
+		if remaining <= 0.0:
+			break
+		var taken: float = absorb_from_tile(pos, substance, remaining)
+		removed += taken
+		remaining -= taken
+	return removed
+
+## Riesgo local del agua. Solo consulta cinco casillas, por lo que su coste es
+## constante aunque aumente la población o el tamaño del mundo.
+func get_water_contamination(pos: Vector3i) -> float:
+	var contamination: float = 0.0
+	var sample_positions: Array[Vector3i] = [
+		pos,
+		pos + Vector3i(1, 0, 0),
+		pos + Vector3i(-1, 0, 0),
+		pos + Vector3i(0, 0, 1),
+		pos + Vector3i(0, 0, -1),
+	]
+	for sample_pos in sample_positions:
+		var sample: Dictionary = splatters.get(sample_pos, {})
+		contamination += float(sample.get("pathogen", 0.0)) * 1.0
+		contamination += float(sample.get("feces", 0.0)) * 0.80
+		contamination += float(sample.get("vomit", 0.0)) * 0.35
+		contamination += float(sample.get("mud", 0.0)) * 0.10
+		contamination += float(sample.get("poison", 0.0)) * 1.50
+	return clampf(contamination, 0.0, 2.0)

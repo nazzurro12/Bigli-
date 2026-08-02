@@ -125,6 +125,12 @@ static func _item_to_dict(item) -> Dictionary:
 		"is_organic": item.is_organic,
 		"is_edible": item.is_edible,
 		"nutrition": item.nutrition,
+		"hydration": item.hydration,
+		"protein_value": item.protein_value,
+		"carbohydrate_value": item.carbohydrate_value,
+		"fat_value": item.fat_value,
+		"fiber_value": item.fiber_value,
+		"micronutrient_value": item.micronutrient_value,
 		"quality": item.quality,
 		"max_durability": item.max_durability,
 		"durability": item.durability,
@@ -187,6 +193,12 @@ static func _dict_to_item(d: Dictionary):
 	item.is_organic = d.get("is_organic", false)
 	item.is_edible = d.get("is_edible", false)
 	item.nutrition = d.get("nutrition", 0.3)
+	item.hydration = d.get("hydration", item.hydration)
+	item.protein_value = d.get("protein_value", item.protein_value)
+	item.carbohydrate_value = d.get("carbohydrate_value", item.carbohydrate_value)
+	item.fat_value = d.get("fat_value", item.fat_value)
+	item.fiber_value = d.get("fiber_value", item.fiber_value)
+	item.micronutrient_value = d.get("micronutrient_value", item.micronutrient_value)
 	item.quality = d.get("quality", 0)
 	item.quality_name = item.QUALITY_NAMES.get(item.quality, "Normal")
 	item.quality_color = item.QUALITY_COLORS.get(item.quality, Color.WHITE)
@@ -336,6 +348,10 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"mood": dwarf.mood,
 		"mood_counter": dwarf.mood_counter,
 		"tantrum_destruction": dwarf.tantrum_destruction,
+		"crisis_pressure": dwarf.crisis_pressure,
+		"last_crisis_evaluation_minute": dwarf.last_crisis_evaluation_minute,
+		"crisis_reason": dwarf.crisis_reason,
+		"berserk_bonus_applied": dwarf.berserk_bonus_applied,
 		"profession": dwarf.profession,
 		"appointed_position": dwarf.appointed_position,
 		"is_noble": dwarf.is_noble,
@@ -351,6 +367,10 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"social_timer": dwarf.social_timer,
 		"last_social_interaction": dwarf.last_social_interaction,
 		"loneliness": dwarf.loneliness,
+		"social_beliefs": dwarf.social_beliefs.duplicate(true),
+		"social_reputation": dwarf.social_reputation.duplicate(),
+		"last_belief_decay_day": dwarf.last_belief_decay_day,
+		"conversations_held": dwarf.conversations_held,
 		"prayer_timer": dwarf.prayer_timer,
 		"favored_deity": dwarf.favored_deity,
 		"religious_fervor": dwarf.religious_fervor,
@@ -368,6 +388,14 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"infection_chance": dwarf.infection_chance,
 		"has_infection": dwarf.has_infection,
 		"rest_timer": dwarf.rest_timer,
+		"disease_phase": dwarf.disease_phase,
+		"disease_progress": dwarf.disease_progress,
+		"disease_severity": dwarf.disease_severity,
+		"pathogen_exposure": dwarf.pathogen_exposure,
+		"immune_strength": dwarf.immune_strength,
+		"acquired_immunity": dwarf.acquired_immunity,
+		"recovery_streak": dwarf.recovery_streak,
+		"fever": dwarf.fever,
 		"nausea": dwarf.nausea,
 		"is_vomiting": dwarf.is_vomiting,
 		"dizziness": dwarf.dizziness,
@@ -385,6 +413,21 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"socialized_recently": dwarf.socialized_recently,
 		"genome": _genome_to_dict(dwarf.genome),
 		"body_mass_kg": dwarf.body_mass_kg,
+		"meals_today": dwarf.meals_today,
+		"water_liters_today": dwarf.water_liters_today,
+		"daily_protein": dwarf.daily_protein,
+		"daily_carbohydrates": dwarf.daily_carbohydrates,
+		"daily_fat": dwarf.daily_fat,
+		"daily_fiber": dwarf.daily_fiber,
+		"daily_micronutrients": dwarf.daily_micronutrients,
+		"nutrition_quality": dwarf.nutrition_quality,
+		"bladder_fill": dwarf.bladder_fill,
+		"bowel_fill": dwarf.bowel_fill,
+		"physical_condition": dwarf.physical_condition,
+		"education_level": dwarf.education_level,
+		"chronic_health": dwarf.chronic_health,
+		"last_physiology_day": dwarf.last_physiology_day,
+		"physiology_status": dwarf.physiology_status,
 		"is_pregnant": dwarf.is_pregnant,
 		"pregnancy_progress": dwarf.pregnancy_progress,
 		"partner_id": dwarf.partner_id,
@@ -492,6 +535,10 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.mood = d.get("mood", 0)
 	df.mood_counter = d.get("mood_counter", 0)
 	df.tantrum_destruction = d.get("tantrum_destruction", 0)
+	df.crisis_pressure = d.get("crisis_pressure", 0.0)
+	df.last_crisis_evaluation_minute = d.get("last_crisis_evaluation_minute", -1)
+	df.crisis_reason = d.get("crisis_reason", "")
+	df.berserk_bonus_applied = d.get("berserk_bonus_applied", false)
 	df.profession = d.get("profession", 0)
 	df.appointed_position = d.get("appointed_position", "")
 	df.is_noble = d.get("is_noble", false)
@@ -507,6 +554,10 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.social_timer = d.get("social_timer", 0.0)
 	df.last_social_interaction = d.get("last_social_interaction", 0)
 	df.loneliness = d.get("loneliness", 0.0)
+	df.social_beliefs = d.get("social_beliefs", []).duplicate(true)
+	df.social_reputation = d.get("social_reputation", {}).duplicate()
+	df.last_belief_decay_day = d.get("last_belief_decay_day", -1)
+	df.conversations_held = d.get("conversations_held", 0)
 	df.prayer_timer = d.get("prayer_timer", 0.0)
 	df.favored_deity = d.get("favored_deity", "")
 	df.religious_fervor = d.get("religious_fervor", 0.5)
@@ -524,6 +575,14 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.infection_chance = d.get("infection_chance", 0.0)
 	df.has_infection = d.get("has_infection", false)
 	df.rest_timer = d.get("rest_timer", 0.0)
+	df.disease_phase = d.get("disease_phase", 0)
+	df.disease_progress = d.get("disease_progress", 0.0)
+	df.disease_severity = d.get("disease_severity", 0.0)
+	df.pathogen_exposure = d.get("pathogen_exposure", df.infection_chance)
+	df.immune_strength = d.get("immune_strength", 0.5)
+	df.acquired_immunity = d.get("acquired_immunity", 0.0)
+	df.recovery_streak = d.get("recovery_streak", 0)
+	df.fever = d.get("fever", 0.0)
 	df.nausea = d.get("nausea", 0.0)
 	df.is_vomiting = d.get("is_vomiting", false)
 	df.dizziness = d.get("dizziness", 0.0)
@@ -541,6 +600,21 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.socialized_recently = d.get("socialized_recently", false)
 	df.genome = _dict_to_genome(d.get("genome", {}))
 	df.body_mass_kg = d.get("body_mass_kg", 70.0)
+	df.meals_today = d.get("meals_today", 0)
+	df.water_liters_today = d.get("water_liters_today", 0.0)
+	df.daily_protein = d.get("daily_protein", 0.0)
+	df.daily_carbohydrates = d.get("daily_carbohydrates", 0.0)
+	df.daily_fat = d.get("daily_fat", 0.0)
+	df.daily_fiber = d.get("daily_fiber", 0.0)
+	df.daily_micronutrients = d.get("daily_micronutrients", 0.0)
+	df.nutrition_quality = d.get("nutrition_quality", 0.75)
+	df.bladder_fill = d.get("bladder_fill", 0.0)
+	df.bowel_fill = d.get("bowel_fill", 0.0)
+	df.physical_condition = d.get("physical_condition", 0.5)
+	df.education_level = d.get("education_level", 0.0)
+	df.chronic_health = d.get("chronic_health", 1.0)
+	df.last_physiology_day = d.get("last_physiology_day", -1)
+	df.physiology_status = d.get("physiology_status", "Estable")
 	df.is_pregnant = d.get("is_pregnant", false)
 	df.pregnancy_progress = d.get("pregnancy_progress", 0.0)
 	df.partner_id = d.get("partner_id", -1)
@@ -744,7 +818,8 @@ static func _job_to_dict(job) -> Dictionary:
 		"assigned_tick": job.assigned_tick,
 		"started_tick": job.started_tick,
 		"completed_tick": job.completed_tick,
-		"cancel_reason": job.cancel_reason
+		"cancel_reason": job.cancel_reason,
+		"disposal_pos": _v3i_to_arr(job.disposal_pos)
 	}
 
 static func _dict_to_job(d: Dictionary):
@@ -772,6 +847,7 @@ static func _dict_to_job(d: Dictionary):
 	job.item_produced = d.get("item_produced", "")
 	job.item_count_produced = d.get("item_count_produced", 1)
 	job.reaction_id = d.get("reaction_id", "")
+	job.disposal_pos = _arr_to_v3i(d.get("disposal_pos", [-1, -1, -1]))
 	job.created_tick = d.get("created_tick", 0)
 	job.assigned_tick = d.get("assigned_tick", -1)
 	job.started_tick = d.get("started_tick", -1)
@@ -833,7 +909,12 @@ static func _building_to_dict(b) -> Dictionary:
 		"tile_pos": _v3i_to_arr(b.tile_pos),
 		"size": _v3i_to_arr(b.size),
 		"is_constructed": b.is_constructed,
-		"name": b.name
+		"name": b.name,
+		"sanitation_load": b.sanitation_load,
+		"sanitation_capacity": b.sanitation_capacity,
+		"water_volume": b.water_volume,
+		"water_capacity": b.water_capacity,
+		"water_contamination": b.water_contamination
 	}
 
 static func _dict_to_building(d: Dictionary):
@@ -842,6 +923,11 @@ static func _dict_to_building(d: Dictionary):
 	var b = DFBuilding.new(d.get("type", 1), pos)
 	b.is_constructed = d.get("is_constructed", true)
 	b.name = d.get("name", b.name)
+	b.sanitation_load = d.get("sanitation_load", 0.0)
+	b.sanitation_capacity = d.get("sanitation_capacity", 20.0)
+	b.water_volume = d.get("water_volume", 0.0)
+	b.water_capacity = d.get("water_capacity", 80.0)
+	b.water_contamination = d.get("water_contamination", 0.0)
 	return b
 
 static func serialize_entity(entity) -> Dictionary:
@@ -861,6 +947,139 @@ static func deserialize_entity(d: Dictionary):
 		"DFItem": return _dict_to_item(d)
 		"DFCreature": return _dict_to_creature(d)
 	return null
+
+static func serialize_region_world(region_world, region_designation = null) -> Dictionary:
+	if region_world == null:
+		return {}
+	var payload: Dictionary = {
+		"width": region_world.width,
+		"depth": region_world.depth,
+		"height": region_world.height,
+		"name": region_world.world_name,
+		"world_version": region_world.world_version,
+		"active_world_region": region_world.get_meta("active_world_region", []).duplicate(),
+		"generated_world_sites": region_world.get_meta("generated_world_sites", []).duplicate(true),
+		"regional_population_complete": bool(region_world.get_meta("regional_population_complete", false)),
+		"regional_historical_entities": int(region_world.get_meta("regional_historical_entities", 0)),
+		"regional_fauna_count": int(region_world.get_meta("regional_fauna_count", 0)),
+		"tiles": [],
+		"elevation": [],
+		"entities": [],
+		"buildings": [],
+		"workshops": [],
+		"stockpiles": [],
+		"designation": {},
+	}
+	var saved_positions: Dictionary = {}
+	for position in region_world.tiles.keys():
+		saved_positions[position] = true
+	for position in region_world.tile_data.keys():
+		saved_positions[position] = true
+	for position in region_world.materials.keys():
+		saved_positions[position] = true
+	for position in saved_positions.keys():
+		payload["tiles"].append({
+			"p": _v3i_to_arr(position),
+			"t": region_world.tiles.get(position, -1),
+			"m": region_world.materials.get(position, -1),
+			"td": region_world.tile_data.get(position, {}).duplicate(true),
+			"r": region_world.revealed.get(position, false),
+		})
+	for row in region_world.elevation:
+		payload["elevation"].append(row.duplicate())
+	for entity in region_world.entities:
+		var entity_data: Dictionary = serialize_entity(entity)
+		if not entity_data.is_empty():
+			payload["entities"].append(entity_data)
+	for building in region_world.buildings:
+		payload["buildings"].append(_building_to_dict(building))
+	for workshop in region_world.workshops:
+		payload["workshops"].append(_workshop_to_dict(workshop))
+	for stockpile in region_world.stockpiles:
+		payload["stockpiles"].append(_stockpile_to_dict(stockpile))
+	if region_designation != null:
+		payload["designation"] = {
+			"mode": region_designation.mode,
+			"selection_start": _v3i_to_arr(region_designation.selection_start),
+			"selection_end": _v3i_to_arr(region_designation.selection_end),
+			"is_selecting": region_designation.is_selecting,
+			"building_type_to_build": region_designation.building_type_to_build,
+			"job_queue": [],
+		}
+		for job in region_designation.job_queue:
+			payload["designation"]["job_queue"].append(_job_to_dict(job))
+	return payload
+
+static func deserialize_region_world(payload: Dictionary) -> Dictionary:
+	if payload.is_empty():
+		return {}
+	var restored_world = DFWorld.new(
+		int(payload.get("width", 256)),
+		int(payload.get("depth", 256)),
+		int(payload.get("height", 16))
+	)
+	restored_world.world_name = str(payload.get("name", ""))
+	restored_world.world_version = int(payload.get("world_version", 0))
+	restored_world.set_meta("active_world_region", payload.get("active_world_region", []).duplicate())
+	restored_world.set_meta("generated_world_sites", payload.get("generated_world_sites", []).duplicate(true))
+	restored_world.set_meta("regional_population_complete", bool(payload.get("regional_population_complete", false)))
+	restored_world.set_meta("regional_historical_entities", int(payload.get("regional_historical_entities", 0)))
+	restored_world.set_meta("regional_fauna_count", int(payload.get("regional_fauna_count", 0)))
+	for entry in payload.get("tiles", []):
+		var position := _arr_to_v3i(entry.get("p", [0, 0, 0]))
+		var tile_value: int = int(entry.get("t", -1))
+		var material_value: int = int(entry.get("m", -1))
+		if tile_value >= 0:
+			restored_world.tiles[position] = tile_value
+		if material_value >= 0:
+			restored_world.materials[position] = material_value
+		var tile_metadata: Dictionary = entry.get("td", {})
+		if not tile_metadata.is_empty():
+			restored_world.tile_data[position] = tile_metadata.duplicate(true)
+		if bool(entry.get("r", false)):
+			restored_world.revealed[position] = true
+	for row in payload.get("elevation", []):
+		restored_world.elevation.append(row.duplicate() if row is Array else [])
+	for entity_data in payload.get("entities", []):
+		var entity = deserialize_entity(entity_data)
+		if entity != null:
+			restored_world.add_entity(entity)
+	for building_data in payload.get("buildings", []):
+		restored_world.buildings.append(_dict_to_building(building_data))
+	for workshop_data in payload.get("workshops", []):
+		restored_world.workshops.append(_dict_to_workshop(workshop_data))
+	for stockpile_data in payload.get("stockpiles", []):
+		restored_world.stockpiles.append(_dict_to_stockpile(stockpile_data))
+	var restored_designation = DFDesignation.new(restored_world)
+	var designation_data: Dictionary = payload.get("designation", {})
+	if not designation_data.is_empty():
+		restored_designation.mode = int(designation_data.get("mode", 0))
+		restored_designation.selection_start = _arr_to_v3i(designation_data.get("selection_start", [-1, -1, -1]))
+		restored_designation.selection_end = _arr_to_v3i(designation_data.get("selection_end", [-1, -1, -1]))
+		restored_designation.is_selecting = bool(designation_data.get("is_selecting", false))
+		restored_designation.building_type_to_build = int(designation_data.get("building_type_to_build", 1))
+		for job_data in designation_data.get("job_queue", []):
+			restored_designation.job_queue.append(_dict_to_job(job_data))
+	return {"world": restored_world, "designation": restored_designation}
+
+static func _serialize_planet_region_cache(main) -> Dictionary:
+	var serialized: Dictionary = {}
+	for region_key in main.planet_region_cache.keys():
+		serialized[region_key] = serialize_region_world(
+			main.planet_region_cache[region_key],
+			main.planet_designation_cache.get(region_key, null)
+		)
+	return serialized
+
+static func _restore_planet_region_cache(main, serialized: Dictionary) -> void:
+	main.planet_region_cache.clear()
+	main.planet_designation_cache.clear()
+	for region_key in serialized.keys():
+		var restored: Dictionary = deserialize_region_world(serialized[region_key])
+		if restored.is_empty():
+			continue
+		main.planet_region_cache[region_key] = restored["world"]
+		main.planet_designation_cache[region_key] = restored["designation"]
 
 static func ensure_save_dir() -> void:
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
@@ -882,9 +1101,11 @@ static func save_game(main) -> bool:
 	data["_simulation_tick_clock"] = main._simulation_tick_clock
 	data["paused"] = main.paused
 	data["camera_pos"] = _v3i_to_arr(main.camera_pos)
+	data["active_planet_region"] = [main.active_planet_region.x, main.active_planet_region.y]
 	data["_current_cycle_follow_index"] = main._current_cycle_follow_index
 	data["follow_dwarf"] = main.renderer.follow_dwarf if main.renderer != null else -1
 	data["_chronicle_events_game"] = main._chronicle_events_game.duplicate()
+	data["story_director"] = main.story_director.serialize_state()
 	data["generation_seed"] = main.generation_seed
 	data["world_name"] = main.world_name
 	data["embark_prepare_points"] = main.embark_prepare_points
@@ -905,6 +1126,9 @@ static func save_game(main) -> bool:
 	data["world"]["name"] = w.world_name
 	data["world"]["world_version"] = w.world_version
 	data["world"]["generated_world_sites"] = w.get_meta("generated_world_sites", []).duplicate(true)
+	data["world"]["regional_population_complete"] = bool(w.get_meta("regional_population_complete", false))
+	data["world"]["regional_historical_entities"] = int(w.get_meta("regional_historical_entities", 0))
+	data["world"]["regional_fauna_count"] = int(w.get_meta("regional_fauna_count", 0))
 	data["world"]["active_world_region"] = w.get_meta("active_world_region", []).duplicate()
 
 	var pos_keys = w.tiles.keys()
@@ -1047,6 +1271,7 @@ static func save_game(main) -> bool:
 			data["designation"]["job_queue"].append(_job_to_dict(j))
 	else:
 		data["designation"] = {}
+	data["planet_regions"] = _serialize_planet_region_cache(main)
 
 	var json_str = JSON.stringify(data, "", true)
 	var file = FileAccess.open(get_save_path(0), FileAccess.WRITE)
@@ -1082,6 +1307,9 @@ static func load_game(main) -> bool:
 	w.world_name = wd.get("name", "")
 	w.world_version = wd.get("world_version", 0)
 	w.set_meta("generated_world_sites", wd.get("generated_world_sites", []).duplicate(true))
+	w.set_meta("regional_population_complete", bool(wd.get("regional_population_complete", false)))
+	w.set_meta("regional_historical_entities", int(wd.get("regional_historical_entities", 0)))
+	w.set_meta("regional_fauna_count", int(wd.get("regional_fauna_count", 0)))
 	w.set_meta("active_world_region", wd.get("active_world_region", []).duplicate())
 
 	w.tiles.clear()
@@ -1207,8 +1435,12 @@ static func load_game(main) -> bool:
 	main._simulation_tick_clock = data.get("_simulation_tick_clock", 0)
 	main.paused = data.get("paused", false)
 	main.camera_pos = _arr_to_v3i(data.get("camera_pos", [64, 3, 64]))
+	var loaded_region: Array = data.get("active_planet_region", data.get("world", {}).get("active_world_region", [0, 0]))
+	main.active_planet_region = Vector2i(int(loaded_region[0]), int(loaded_region[1])) if loaded_region.size() >= 2 else Vector2i.ZERO
+	_restore_planet_region_cache(main, data.get("planet_regions", {}))
 	main._current_cycle_follow_index = data.get("_current_cycle_follow_index", 0)
 	main._chronicle_events_game = data.get("_chronicle_events_game", []).duplicate()
+	main.story_director.deserialize_state(data.get("story_director", {}))
 	main.generation_seed = data.get("generation_seed", -1)
 	main.world_name = data.get("world_name", "")
 	main.embark_prepare_points = data.get("embark_prepare_points", 100)
@@ -1310,9 +1542,11 @@ static func _build_save_data(main) -> Dictionary:
 	data["_simulation_tick_clock"] = main._simulation_tick_clock
 	data["paused"] = main.paused
 	data["camera_pos"] = _v3i_to_arr(main.camera_pos)
+	data["active_planet_region"] = [main.active_planet_region.x, main.active_planet_region.y]
 	data["_current_cycle_follow_index"] = main._current_cycle_follow_index
 	data["follow_dwarf"] = main.renderer.follow_dwarf if main.renderer != null else -1
 	data["_chronicle_events_game"] = main._chronicle_events_game.duplicate()
+	data["story_director"] = main.story_director.serialize_state()
 	data["generation_seed"] = main.generation_seed
 	data["world_name"] = main.world_name
 	data["embark_prepare_points"] = main.embark_prepare_points
@@ -1329,6 +1563,9 @@ static func _build_save_data(main) -> Dictionary:
 	data["world"]["name"] = w.world_name
 	data["world"]["world_version"] = w.world_version
 	data["world"]["generated_world_sites"] = w.get_meta("generated_world_sites", []).duplicate(true)
+	data["world"]["regional_population_complete"] = bool(w.get_meta("regional_population_complete", false))
+	data["world"]["regional_historical_entities"] = int(w.get_meta("regional_historical_entities", 0))
+	data["world"]["regional_fauna_count"] = int(w.get_meta("regional_fauna_count", 0))
 	data["world"]["active_world_region"] = w.get_meta("active_world_region", []).duplicate()
 
 	var pos_keys = w.tiles.keys()
@@ -1470,6 +1707,7 @@ static func _build_save_data(main) -> Dictionary:
 			data["designation"]["job_queue"].append(_job_to_dict(j))
 	else:
 		data["designation"] = {}
+	data["planet_regions"] = _serialize_planet_region_cache(main)
 	return data
 
 static func _apply_save_data(main, data: Dictionary) -> void:
@@ -1484,6 +1722,9 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	w.world_name = wd.get("name", "")
 	w.world_version = wd.get("world_version", 0)
 	w.set_meta("generated_world_sites", wd.get("generated_world_sites", []).duplicate(true))
+	w.set_meta("regional_population_complete", bool(wd.get("regional_population_complete", false)))
+	w.set_meta("regional_historical_entities", int(wd.get("regional_historical_entities", 0)))
+	w.set_meta("regional_fauna_count", int(wd.get("regional_fauna_count", 0)))
 	w.set_meta("active_world_region", wd.get("active_world_region", []).duplicate())
 
 	w.tiles.clear()
@@ -1607,8 +1848,12 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	main._simulation_tick_clock = data.get("_simulation_tick_clock", 0)
 	main.paused = data.get("paused", false)
 	main.camera_pos = _arr_to_v3i(data.get("camera_pos", [64, 3, 64]))
+	var loaded_region: Array = data.get("active_planet_region", data.get("world", {}).get("active_world_region", [0, 0]))
+	main.active_planet_region = Vector2i(int(loaded_region[0]), int(loaded_region[1])) if loaded_region.size() >= 2 else Vector2i.ZERO
+	_restore_planet_region_cache(main, data.get("planet_regions", {}))
 	main._current_cycle_follow_index = data.get("_current_cycle_follow_index", 0)
 	main._chronicle_events_game = data.get("_chronicle_events_game", []).duplicate()
+	main.story_director.deserialize_state(data.get("story_director", {}))
 	main.generation_seed = data.get("generation_seed", -1)
 	main.world_name = data.get("world_name", "")
 	main.embark_prepare_points = data.get("embark_prepare_points", 100)
@@ -1651,3 +1896,11 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	w.combat_system = null
 	w.invasion_system = null
 	w.military_system = null
+	if main.has_method("_reconcile_storage_containers"):
+		main._reconcile_storage_containers()
+	if main.has_method("_ensure_basic_sanitation"):
+		main._ensure_basic_sanitation()
+	if main.has_method("_ensure_basic_water_supply"):
+		main._ensure_basic_water_supply()
+	if w.has_method("reconcile_seasonal_weather"):
+		w.reconcile_seasonal_weather()

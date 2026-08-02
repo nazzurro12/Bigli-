@@ -191,6 +191,12 @@ var needs: Dictionary = {}
 var mood: int = MoodState.NORMAL
 var mood_counter: int = 0
 var tantrum_destruction: int = 0
+var crisis_pressure: float = 0.0
+var last_crisis_evaluation_minute: int = -1
+var crisis_reason: String = ""
+var berserk_bonus_applied: bool = false
+const CRISIS_GRACE_MINUTES: int = 1440
+const CRISIS_PRESSURE_REQUIRED: float = 360.0
 
 var profession: int = Profession.MINER
 var appointed_position: String = ""
@@ -212,6 +218,12 @@ var room_quality: float = 0.0
 var social_timer: float = 0.0
 var last_social_interaction: int = 0
 var loneliness: float = 0.0
+var social_beliefs: Array = []
+var social_reputation: Dictionary = {}
+var last_belief_decay_day: int = -1
+var conversations_held: int = 0
+const MAX_SOCIAL_BELIEFS: int = 24
+const BELIEF_FORGET_DAYS: int = 30
 
 var prayer_timer: float = 0.0
 var favored_deity: String = ""
@@ -262,6 +274,15 @@ var is_bleeding: bool = false
 var infection_chance: float = 0.0
 var has_infection: bool = false
 var rest_timer: float = 0.0
+enum DiseasePhase { HEALTHY, INCUBATING, SYMPTOMATIC, RECOVERING }
+var disease_phase: int = DiseasePhase.HEALTHY
+var disease_progress: float = 0.0
+var disease_severity: float = 0.0
+var pathogen_exposure: float = 0.0
+var immune_strength: float = 0.5
+var acquired_immunity: float = 0.0
+var recovery_streak: int = 0
+var fever: float = 0.0
 
 var nausea: float = 0.0
 var is_vomiting: bool = false
@@ -285,6 +306,21 @@ var socialized_recently: bool = false
 ## --- GENETICS & BODY COMPOSITION ---
 var genome: RefCounted = null  # DFGenetics.Genome, set on spawn
 var body_mass_kg: float = 70.0  # base dwarf mass in kg (modified by genome.size_multiplier)
+var meals_today: int = 0
+var water_liters_today: float = 0.0
+var daily_protein: float = 0.0
+var daily_carbohydrates: float = 0.0
+var daily_fat: float = 0.0
+var daily_fiber: float = 0.0
+var daily_micronutrients: float = 0.0
+var nutrition_quality: float = 0.75
+var bladder_fill: float = 0.0
+var bowel_fill: float = 0.0
+var physical_condition: float = 0.5
+var education_level: float = 0.0
+var chronic_health: float = 1.0
+var last_physiology_day: int = -1
+var physiology_status: String = "Estable"
 
 ## --- REPRODUCTION ---
 var is_pregnant: bool = false
@@ -353,6 +389,7 @@ func get_skill_level(skill: int) -> int:
 	return skills.get(skill, 0)
 
 func add_skill_xp(skill: int, amount: int) -> void:
+	education_level = minf(1.0, education_level + float(maxi(0, amount)) * 0.0005)
 	var current = skills.get(skill, 0)
 	if randi() % 100 < amount:
 		skills[skill] = current + 1
@@ -424,6 +461,7 @@ func add_memory(category: String, text: String, intensity: float = 0.5) -> void:
 	memories.append(memory)
 	if memories.size() > 100:
 		memories.pop_front()
+	_learn_social_belief(category, id, text, intensity, id, true)
 
 func _get_turn_count() -> int:
 	return simulation_minute
@@ -432,33 +470,50 @@ func has_relationship_with(other_id: int) -> bool:
 	return relationships.has(other_id)
 
 func get_relationship_value(other_id: int) -> float:
-	return relationships.get(other_id, 0.0)
+	return _normalized_relationship_value(relationships.get(other_id, 0.0))
 
 func modify_relationship(other_id: int, delta: float) -> void:
-	var current = relationships.get(other_id, 0.0)
-	relationships[other_id] = clampf(current + delta, -1.0, 1.0)
+	var current = get_relationship_value(other_id)
+	var updated: float = clampf(current + delta, -1.0, 1.0)
+	relationships[other_id] = updated
+	if updated >= 0.55:
+		if not friends.has(other_id):
+			friends.append(other_id)
+		rivals.erase(other_id)
+	elif updated <= -0.45:
+		if not rivals.has(other_id):
+			rivals.append(other_id)
+		friends.erase(other_id)
+	else:
+		friends.erase(other_id)
+		rivals.erase(other_id)
+
+func _normalized_relationship_value(raw_value) -> float:
+	var value: float = float(raw_value)
+	# Las primeras partidas guardaban afinidad como 60..99 aunque el resto del
+	# sistema usa -1..1. Se migra al leer sin romper partidas antiguas.
+	if value > 1.0:
+		return clampf((value - 50.0) / 50.0, -1.0, 1.0)
+	return clampf(value, -1.0, 1.0)
 
 func update_emotions() -> void:
 	var stress_factor = stress
 	var need_penalty = 0.0
+	var critical_needs = 0
 	for n in needs.values():
 		if n > 0.7:
 			need_penalty += n * 0.1
+		if n > 0.85:
+			critical_needs += 1
 
 	var total_unhappiness = stress_factor * 0.3 + need_penalty + (1.0 - happiness) * 0.5
 
 	if total_unhappiness > 0.8:
 		current_emotion = Emotion.ANGRY
 		emotion_intensity = total_unhappiness
-		if mood != MoodState.BESERK and randi() % 100 < int(total_unhappiness * 30):
-			mood = MoodState.TANTRUM if randi() % 2 == 0 else MoodState.BESERK
-			mood_counter = 50 + randi() % 100
 	elif total_unhappiness > 0.5:
 		current_emotion = Emotion.SAD
 		emotion_intensity = total_unhappiness
-		if randi() % 100 < 5:
-			mood = MoodState.MELANCHOLY
-			mood_counter = 100 + randi() % 200
 	elif total_unhappiness < 0.2 and happiness > 0.7:
 		current_emotion = Emotion.HAPPY
 		emotion_intensity = 1.0 - total_unhappiness
@@ -466,7 +521,44 @@ func update_emotions() -> void:
 		current_emotion = Emotion.CONTENT
 		emotion_intensity = 0.5
 
-	if stress < 0.1 and mood != MoodState.NORMAL:
+	# Las crisis son consecuencias de privaciones graves sostenidas, no una
+	# lotería ejecutada varias veces por segundo.
+	if simulation_minute == last_crisis_evaluation_minute:
+		return
+	last_crisis_evaluation_minute = simulation_minute
+	var severe_distress = stress >= 0.80 and happiness <= 0.30 and critical_needs >= 2
+	if severe_distress:
+		crisis_pressure = minf(CRISIS_PRESSURE_REQUIRED * 2.0, crisis_pressure + 1.0)
+		crisis_reason = "estrés extremo y %d necesidades críticas" % critical_needs
+	else:
+		crisis_pressure = maxf(0.0, crisis_pressure - 2.0)
+		if crisis_pressure <= 0.0:
+			crisis_reason = ""
+
+	if (
+		mood == MoodState.NORMAL
+		and simulation_minute >= CRISIS_GRACE_MINUTES
+		and crisis_pressure >= CRISIS_PRESSURE_REQUIRED
+	):
+		var violent_disposition = get_trait(PersonalityTrait.VIOLENCE)
+		var anger_disposition = get_trait(PersonalityTrait.ANGER)
+		var can_go_berserk = violent_disposition >= 0.85 and anger_disposition >= 0.80 and stress >= 0.95
+		mood = MoodState.BESERK if can_go_berserk and randf() < 0.08 else MoodState.TANTRUM
+		mood_counter = 120
+		crisis_pressure = CRISIS_PRESSURE_REQUIRED * 0.5
+	elif (
+		mood == MoodState.NORMAL
+		and simulation_minute >= CRISIS_GRACE_MINUTES
+		and total_unhappiness > 0.65
+		and crisis_pressure >= CRISIS_PRESSURE_REQUIRED * 0.75
+	):
+		mood = MoodState.MELANCHOLY
+		mood_counter = 180
+		crisis_pressure *= 0.5
+
+	if stress < 0.1 and crisis_pressure <= 0.0 and mood in [
+		MoodState.TANTRUM, MoodState.BESERK, MoodState.MELANCHOLY
+	]:
 		mood = MoodState.NORMAL
 		mood_counter = 0
 
@@ -594,6 +686,17 @@ func get_full_description() -> String:
 	desc += "\nEstado de Ánimo: %s" % get_mood_name()
 	desc += "\nEmoción: %s (%.0f%%)" % [get_emotion_name(current_emotion), emotion_intensity * 100]
 	desc += "\nEstrés: %.0f%% | Felicidad: %.0f%%" % [stress * 100, happiness * 100]
+	desc += "\nFisiología: %s | Nutrición: %.0f%%" % [physiology_status, nutrition_quality * 100]
+	desc += "\nHoy: %d comidas | %.2f L de agua" % [meals_today, water_liters_today]
+	desc += "\nCondición: %.0f%% | Carga: %.1f/%.1f" % [
+		physical_condition * 100, get_carried_weight(), get_carrying_capacity()
+	]
+	desc += "\nSalud sistémica: %s | Inmunidad: %.0f%% | Exposición: %.0f%%" % [
+		get_disease_status(), immune_strength * 100.0, pathogen_exposure * 100.0
+	]
+	desc += "\nVida social: %d conversaciones | %d creencias activas" % [
+		conversations_held, social_beliefs.size()
+	]
 	desc += "\nPersonalidad: %s" % get_personality_description()
 	return desc
 
@@ -676,9 +779,8 @@ func apply_bleeding(rate: float) -> void:
 	is_bleeding = true
 
 func apply_infection_risk(amount: float) -> void:
-	if randi() % 100 < int(amount):
-		has_infection = true
-		add_thought("La herida se ha infectado. Duele y huele mal.", -0.1)
+	pathogen_exposure = minf(2.0, pathogen_exposure + maxf(0.0, amount) * 0.01)
+	infection_chance = pathogen_exposure
 
 func rest_and_recover(delta: float) -> void:
 	if is_sleeping:
@@ -689,12 +791,6 @@ func rest_and_recover(delta: float) -> void:
 			if bleeding_rate < 0.01:
 				bleeding_rate = 0.0
 				is_bleeding = false
-		if has_infection:
-			infection_chance -= 0.01 * delta * 60
-			if infection_chance <= 0:
-				has_infection = false
-				stats_tracker["infections_survived"] += 1
-				add_thought("Su cuerpo venció la infección.", 0.05)
 		rest_timer += delta
 		if rest_timer > 100:
 			add_thought("Descansó y se siente mejor.", 0.03)
@@ -867,6 +963,8 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		update_stress(delta_game_minute)
 		update_pain_and_bleeding(delta_game_minute)
 		tick_metabolism(world)
+		tick_humanoid_physiology(world)
+		tick_health_cycle(world)
 		tick_grooming()
 		tick_hygiene(world)
 		tick_social(world)
@@ -892,7 +990,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 			world.deposit_footprint(tile_pos, standing)
 
 	# --- SISTEMA DE REPOSO MÉDICO ---
-	var is_injured_or_sick = health < 0.70 or has_infection or is_bleeding
+	var is_injured_or_sick = health < 0.70 or disease_severity >= 0.35 or is_bleeding
 	if is_injured_or_sick and not is_sleeping and not is_possessed:
 		is_resting_medical = true
 		current_task = "Descanso Médico"
@@ -911,6 +1009,8 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 				return
 		
 		# Reposar en cama
+		is_sleeping = true
+		fatigue = maxf(fatigue, 0.35)
 		rest_and_recover(1.0)
 		return
 
@@ -990,22 +1090,28 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 							world.combat_system._add_log(msg)
 							other.happiness = clampf(other.happiness - 0.05, 0.0, 1.0)
 						break
-		mood_counter -= 1
+		if minute_ticked:
+			mood_counter -= 1
 		if mood_counter <= 0:
 			mood = MoodState.NORMAL
 			add_thought("Se calmó tras desahogar su frustración.", 0.05)
 		return
 
 	if mood == MoodState.BESERK:
-		combat_skill += 0.5
-		strength += 1.0
+		if not berserk_bonus_applied:
+			combat_skill += 0.5
+			strength += 1.0
+			berserk_bonus_applied = true
 		speed *= 1.5
 		current_task = "¡BESERK! (Atacando todo)"
-		mood_counter -= 1
+		if minute_ticked:
+			mood_counter -= 1
 		if mood_counter <= 0:
 			mood = MoodState.NORMAL
-			combat_skill = maxf(1.0, combat_skill - 0.5)
-			strength = maxf(5.0, strength - 1.0)
+			if berserk_bonus_applied:
+				combat_skill = maxf(1.0, combat_skill - 0.5)
+				strength = maxf(5.0, strength - 1.0)
+				berserk_bonus_applied = false
 			add_thought("La furia berserker se disipó. Está agotado.", -0.05)
 		return
 
@@ -1013,7 +1119,8 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		if randi() % 10 == 0:
 			add_thought("Se siente vacío y sin propósito.", -0.05)
 			current_task = "Melancólico (meditando)"
-		mood_counter -= 1
+		if minute_ticked:
+			mood_counter -= 1
 		if mood_counter <= 0:
 			mood = MoodState.NORMAL
 		return
@@ -1057,11 +1164,15 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 	if main_node != null and "_game_hour" in main_node:
 		hour = main_node._game_hour
 
-	var is_sleep_time = (hour >= 22 or hour < 5)
-	var is_recreation_time = (hour >= 18 and hour < 22)
+	var is_sleep_time = (hour >= 22 or hour < 6)
+	var is_recreation_time = (hour >= 14 and hour < 22)
 	var is_meal_time = (hour == 12 or hour == 6 or hour == 18)
 
 	# PRIORIDAD 1: Necesidades de supervivencia críticas
+	if bladder_fill >= 0.75 or bowel_fill >= 0.75:
+		if _try_relieve_waste(world):
+			update_emotions()
+			return
 	if hunger > 0.85 or thirst > 0.85:
 		if _satisfy_needs(world):
 			update_emotions()
@@ -1074,7 +1185,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 	# PRIORIDAD 2: Descanso nocturno programado
 	if is_sleep_time:
 		if fatigue > 0.3 or current_job == null:
-			if _try_sleep(world):
+			if _try_sleep(world, true):
 				update_emotions()
 				return
 
@@ -1158,7 +1269,15 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		if _tick_persistent_autonomy(world, minute_ticked):
 			update_emotions()
 			return
-		tick_autonomous_survival(world)
+		# Las necesidades críticas y los trabajos siguen respondiendo cada tick,
+		# pero las búsquedas ambientales costosas se reparten entre habitantes.
+		# Si ya existe una ruta, el movimiento continúa sin volver a decidir.
+		var simulation_tick: int = int(world.get_meta("simulation_tick_total", 0))
+		var autonomous_decision_due: bool = posmod(simulation_tick + id, 12) == 0
+		if autonomous_decision_due:
+			tick_autonomous_survival(world)
+		elif not path.is_empty() and path_index < path.size():
+			_move_toward(world, path.back())
 
 	update_emotions()
 
@@ -1194,6 +1313,27 @@ func _tick_persistent_autonomy(world, minute_ticked: bool) -> bool:
 		autonomous_reason = ""
 		autonomous_target = Vector3i(-1, -1, -1)
 		autonomous_plan_cooldown = 10
+		return true
+
+	if DFAutonomousPlan.is_failed(autonomous_plan):
+		var failed_reason: String = str(autonomous_plan.get("last_failure", "No pudo continuar"))
+		autonomous_plan_history.append({
+			"goal": autonomous_goal,
+			"reason": autonomous_reason,
+			"failed": true,
+			"failure": failed_reason,
+			"completed_at": Time.get_ticks_msec(),
+		})
+		if autonomous_plan_history.size() > 12:
+			autonomous_plan_history.pop_front()
+		current_task = "Reconsiderando: %s" % failed_reason
+		autonomous_plan = {}
+		autonomous_goal = ""
+		autonomous_reason = ""
+		autonomous_target = Vector3i(-1, -1, -1)
+		path.clear()
+		path_index = 0
+		autonomous_plan_cooldown = 15
 		return true
 
 	return _execute_autonomous_plan_step(world)
@@ -1252,13 +1392,17 @@ func _execute_autonomous_plan_step(world) -> bool:
 			if tile_pos == target:
 				DFAutonomousPlan.advance(autonomous_plan)
 			else:
+				var before_move: Vector3i = tile_pos
 				_move_toward(world, target)
+				_record_plan_movement_result(before_move)
 			return true
 		"move_adjacent":
 			if _plan_distance(tile_pos, target) <= 1:
 				DFAutonomousPlan.advance(autonomous_plan)
 			else:
+				var before_adjacent_move: Vector3i = tile_pos
 				_move_toward(world, target)
+				_record_plan_movement_result(before_adjacent_move)
 			return true
 		"stairs_down":
 			var tile_type: int = world.get_tile(target)
@@ -1326,6 +1470,19 @@ func _execute_autonomous_plan_step(world) -> bool:
 	DFAutonomousPlan.fail_step(autonomous_plan, "Paso de plan desconocido: %s" % action)
 	autonomous_plan["state"] = "completed"
 	return true
+
+func _record_plan_movement_result(before_move: Vector3i) -> void:
+	if autonomous_plan.is_empty():
+		return
+	var step: Dictionary = DFAutonomousPlan.current_step(autonomous_plan)
+	if tile_pos != before_move:
+		step["blocked_attempts"] = 0
+		return
+	var blocked_attempts: int = int(step.get("blocked_attempts", 0)) + 1
+	step["blocked_attempts"] = blocked_attempts
+	if blocked_attempts >= 8:
+		DFAutonomousPlan.fail_step(autonomous_plan, "No existe una ruta practicable al objetivo")
+		step["blocked_attempts"] = 0
 
 func _has_tool_named(tokens: Array) -> bool:
 	var weapon_lower: String = equipped_weapon.to_lower()
@@ -1602,19 +1759,13 @@ func _store_items(world: Object) -> void:
 		current_task = "idle"
 		return
 
-	var is_on_food_store = false
-	for b in world.buildings:
-		if b.type == DFBuilding.BuildingType.FOOD_STORE and b.tile_pos == tile_pos:
-			is_on_food_store = true
-			break
-
 	for sp in world.stockpiles:
-		if sp.has_tile(tile_pos) and not sp._has_item_at(world, tile_pos):
+		if sp.has_tile(tile_pos) and sp._tile_has_capacity(world, tile_pos):
 			var item = inventory.pop_back()
 			item.tile_pos = tile_pos
 			item.is_in_stockpile = true
-			if is_on_food_store:
-				item.is_inside_container = true
+			item.carried_by_id = -1
+			_put_item_in_container_at(world, item, tile_pos)
 			world.add_entity(item)
 			current_task = "idle"
 			needs_display_update = true
@@ -1637,13 +1788,8 @@ func _store_items(world: Object) -> void:
 			var item_1352 = inventory.pop_back()
 			item_1352.tile_pos = tile_pos
 			item_1352.is_in_stockpile = true
-			var is_on_fs = false
-			for b_1356 in world.buildings:
-				if b_1356.type == DFBuilding.BuildingType.FOOD_STORE and b_1356.tile_pos == tile_pos:
-					is_on_fs = true
-					break
-			if is_on_fs:
-				item_1352.is_inside_container = true
+			item_1352.carried_by_id = -1
+			_put_item_in_container_at(world, item_1352, tile_pos)
 			world.add_entity(item_1352)
 			current_task = "idle"
 			needs_display_update = true
@@ -1764,6 +1910,7 @@ func tick_metabolism(world: RefCounted) -> void:
 		var digest = 0.002 * met_rate
 		var absorbed = minf(food_stored, digest)
 		hunger = maxf(0.0, hunger - absorbed * 10.0)
+		bowel_fill = minf(1.25, bowel_fill + absorbed * 0.35)
 		body.ingested_substances["food"] = food_stored - absorbed
 		if body.ingested_substances["food"] <= 0.0:
 			body.ingested_substances.erase("food")
@@ -1771,6 +1918,7 @@ func tick_metabolism(world: RefCounted) -> void:
 	if water_stored > 0.0:
 		var absorb_water = minf(water_stored, 0.003 * met_rate)
 		thirst = maxf(0.0, thirst - absorb_water * 10.0)
+		bladder_fill = minf(1.25, bladder_fill + absorb_water * 0.65)
 		body.ingested_substances["water"] = water_stored - absorb_water
 		if body.ingested_substances["water"] <= 0.0:
 			body.ingested_substances.erase("water")
@@ -1806,8 +1954,7 @@ func tick_metabolism(world: RefCounted) -> void:
 	var pathogen: float = body.ingested_substances.get("pathogen", 0.0)
 	if pathogen > 0.0:
 		var path_resist: float = genome.pathogen_resistance if genome else 1.0
-		if not has_infection and randf() < (0.01 * pathogen / path_resist):
-			has_infection = true
+		pathogen_exposure = minf(2.0, pathogen_exposure + 0.01 * pathogen / maxf(0.25, path_resist))
 		body.ingested_substances["pathogen"] = maxf(0.0, pathogen - 0.01)
 		if body.ingested_substances["pathogen"] <= 0.0:
 			body.ingested_substances.erase("pathogen")
@@ -1828,11 +1975,254 @@ func tick_metabolism(world: RefCounted) -> void:
 		body.ebriety = maxf(0.0, body.ebriety - 0.5)
 		body.is_vomiting = false
 
-	# Disease coughing: spread pathogen particles
-	if has_infection and randf() < 0.03:
-		var dirs = [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,0,1), Vector3i(0,0,-1), Vector3i(0,0,0)]
-		for d in dirs:
-			world.add_splatter_substance(tile_pos + d, "pathogen", 0.005)
+func record_consumption(item: DFItem) -> void:
+	if item == null:
+		return
+	if item.is_edible:
+		meals_today += 1
+		daily_protein += item.protein_value
+		daily_carbohydrates += item.carbohydrate_value
+		daily_fat += item.fat_value
+		daily_fiber += item.fiber_value
+		daily_micronutrients += item.micronutrient_value
+	if item.is_drink:
+		water_liters_today += maxf(0.0, item.hydration)
+
+## Salud sistémica evaluada una vez por minuto simulado. Evita búsquedas entre
+## entidades: el contagio usa la capa ambiental de patógenos ya indexada por tile.
+func tick_health_cycle(world: Object) -> void:
+	if body == null:
+		return
+
+	# Migración transparente de partidas que solo guardaban has_infection.
+	if has_infection and disease_phase == DiseasePhase.HEALTHY:
+		disease_phase = DiseasePhase.SYMPTOMATIC
+		disease_progress = 0.35
+		disease_severity = maxf(0.25, infection_chance)
+
+	var tile_substances: Dictionary = world.get_splatters_at(tile_pos)
+	var environmental_pathogen: float = float(tile_substances.get("pathogen", 0.0))
+	var miasma_load: float = float(tile_substances.get("miasma", 0.0))
+	var ingested_pathogen: float = float(body.ingested_substances.get("pathogen", 0.0))
+	var genetic_resistance: float = genome.pathogen_resistance if genome != null else 1.0
+	var resilience: float = maxf(0.25, genetic_resistance * (0.45 + chronic_health * 0.35 + nutrition_quality * 0.20))
+	var exposure_gain: float = (environmental_pathogen * 0.018 + miasma_load * 0.004 + ingested_pathogen * 0.025) / resilience
+	pathogen_exposure = clampf(pathogen_exposure + exposure_gain - 0.0007, 0.0, 2.0)
+	infection_chance = pathogen_exposure
+
+	var rest_support: float = 0.0
+	if is_sleeping:
+		rest_support += 0.45 + sleep_quality * 0.25
+	if is_resting_medical:
+		rest_support += 0.20
+	var hydration_support: float = clampf(1.0 - thirst, 0.0, 1.0)
+	immune_strength = clampf(
+		0.15
+		+ chronic_health * 0.25
+		+ nutrition_quality * 0.25
+		+ hydration_support * 0.15
+		+ rest_support * 0.20,
+		0.10,
+		1.25
+	)
+
+	if acquired_immunity > 0.0:
+		acquired_immunity = maxf(0.0, acquired_immunity - 1.0 / 10080.0)
+
+	match disease_phase:
+		DiseasePhase.HEALTHY:
+			has_infection = false
+			body.disease_type = ""
+			disease_severity = 0.0
+			fever = maxf(0.0, fever - 0.01)
+			# Una sola evaluación por hora y habitante reduce coste y oscilaciones.
+			if pathogen_exposure >= 0.12 and simulation_minute % 60 == id % 60:
+				var infection_risk: float = clampf(
+					(pathogen_exposure - acquired_immunity * 0.55) / maxf(0.25, immune_strength),
+					0.0,
+					0.85
+				)
+				if randf() < infection_risk:
+					disease_phase = DiseasePhase.INCUBATING
+					disease_progress = 0.0
+					body.disease_type = "environmental_infection"
+					add_thought("Nota un malestar después de exponerse a un ambiente insalubre.", -0.03)
+		DiseasePhase.INCUBATING:
+			has_infection = true
+			body.disease_type = "environmental_infection"
+			disease_progress += 1.0 / 360.0
+			disease_severity = lerpf(0.05, 0.30, disease_progress)
+			if disease_progress >= 1.0:
+				disease_phase = DiseasePhase.SYMPTOMATIC
+				disease_progress = 0.0
+				add_thought("Se siente enfermo y necesita descanso, agua y comida adecuada.", -0.08)
+		DiseasePhase.SYMPTOMATIC:
+			has_infection = true
+			body.disease_type = "environmental_infection"
+			var vulnerability: float = clampf(
+				(1.0 - immune_strength) * 0.55 + pathogen_exposure * 0.20 + stress * 0.10,
+				0.0,
+				0.85
+			)
+			var target_severity: float = clampf(0.28 + vulnerability - rest_support * 0.20, 0.15, 0.95)
+			disease_severity = move_toward(disease_severity, target_severity, 0.0025)
+			fever = move_toward(fever, disease_severity, 0.006)
+			fatigue = minf(1.25, fatigue + disease_severity * 0.0007)
+			if disease_severity > 0.70:
+				health = maxf(0.05, health - (disease_severity - 0.70) * 0.00012)
+			if is_sleeping and nutrition_quality >= 0.45 and thirst < 0.70:
+				recovery_streak += 1
+			else:
+				recovery_streak = maxi(0, recovery_streak - 1)
+			if recovery_streak >= 240 or (immune_strength >= 0.85 and recovery_streak >= 120):
+				disease_phase = DiseasePhase.RECOVERING
+				disease_progress = 0.0
+				add_thought("Su estado empieza a mejorar tras descansar y alimentarse.", 0.04)
+			if disease_severity >= 0.30 and simulation_minute % 20 == id % 20:
+				world.add_splatter_substance(tile_pos, "pathogen", 0.003 * disease_severity)
+		DiseasePhase.RECOVERING:
+			has_infection = true
+			body.disease_type = "recovering_infection"
+			disease_progress += immune_strength / 720.0
+			disease_severity = maxf(0.0, disease_severity - 0.0015 * immune_strength)
+			fever = maxf(0.0, fever - 0.003)
+			if disease_progress >= 1.0 or disease_severity <= 0.02:
+				disease_phase = DiseasePhase.HEALTHY
+				disease_progress = 0.0
+				disease_severity = 0.0
+				pathogen_exposure *= 0.20
+				infection_chance = pathogen_exposure
+				acquired_immunity = 1.0
+				recovery_streak = 0
+				has_infection = false
+				body.disease_type = ""
+				stats_tracker["infections_survived"] = stats_tracker.get("infections_survived", 0) + 1
+				add_thought("Se recuperó de la enfermedad y desarrolló resistencia temporal.", 0.08)
+
+func get_disease_status() -> String:
+	match disease_phase:
+		DiseasePhase.INCUBATING:
+			return "Incubando"
+		DiseasePhase.SYMPTOMATIC:
+			if disease_severity >= 0.70:
+				return "Enfermedad grave"
+			if disease_severity >= 0.40:
+				return "Enfermedad moderada"
+			return "Enfermedad leve"
+		DiseasePhase.RECOVERING:
+			return "Recuperándose"
+	return "Sano"
+
+func tick_humanoid_physiology(world: Object) -> void:
+	var day_index: int = floori(float(simulation_minute) / 1440.0)
+	if last_physiology_day < 0:
+		last_physiology_day = day_index
+	elif day_index != last_physiology_day:
+		_evaluate_daily_health()
+		last_physiology_day = day_index
+		meals_today = 0
+		water_liters_today = 0.0
+		daily_protein = 0.0
+		daily_carbohydrates = 0.0
+		daily_fat = 0.0
+		daily_fiber = 0.0
+		daily_micronutrients = 0.0
+
+	var carried_ratio: float = get_carried_weight() / maxf(1.0, get_carrying_capacity())
+	if carried_ratio > 0.30 and has_moved_this_tick:
+		physical_condition = minf(1.0, physical_condition + 0.00004)
+		fatigue = minf(1.25, fatigue + carried_ratio * 0.0002)
+	elif is_sleeping:
+		physical_condition = maxf(0.0, physical_condition - 0.000002)
+
+	if bladder_fill >= 1.0 or bowel_fill >= 1.0:
+		_try_relieve_waste(world)
+	elif bladder_fill > 0.85 or bowel_fill > 0.85:
+		stress = minf(1.0, stress + 0.0005)
+		physiology_status = "Necesita aliviarse"
+	elif nutrition_quality < 0.4:
+		physiology_status = "Malnutrición"
+	elif physical_condition < 0.25:
+		physiology_status = "Condición física baja"
+	else:
+		physiology_status = "Estable"
+
+func _evaluate_daily_health() -> void:
+	var meal_score: float = clampf(float(meals_today) / 3.0, 0.0, 1.0)
+	var water_score: float = clampf(water_liters_today / 1.0, 0.0, 1.0)
+	var macro_score: float = (
+		clampf(daily_protein / 0.65, 0.0, 1.0)
+		+ clampf(daily_carbohydrates / 0.90, 0.0, 1.0)
+		+ clampf(daily_fat / 0.25, 0.0, 1.0)
+	) / 3.0
+	var micro_score: float = (
+		clampf(daily_fiber / 0.45, 0.0, 1.0)
+		+ clampf(daily_micronutrients / 0.45, 0.0, 1.0)
+	) / 2.0
+	var day_quality: float = meal_score * 0.30 + water_score * 0.25 + macro_score * 0.25 + micro_score * 0.20
+	nutrition_quality = lerpf(nutrition_quality, day_quality, 0.20)
+	if day_quality < 0.35:
+		chronic_health = maxf(0.20, chronic_health - 0.004)
+		toughness = maxf(1.0, toughness - 0.002)
+		stress = minf(1.0, stress + 0.02)
+	elif day_quality >= 0.75:
+		chronic_health = minf(1.0, chronic_health + 0.002)
+	health = minf(health, chronic_health)
+
+func get_carried_weight() -> float:
+	var total_weight: float = 0.0
+	for carried_item in inventory:
+		if carried_item is DFItem:
+			total_weight += carried_item.get_item_volume() * maxi(1, carried_item.stack_size)
+	return total_weight
+
+func get_carrying_capacity() -> float:
+	var age_factor: float = 1.0
+	if age < 16:
+		age_factor = 0.55
+	elif age > 55:
+		age_factor = maxf(0.55, 1.0 - float(age - 55) * 0.012)
+	return maxf(5.0, (strength * 2.2 + body_mass_kg * 0.12) * (0.55 + physical_condition * 0.75) * age_factor * chronic_health)
+
+func _try_relieve_waste(world: Object) -> bool:
+	if bladder_fill < 0.75 and bowel_fill < 0.75:
+		return false
+	var nearest_latrine = null
+	var nearest_distance: int = 2147483647
+	for building in world.buildings:
+		if building.type != DFBuilding.BuildingType.LATRINE:
+			continue
+		if not building.has_sanitation_capacity(0.12):
+			continue
+		var distance: int = abs(building.tile_pos.x - tile_pos.x) + abs(building.tile_pos.z - tile_pos.z)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_latrine = building
+	var emergency: bool = bladder_fill >= 1.0 or bowel_fill >= 1.0
+	if nearest_latrine != null and nearest_distance > 0 and not emergency:
+		current_task = "Yendo a la letrina"
+		_move_toward(world, nearest_latrine.tile_pos)
+		return true
+	var waste_amount: float = 0.03 + maxf(bladder_fill, bowel_fill) * 0.05
+	var used_latrine: bool = nearest_latrine != null and nearest_distance == 0
+	if bladder_fill >= bowel_fill:
+		bladder_fill = 0.0
+		current_task = "Aliviando la vejiga"
+	else:
+		bowel_fill = 0.0
+		current_task = "Aliviando el intestino"
+	if used_latrine:
+		if not nearest_latrine.add_sanitation_waste(waste_amount):
+			world.add_splatter_substance(tile_pos, "feces", waste_amount)
+			world.add_splatter_substance(tile_pos, "pathogen", waste_amount * 0.10)
+	else:
+		var waste_type: String = "urine" if current_task == "Aliviando la vejiga" else "feces"
+		world.add_splatter_substance(tile_pos, waste_type, waste_amount)
+		if waste_type == "feces":
+			world.add_splatter_substance(tile_pos, "pathogen", waste_amount * 0.08)
+	stress = maxf(0.0, stress - 0.02)
+	needs_display_update = true
+	return true
 
 
 ## Grooming: lick/clean limbs coated in substances, ingesting them.
@@ -1891,6 +2281,7 @@ func tick_hygiene(world) -> void:
 
 # ---- SOCIAL ----
 func tick_social(world) -> void:
+	_decay_social_beliefs()
 	if current_task != "idle": return
 	if randi() % 30 != 0: return
 	for e in world.entities:
@@ -1903,34 +2294,153 @@ func tick_social(world) -> void:
 			current_task = "Socializando"
 			needs_display_update = true
 			needs[Need.SOCIAL] = maxf(0.0, needs[Need.SOCIAL] - 0.2)
-			# Share thoughts — both parties exchange a random memory
-			var my_mem = _pick_random_memory()
-			var their_mem = _pick_other_random_memory(e)
-			if my_mem != "":
-				add_thought("Compartió con alguien: %s" % my_mem, 0.03)
-				e.add_thought("Escuchó de %s: %s" % [name, my_mem], 0.02)
-			if their_mem != "":
-				add_thought("Escuchó de %s: %s" % [e.name, their_mem], 0.02)
-				e.add_thought("Compartió con %s: %s" % [name, their_mem], 0.03)
-			# Gossip: spread stress
+			last_social_interaction = simulation_minute
+			conversations_held += 1
+			_exchange_social_belief(e)
+			var affinity: float = get_relationship_value(e.id)
+			var compatibility: float = _social_compatibility_with(e)
+			var interaction_delta: float = lerpf(-0.015, 0.025, compatibility)
+			modify_relationship(e.id, interaction_delta)
+			e.modify_relationship(id, interaction_delta * 0.8)
+			# El estado emocional se contagia, pero la confianza amortigua el
+			# efecto: una conversación ya no copia estrés sin contexto.
 			var target_stress = e.get("stress")
 			if target_stress == null:
 				target_stress = 0.5
 			var stress_diff = stress - target_stress
 			if abs(stress_diff) > 0.2:
-				var transfer = stress_diff * 0.1
+				var transfer = stress_diff * (0.035 + maxf(0.0, affinity) * 0.045)
 				stress = clampf(stress - transfer, 0.0, 1.0)
 				e.stress = clampf(e.stress + transfer, 0.0, 1.0)
 			return
 
-func _pick_random_memory() -> String:
-	if memories.is_empty(): return ""
-	return memories[randi() % memories.size()].get("text", "")
+func _exchange_social_belief(other) -> void:
+	var belief: Dictionary = _pick_salient_belief()
+	if belief.is_empty() and not memories.is_empty():
+		var memory: Dictionary = memories.back()
+		_learn_social_belief(
+			str(memory.get("category", "vida")),
+			id,
+			str(memory.get("text", "")),
+			float(memory.get("intensity", 0.5)),
+			id,
+			true
+		)
+		belief = _pick_salient_belief()
+	if belief.is_empty():
+		add_thought("Conversó tranquilamente con %s." % other.name, 0.02)
+		return
+	add_thought("Contó a %s: %s" % [other.name, belief.get("claim", "")], 0.02)
+	other._receive_social_belief(belief, self)
 
-func _pick_other_random_memory(other) -> String:
-	var other_memories = other.get("memories")
-	if other_memories == null or other_memories.is_empty(): return ""
-	return other_memories[randi() % other_memories.size()].get("text", "")
+func _receive_social_belief(belief: Dictionary, speaker) -> void:
+	var trust: float = get_relationship_value(speaker.id)
+	var speaker_honesty: float = speaker.get_trait(PersonalityTrait.HONESTY)
+	var confidence: float = float(belief.get("confidence", 0.5))
+	var accepted_confidence: float = confidence * (0.35 + speaker_honesty * 0.25 + (trust + 1.0) * 0.20)
+	accepted_confidence = clampf(accepted_confidence, 0.05, 0.95)
+	var changed: bool = _learn_social_belief(
+		str(belief.get("category", "rumor")),
+		int(belief.get("subject_id", speaker.id)),
+		str(belief.get("claim", "")),
+		accepted_confidence,
+		speaker.id,
+		false
+	)
+	if changed:
+		add_thought("Escuchó de %s: %s" % [speaker.name, belief.get("claim", "")], 0.01)
+		var reputation: float = float(social_reputation.get(speaker.id, 0.0))
+		social_reputation[speaker.id] = clampf(
+			reputation + (accepted_confidence - 0.45) * 0.05, -1.0, 1.0
+		)
+
+func _learn_social_belief(
+	category: String,
+	subject_id: int,
+	claim: String,
+	confidence: float,
+	source_id: int,
+	witnessed: bool
+) -> bool:
+	if claim.strip_edges().is_empty():
+		return false
+	var normalized_claim: String = claim.strip_edges().to_lower()
+	var belief_key: String = "%s|%d|%s" % [category, subject_id, normalized_claim]
+	for existing in social_beliefs:
+		if str(existing.get("key", "")) == belief_key:
+			existing["confidence"] = clampf(
+				maxf(float(existing.get("confidence", 0.0)), confidence) + (0.04 if witnessed else 0.01),
+				0.0,
+				1.0
+			)
+			existing["last_heard_minute"] = simulation_minute
+			var sources: Array = existing.get("sources", [])
+			if not sources.has(source_id):
+				sources.append(source_id)
+			existing["sources"] = sources.slice(maxi(0, sources.size() - 4))
+			return false
+		# Dos afirmaciones diferentes sobre el mismo asunto generan duda real.
+		if str(existing.get("category", "")) == category and int(existing.get("subject_id", -1)) == subject_id:
+			existing["confidence"] = maxf(0.05, float(existing.get("confidence", 0.5)) - confidence * 0.20)
+	var belief := {
+		"key": belief_key,
+		"category": category,
+		"subject_id": subject_id,
+		"claim": claim.strip_edges(),
+		"confidence": clampf(confidence + (0.20 if witnessed else 0.0), 0.05, 1.0),
+		"witnessed": witnessed,
+		"sources": [source_id],
+		"created_minute": simulation_minute,
+		"last_heard_minute": simulation_minute
+	}
+	social_beliefs.append(belief)
+	_prune_social_beliefs()
+	return true
+
+func _pick_salient_belief() -> Dictionary:
+	var selected: Dictionary = {}
+	var best_score: float = 0.0
+	for belief in social_beliefs:
+		var age_days: float = float(simulation_minute - int(belief.get("last_heard_minute", 0))) / 1440.0
+		var score: float = float(belief.get("confidence", 0.0)) - age_days * 0.01
+		if bool(belief.get("witnessed", false)):
+			score += 0.12
+		if score > best_score:
+			best_score = score
+			selected = belief
+	return selected
+
+func _decay_social_beliefs() -> void:
+	var day: int = simulation_minute / 1440
+	if day == last_belief_decay_day or simulation_minute % 60 != id % 60:
+		return
+	last_belief_decay_day = day
+	for belief in social_beliefs:
+		var confidence: float = float(belief.get("confidence", 0.0))
+		belief["confidence"] = maxf(0.0, confidence - (0.008 if bool(belief.get("witnessed", false)) else 0.025))
+	_prune_social_beliefs()
+
+func _prune_social_beliefs() -> void:
+	var oldest_allowed: int = simulation_minute - BELIEF_FORGET_DAYS * 1440
+	var retained: Array = []
+	for belief in social_beliefs:
+		if float(belief.get("confidence", 0.0)) >= 0.08 and int(belief.get("last_heard_minute", 0)) >= oldest_allowed:
+			retained.append(belief)
+	retained.sort_custom(func(a, b): return float(a.get("confidence", 0.0)) > float(b.get("confidence", 0.0)))
+	social_beliefs = retained.slice(0, mini(MAX_SOCIAL_BELIEFS, retained.size()))
+
+func _social_compatibility_with(other) -> float:
+	var similarity: float = 0.0
+	var compared_traits: Array = [
+		PersonalityTrait.SOCIABILITY,
+		PersonalityTrait.HONESTY,
+		PersonalityTrait.COMPASSION,
+		PersonalityTrait.POLITENESS
+	]
+	for trait_id in compared_traits:
+		similarity += 1.0 - absf(get_trait(trait_id) - other.get_trait(trait_id))
+	similarity /= float(compared_traits.size())
+	return clampf(similarity * 0.65 + (get_relationship_value(other.id) + 1.0) * 0.175, 0.0, 1.0)
 
 # ---- INSPECT ----
 func tick_inspect(world) -> void:
@@ -1975,6 +2485,8 @@ func _satisfy_needs(world) -> bool:
 		if hunger > food_threshold and item.is_edible:
 			body.ingested_substances["food"] = body.ingested_substances.get("food", 0.0) + item.nutrition * 0.5
 			needs[Need.FOOD] = maxf(0.0, needs[Need.FOOD] - item.nutrition * 0.5)
+			hunger = maxf(0.0, hunger - item.nutrition)
+			record_consumption(item)
 			inventory.remove_at(i)
 			ate = true
 			current_task = "Comiendo"
@@ -1985,8 +2497,10 @@ func _satisfy_needs(world) -> bool:
 				add_thought("Comió para sobrevivir.", 0.04 if hunger < 0.8 else 0.01)
 			break
 		elif thirst > drink_threshold and item.is_drink:
-			body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + item.nutrition * 0.5
-			needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - item.nutrition * 0.5)
+			body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + item.hydration
+			needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - item.hydration)
+			thirst = maxf(0.0, thirst - maxf(0.35, item.hydration))
+			record_consumption(item)
 			inventory.remove_at(i)
 			drank = true
 			current_task = "Bebiendo"
@@ -2004,6 +2518,9 @@ func _satisfy_needs(world) -> bool:
 			break
 
 	if ate or drank:
+		return true
+
+	if thirst > drink_threshold and _drink_from_water_well(world):
 		return true
 
 	if _drink_from_splatters(world):
@@ -2056,6 +2573,10 @@ func _satisfy_needs(world) -> bool:
 		var dist = abs(tile_pos.x - target.tile_pos.x) + abs(tile_pos.z - target.tile_pos.z) + abs(tile_pos.y - target.tile_pos.y) * 2
 		if dist <= 1:
 			inventory.append(target)
+			target.carried_by_id = id
+			target.is_in_stockpile = false
+			target.is_inside_container = false
+			target.container_id = -1
 			world.remove_entity(target)
 			needs_display_update = true
 			return false
@@ -2066,6 +2587,45 @@ func _satisfy_needs(world) -> bool:
 
 	return false
 
+func _drink_from_water_well(world: Object) -> bool:
+	var nearest_well = null
+	var nearest_distance: int = 2147483647
+	for building_value: Variant in world.buildings:
+		if not (building_value is DFBuilding):
+			continue
+		var well: DFBuilding = building_value
+		if well.type != DFBuilding.BuildingType.WATER_WELL or well.water_volume < 0.10:
+			continue
+		var distance: int = abs(well.tile_pos.x - tile_pos.x) + abs(well.tile_pos.z - tile_pos.z)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_well = well
+	if nearest_well == null:
+		return false
+	if nearest_distance > 0:
+		current_task = "Yendo al pozo"
+		_move_toward(world, nearest_well.tile_pos)
+		return true
+	var serving: Dictionary = nearest_well.draw_water(0.35)
+	var amount: float = float(serving.get("amount", 0.0))
+	if amount <= 0.0:
+		return false
+	var contamination: float = float(serving.get("contamination", 0.0))
+	body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + amount
+	water_liters_today += amount
+	thirst = maxf(0.0, thirst - amount * 1.40)
+	needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - amount)
+	if contamination > 0.0:
+		body.ingested_substances["pathogen"] = body.ingested_substances.get("pathogen", 0.0) + contamination * amount
+		pathogen_exposure = minf(2.0, pathogen_exposure + contamination * 0.04)
+	current_task = "Bebiendo del pozo"
+	needs_display_update = true
+	if contamination >= 0.20:
+		add_thought("El agua del pozo tenía olor y sabor desagradables.", -0.05)
+	else:
+		add_thought("Bebió agua fresca del pozo comunal.", 0.03)
+	return true
+
 func _drink_from_splatters(world) -> bool:
 	var here = world.get_splatters_at(tile_pos)
 	var drinkable = ["beer", "water", "mud"]
@@ -2074,7 +2634,11 @@ func _drink_from_splatters(world) -> bool:
 		if amount > 0.01:
 			var sip = minf(amount, 0.02)
 			body.ingested_substances[s] = body.ingested_substances.get(s, 0.0) + sip
-			world.add_splatter_substance(tile_pos, s, -sip)
+			world.absorb_from_tile(tile_pos, s, sip)
+			var water_contamination: float = world.get_water_contamination(tile_pos)
+			if s != "beer" and water_contamination > 0.0:
+				body.ingested_substances["pathogen"] = body.ingested_substances.get("pathogen", 0.0) + water_contamination * sip
+				pathogen_exposure = minf(2.0, pathogen_exposure + water_contamination * 0.02)
 			thirst = maxf(0.0, thirst - 0.1)
 			hunger = maxf(0.0, hunger - 0.03)
 			if s == "beer":
@@ -2082,14 +2646,17 @@ func _drink_from_splatters(world) -> bool:
 				stress *= 0.95
 				add_thought("Bebió un poco de cerveza del suelo. No es lo ideal, pero sirve.", 0.02)
 			else:
-				add_thought("Bebió del suelo para saciar la sed.", -0.01)
+				if water_contamination >= 0.20:
+					add_thought("Bebió agua de aspecto insalubre por necesidad.", -0.04)
+				else:
+					add_thought("Bebió del suelo para saciar la sed.", -0.01)
 			current_task = "Bebiendo del suelo"
 			needs_display_update = true
 			return true
 	return false
 
-func _try_sleep(world) -> bool:
-	if fatigue <= 0.82:
+func _try_sleep(world, scheduled: bool = false) -> bool:
+	if not scheduled and fatigue <= 0.82:
 		return false
 
 	# Buscar y reclamar cama si no tiene una
@@ -2098,11 +2665,12 @@ func _try_sleep(world) -> bool:
 		if bed_pos.x >= 0:
 			_claim_bed(world, bed_pos)
 
-	# Si tiene cama y no está extremadamente exhausto, caminar hacia ella primero
-	if preferred_bed.x >= 0 and fatigue < 0.96:
+	# Durante el horario nocturno siempre intenta llegar a su cama. Solo una
+	# emergencia de agotamiento permite quedarse dormido antes de alcanzarla.
+	if preferred_bed.x >= 0 and (scheduled or fatigue < 0.96):
 		var dist_to_bed = abs(tile_pos.x - preferred_bed.x) + abs(tile_pos.z - preferred_bed.z)
-		if dist_to_bed > 0:
-			current_task = "Yendo a dormir"
+		if dist_to_bed > 1 or tile_pos.y != preferred_bed.y:
+			current_task = "Yendo a su cama"
 			_move_toward(world, preferred_bed)
 			return true
 
@@ -2150,24 +2718,25 @@ func _idle_wander(world) -> void:
 	if path.size() > 0 and path_index < path.size():
 		_move_toward(world, path.back())
 
-func _find_unclaimed_bed(world):
-	if world == null or world.entities == null:
-		return null
-	var best = null
-	var best_dist = 99999
-	for e in world.entities:
-		if e is DFItem and e.get("is_bed") == true and not _is_bed_claimed(world, e.tile_pos):
-			var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
-			if d < best_dist:
-				best_dist = d
-				best = e.tile_pos
+func _find_unclaimed_bed(world) -> Vector3i:
+	var best := Vector3i(-1, -1, -1)
+	if world == null:
+		return best
+	var best_dist: int = 99999
+	for item_value in world.items:
+		if not item_value.is_bed or item_value.is_decayed or _is_bed_claimed(world, item_value.tile_pos):
+			continue
+		var distance: int = abs(item_value.tile_pos.x - tile_pos.x) + abs(item_value.tile_pos.z - tile_pos.z)
+		if distance < best_dist:
+			best_dist = distance
+			best = item_value.tile_pos
 	return best
 
 func _is_bed_claimed(world, bed_pos: Vector3i) -> bool:
 	if world == null:
 		return false
-	for e in world.entities:
-		if e.get("creature_type") == "dwarf" and e.get("is_alive") == true and e.preferred_bed == bed_pos:
+	for dwarf_value in world.dwarves:
+		if dwarf_value.is_alive and dwarf_value.preferred_bed == bed_pos:
 			return true
 	return false
 
@@ -2301,26 +2870,33 @@ func _execute_job(world) -> void:
 			success = world.chop_tree(current_job.tile_pos, tile_pos)
 		DFJob.JobType.BUILD_WALL:
 			var mat_id = 11
+			var wall_material_index: int = -1
 			for i in range(inventory.size()):
 				if inventory[i].item_type == "stone" or inventory[i].item_type == "wood":
 					mat_id = inventory[i].material
-					inventory.remove_at(i)
+					wall_material_index = i
 					break
 			success = world.build_wall(current_job.tile_pos, mat_id)
+			if success and wall_material_index >= 0:
+				inventory.remove_at(wall_material_index)
 		DFJob.JobType.BUILD_FLOOR:
 			var mat_id_2026 = 11
+			var floor_material_index: int = -1
 			for i_2027 in range(inventory.size()):
 				if inventory[i_2027].item_type == "stone" or inventory[i_2027].item_type == "wood":
 					mat_id_2026 = inventory[i_2027].material
-					inventory.remove_at(i_2027)
+					floor_material_index = i_2027
 					break
 			success = world.build_floor(current_job.tile_pos, mat_id_2026)
+			if success and floor_material_index >= 0:
+				inventory.remove_at(floor_material_index)
 		DFJob.JobType.BUILD_WORKSHOP:
 			var mat_id_2034 = 11
+			var workshop_material_index: int = -1
 			for i_2035 in range(inventory.size()):
 				if inventory[i_2035].item_type == "stone" or inventory[i_2035].item_type == "wood":
 					mat_id_2034 = inventory[i_2035].material
-					inventory.remove_at(i_2035)
+					workshop_material_index = i_2035
 					break
 			for b in world.buildings:
 				if b.tile_pos == current_job.tile_pos and not b.is_constructed:
@@ -2328,6 +2904,8 @@ func _execute_job(world) -> void:
 					success = true
 					world.create_workshop(b.type, b.tile_pos)
 					break
+			if success and workshop_material_index >= 0:
+				inventory.remove_at(workshop_material_index)
 		DFJob.JobType.WORKSHOP_REACTION:
 			var reaction_id = current_job.reaction_id
 			if reaction_id == "": reaction_id = "smelt_iron"
@@ -2372,6 +2950,13 @@ func _execute_job(world) -> void:
 			success = _execute_hunt_job(world)
 		DFJob.JobType.STORE_IN_CONTAINER:
 			success = _execute_store_in_container_job(world)
+		DFJob.JobType.CLEAN:
+			success = world.clean_sanitary_tile(current_job.tile_pos, 0.18) > 0.0
+			if success:
+				current_task = "Limpiando contaminación"
+				stress = maxf(0.0, stress - 0.01)
+		DFJob.JobType.EMPTY_LATRINE:
+			success = _execute_empty_latrine_job(world)
 		DFJob.JobType.FARM_HARVEST:
 			if world.is_grown_crop(current_job.tile_pos):
 				var crop = world.growing_crops.get(current_job.tile_pos)
@@ -2413,7 +2998,8 @@ func _execute_job(world) -> void:
 					patient.is_bleeding = false
 					wounds_treated += 1
 				
-				# 2. Disinfecting infections using alcohol/beer
+				# 2. Los cuidados reducen exposición y gravedad; no borran una
+				# enfermedad sistémica de forma instantánea.
 				if patient.has_infection:
 					# Check if doctor has beer/alcohol in inventory
 					var has_alcohol = false
@@ -2422,16 +3008,14 @@ func _execute_job(world) -> void:
 							inventory.remove_at(i_2135)
 							has_alcohol = true
 							break
-					patient.has_infection = false
-					patient.infection_chance = 0.0
-					# Disinfection hurts! Pain spike + nausea (might vomit)
-					patient.inflict_pain(15.0)
-					patient.body.nausea = minf(1.0, patient.body.nausea + 0.4)
-					if patient.body.nausea >= 0.8:
-						# Spawn a vomit splatter on the bed!
-						world.add_splatter_substance(patient.tile_pos, "vomit", 0.08)
-						patient.add_thought("Sintió náuseas insoportables por el alcohol vertido en sus heridas.", -0.06)
-					patient.add_thought("Aulló de dolor cuando el doctor desinfectó sus heridas.", -0.05)
+					var treatment_quality: float = 0.08 + get_skill_level(DFDwarf.Skill.DOCTORING) * 0.025
+					if has_alcohol:
+						treatment_quality += 0.05
+					patient.pathogen_exposure = maxf(0.0, patient.pathogen_exposure - treatment_quality)
+					patient.infection_chance = patient.pathogen_exposure
+					patient.disease_severity = maxf(0.05, patient.disease_severity - treatment_quality * 0.50)
+					patient.recovery_streak += 30 + get_skill_level(DFDwarf.Skill.DOCTORING) * 10
+					patient.add_thought("Recibió cuidados que mejoraron sus posibilidades de recuperación.", 0.05)
 					wounds_treated += 1
 				
 				# Restore health partially
@@ -2439,7 +3023,7 @@ func _execute_job(world) -> void:
 				patient.needs_display_update = true
 				
 				# Clear medical rest if fully healed
-				var still_needs_attention = patient.health < 0.9 or patient.has_infection
+				var still_needs_attention = patient.health < 0.9 or patient.disease_severity >= 0.20
 				for wound_2158 in patient.wounds:
 					if not wound_2158.get("healed", false):
 						still_needs_attention = true
@@ -2468,6 +3052,26 @@ func _execute_job(world) -> void:
 			current_job.state = DFJob.JobState.CANCELLED
 			current_job = null
 			current_task = "idle"
+
+func _execute_empty_latrine_job(world: Object) -> bool:
+	var target_latrine = null
+	for building in world.buildings:
+		if building.type == DFBuilding.BuildingType.LATRINE and building.tile_pos == current_job.tile_pos:
+			target_latrine = building
+			break
+	if target_latrine == null:
+		return false
+	var removed: float = target_latrine.remove_sanitation_waste(4.0)
+	if removed <= 0.0:
+		return true
+	var disposal_pos: Vector3i = current_job.disposal_pos
+	if disposal_pos.x < 0:
+		disposal_pos = tile_pos
+	world.add_splatter_substance(disposal_pos, "compost", removed)
+	current_task = "Transportando residuos al compostaje"
+	fatigue = minf(1.0, fatigue + 0.01)
+	add_thought("Mantuvo utilizable una instalación sanitaria.", 0.03)
+	return true
 
 func _pick_up_job(world, jobs: Array) -> void:
 	var best_job: DFJob = null
@@ -2552,6 +3156,10 @@ func _pick_up_job(world, jobs: Array) -> void:
 
 func _move_toward(world, target: Vector3i) -> void:
 	var effective_speed = speed * (1.0 - fatigue_level * 0.2)
+	var carried_ratio: float = get_carried_weight() / maxf(1.0, get_carrying_capacity())
+	if carried_ratio > 1.0:
+		effective_speed *= maxf(0.25, 1.0 / carried_ratio)
+		fatigue = minf(1.25, fatigue + 0.0005 * carried_ratio)
 	effective_speed = maxf(0.3, effective_speed)
 	# Only move every N ticks: faster dwarves = more frequent moves
 	if move_tick_counter > 0:
@@ -2568,7 +3176,20 @@ func _move_toward(world, target: Vector3i) -> void:
 		if current_job != null:
 			current_job.state = DFJob.JobState.CANCELLED
 			current_job = null
-		current_task = "idle"
+		if operating_workshop != null:
+			operating_workshop.unassign_dwarf()
+			operating_workshop = null
+		if not autonomous_plan.is_empty():
+			DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada durante demasiado tiempo")
+		if current_task == "Yendo a su cama":
+			# La cama reclamada no es utilizable: liberarla para no bloquear a
+			# toda la colonia y descansar provisionalmente donde haya espacio.
+			preferred_bed = Vector3i(-1, -1, -1)
+			claimed_bed = Vector3i(-1, -1, -1)
+			is_sleeping = true
+			current_task = "Durmiendo sin cama"
+		else:
+			current_task = "Recalculando ruta"
 		path.clear()
 		path_index = 0
 		stuck_counter = 0
@@ -2603,17 +3224,9 @@ func _move_toward(world, target: Vector3i) -> void:
 			return
 
 	if next_step != tile_pos:
-		# Entity collision avoidance: check if another entity is on the target tile
-		var blocked_by_entity = false
-		for e in world.entities:
-			if e == self: continue
-			if e is DFItem: continue
-			var is_alive_check = e.get("is_alive")
-			if is_alive_check == null: is_alive_check = true
-			if is_alive_check == false: continue
-			if e.tile_pos == next_step:
-				blocked_by_entity = true
-				break
+		# Consulta espacial O(1). El barrido anterior de todas las entidades por
+		# cada paso convertía una aldea concurrida en trabajo cuadrático.
+		var blocked_by_entity: bool = world.is_actor_occupied(next_step, self)
 		if blocked_by_entity:
 			# Try to find adjacent free tile instead
 			var dirs = [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1),
@@ -2625,24 +3238,15 @@ func _move_toward(world, target: Vector3i) -> void:
 				if alt.x < 0 or alt.x >= world.width or alt.z < 0 or alt.z >= world.depth:
 					continue
 				if world.is_blocked(alt): continue
-				var alt_blocked = false
-				for e_2341 in world.entities:
-					if e_2341 == self: continue
-					if e_2341 is DFItem: continue
-					var is_alive_check2 = e_2341.get("is_alive")
-					if is_alive_check2 == null: is_alive_check2 = true
-					if is_alive_check2 == false: continue
-					if e_2341.tile_pos == alt:
-						alt_blocked = true
-						break
+				var alt_blocked: bool = world.is_actor_occupied(alt, self)
 				if not alt_blocked:
-					tile_pos = alt
+					world.move_entity(self, alt)
 					found_alt = true
 					break
 			if not found_alt:
 				return
 		else:
-			tile_pos = next_step
+			world.move_entity(self, next_step)
 			# Fatigue from movement
 			fatigue_level = minf(1.0, fatigue_level + 0.002)
 		path_index += 1
@@ -2650,13 +3254,15 @@ func _move_toward(world, target: Vector3i) -> void:
 		stats_tracker["distance_traveled"] += 1
 
 func get_display_char() -> String:
+	if is_possessed:
+		return "@"
 	if current_job != null and task_progress > 0:
-		return "W"
+		return "&"
 	if is_sleeping:
 		return "z"
 	if mood == MoodState.BESERK or mood == MoodState.TANTRUM:
-		return "Y"
-	return "d" if gender == "Male" else "w"
+		return "!"
+	return "@"
 
 func get_display_color() -> Color:
 	if not is_alive:
@@ -2686,10 +3292,16 @@ func get_needs_string() -> String:
 	var thirst_pct = int(thirst * 100)
 	var health_pct = int(health * 100)
 	var fatigue_pct = int(fatigue * 100)
-	var result = "H:%d%% S:%d%% " % [hunger_pct, thirst_pct]
+	var result = "H:%d%% S:%d%% V:%d%% I:%d%% " % [
+		hunger_pct, thirst_pct, int(bladder_fill * 100), int(bowel_fill * 100)
+	]
 	if is_pregnant:
 		result += "EMBARAZADA! "
-	if health_pct < 30:
+	if disease_phase == DiseasePhase.SYMPTOMATIC:
+		result += get_disease_status()
+	elif disease_phase == DiseasePhase.RECOVERING:
+		result += "Recuperándose"
+	elif health_pct < 30:
 		result += "MORIBUNDO!"
 	elif health_pct < 60:
 		result += "Herido grave"
@@ -3618,7 +4230,9 @@ func _find_material_on_ground(world, mat_id: String) -> Object:
 			var name_lower = e.name.to_lower()
 			var type_lower = e.item_type.to_lower()
 			var mat_lower = mat_id.to_lower()
-			var e_mat_name = e.get("material_name", "").to_lower()
+			# DFItem es un RefCounted, no un Dictionary: Object.get() solo recibe
+			# el nombre de la propiedad y no acepta un segundo valor por defecto.
+			var e_mat_name: String = e.material_name.to_lower()
 			if mat_lower in name_lower or mat_lower in type_lower or mat_lower == e_mat_name:
 				var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
 				if d < best_dist:
@@ -3699,7 +4313,7 @@ func _execute_hunt_job(world) -> bool:
 	if hunting_target != null and hunting_target.get("is_alive") == true:
 		var d = abs(tile_pos.x - hunting_target.tile_pos.x) + abs(tile_pos.z - hunting_target.tile_pos.z)
 		if d <= 30:
-			current_task = "Cazando " + hunting_target.get("name", "presa")
+			current_task = "Cazando " + str(hunting_target.get("name"))
 			needs_display_update = true
 			return true
 	var target_creature_id = current_job.get_meta("creature_id", -1)
@@ -3718,8 +4332,11 @@ func _execute_hunt_job(world) -> bool:
 	if target == null:
 		return false
 	hunting_target = target
-	current_task = "Saliendo a cazar " + target.get("name", "presa")
-	add_thought("Sali? a cazar " + target.get("name", "presa"), 0.05)
+	var target_name: String = str(target.get("name"))
+	if target_name.is_empty():
+		target_name = "presa"
+	current_task = "Saliendo a cazar " + target_name
+	add_thought("Salió a cazar " + target_name, 0.05)
 	needs_display_update = true
 	return true
 
@@ -3978,52 +4595,65 @@ func _execute_tan_hide_job(world) -> bool:
 	return true
 
 func _execute_store_in_container_job(world) -> bool:
+	var carried_food = null
+	for item in inventory:
+		if item.is_food or item.is_meat or item.is_drink or item.item_type == "fish":
+			carried_food = item
+			break
 	var target_food = null
 	var best_dist = 999999
-	for ent in world.entities:
-		if ent is DFItem and (ent.is_food or ent.is_meat) and not ent.is_inside_container and not ent.is_decayed:
-			var already_in_sp = false
-			for sp in world.stockpiles:
-				if sp.has_tile(ent.tile_pos):
-					already_in_sp = true
-					break
-			if already_in_sp:
-				continue
-			var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z)
-			if d < best_dist:
-				best_dist = d
-				target_food = ent
-	if target_food != null:
+	if carried_food == null:
+		var requested_item_id: int = int(current_job.get_meta("target_item_id", -1)) if current_job != null else -1
+		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
+		for ent in world.entities:
+			if ent is DFItem and (ent.is_food or ent.is_meat or ent.is_drink or ent.item_type == "fish") and not ent.is_inside_container and not ent.is_decayed:
+				if requested_item_id >= 0 and ent.id != requested_item_id:
+					continue
+				if ent.is_reserved_for_other(id, current_tick):
+					continue
+				var already_in_sp = false
+				for sp in world.stockpiles:
+					if sp.has_tile(ent.tile_pos):
+						already_in_sp = true
+						break
+				if already_in_sp:
+					continue
+				var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z)
+				if d < best_dist:
+					best_dist = d
+					target_food = ent
+		if target_food != null:
+			target_food.reserve_for(id, current_tick + 600)
+	if carried_food == null and target_food != null:
 		var dist = abs(tile_pos.x - target_food.tile_pos.x) + abs(tile_pos.z - target_food.tile_pos.z)
 		if dist > 1:
 			_move_toward(world, target_food.tile_pos)
 			current_task = "Yendo a recoger comida"
 			if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
 			return false
+		_detach_item_from_container(world, target_food)
 		inventory.append(target_food)
+		target_food.carried_by_id = id
+		target_food.is_in_stockpile = false
 		world.remove_entity(target_food)
 		needs_display_update = true
 		current_task = "Recogiendo comida para almacenar"
 		return false
-	var carried_food = null
-	for item in inventory:
-		if item.is_food or item.is_meat:
-			carried_food = item
-			break
 	if carried_food == null:
 		return false
 	var best_fs_pos = Vector3i(-1, -1, -1)
 	var best_fs_dist = 999999
 	for b in world.buildings:
 		if b.type == DFBuilding.BuildingType.FOOD_STORE:
+			var container = _find_container_at(world, b.tile_pos)
+			if container == null or not container.has_container_space(carried_food):
+				continue
 			var d_3722 = abs(b.tile_pos.x - tile_pos.x) + abs(b.tile_pos.z - tile_pos.z)
 			if d_3722 < best_fs_dist:
 				best_fs_dist = d_3722
 				best_fs_pos = b.tile_pos
 	if best_fs_pos.y == -1:
-		carried_food.tile_pos = tile_pos
-		world.add_entity(carried_food)
-		inventory.erase(carried_food)
+		current_task = "Esperando espacio de almacenamiento"
 		return false
 	var dist_to_fs = abs(tile_pos.x - best_fs_pos.x) + abs(tile_pos.z - best_fs_pos.z)
 	if dist_to_fs > 1:
@@ -4032,11 +4662,47 @@ func _execute_store_in_container_job(world) -> bool:
 		if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
 		return false
 	carried_food.tile_pos = best_fs_pos
-	carried_food.is_inside_container = true
+	carried_food.is_in_stockpile = true
+	carried_food.carried_by_id = -1
+	carried_food.release_reservation(id)
+	_put_item_in_container_at(world, carried_food, best_fs_pos)
 	world.add_entity(carried_food)
 	inventory.erase(carried_food)
 	add_thought("Guardó " + carried_food.name + " en el almacén de comida.", 0.04)
 	needs_display_update = true
+	return true
+
+func _find_container_at(world: Object, pos: Vector3i):
+	for entity in world.entities:
+		if (
+			entity is DFItem
+			and entity.is_container
+			and entity.tile_pos == pos
+			and entity.contained_volume < entity.container_volume
+		):
+			return entity
+	return null
+
+func _detach_item_from_container(world: Object, item: DFItem) -> void:
+	if not item.is_inside_container:
+		return
+	for entity in world.entities:
+		if entity is DFItem and entity.is_container and entity.id == item.container_id:
+			entity.container_contents.erase(item)
+			entity.contained_volume = maxf(
+				0.0,
+				entity.contained_volume - item.get_item_volume()
+			)
+			break
+	item.remove_from_container()
+
+func _put_item_in_container_at(world: Object, item: DFItem, pos: Vector3i) -> bool:
+	item.is_inside_container = false
+	item.container_id = -1
+	var container = _find_container_at(world, pos)
+	if container == null or not container.has_container_space(item):
+		return false
+	item.put_in_container(container)
 	return true
 
 func _execute_collect_job(world, item_type_to_collect: String) -> bool:
@@ -4100,6 +4766,7 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 		else:
 			# Recoger el item
 			inventory.append(target_item)
+			target_item.carried_by_id = id
 			world.remove_entity(target_item)
 			add_thought("Recogio un " + target_item.name + " para almacenar.", 0.02)
 			current_task = "Recolectando " + target_item.name
@@ -4146,6 +4813,10 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 	else:
 		# Depositar en la posición destino
 		carried_item.tile_pos = target_drop_pos
+		carried_item.carried_by_id = -1
+		carried_item.is_in_stockpile = not is_exterior_drop
+		if not is_exterior_drop:
+			_put_item_in_container_at(world, carried_item, target_drop_pos)
 		world.add_entity(carried_item)
 		inventory.erase(carried_item)
 		if is_exterior_drop:

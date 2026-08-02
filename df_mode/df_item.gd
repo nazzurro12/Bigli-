@@ -88,6 +88,11 @@ var is_organic: bool = false
 var is_edible: bool = false
 var nutrition: float = 0.3
 var hydration: float = 0.0
+var protein_value: float = 0.0
+var carbohydrate_value: float = 0.0
+var fat_value: float = 0.0
+var fiber_value: float = 0.0
+var micronutrient_value: float = 0.0
 
 # ---- OWNERSHIP / RESERVATIONS / EQUIPMENT TAGS ----
 # Los objetos en el suelo tienen carried_by_id = -1. Al entrar en un inventario,
@@ -184,6 +189,7 @@ func _apply_type_defaults(itype: String) -> void:
 		"food":
 			is_food = true; is_edible = true; is_organic = true
 			nutrition = 0.4; hydration = 0.03; item_category = ItemCategory.FOOD
+			carbohydrate_value = 0.45; fiber_value = 0.25; micronutrient_value = 0.25
 			decay_time = DECAY_TIMES.get("food", 200)
 		"drink":
 			# Una bebida no debe entrar por la rama de comida.
@@ -192,6 +198,7 @@ func _apply_type_defaults(itype: String) -> void:
 		"meat":
 			is_meat = true; is_food = true; is_edible = true; is_organic = true
 			nutrition = 0.6; hydration = 0.05; item_category = ItemCategory.MEAT
+			protein_value = 0.65; fat_value = 0.30; micronutrient_value = 0.15
 			decay_time = DECAY_TIMES.get("meat", 150)
 		"corpse":
 			is_corpse = true; is_organic = true; is_edible = false
@@ -416,11 +423,16 @@ func get_full_name() -> String:
 func get_display_char() -> String:
 	if is_broken: return "x"
 	if is_corpse: return "%"
+	if item_type == "door": return "+"
+	if is_bed: return "="
 	if is_food: return "%"
 	if is_drink: return "~"
 	if is_container: return "O"
 	if is_weapon: return "/"
 	if is_armor: return "["
+	if item_type in ["stone", "ore", "bar"]: return "*"
+	if item_type == "wood": return "|"
+	if item_type == "seed": return ";"
 	return glyph
 
 func get_display_color() -> Color:
@@ -464,9 +476,17 @@ func get_item_volume() -> float:
 	return 1.0
 
 func put_in_container(container) -> void:
+	if container == null or container == self:
+		return
+	if is_inside_container and container_id == container.id:
+		if not container.container_contents.has(self):
+			container.container_contents.append(self)
+			container.contained_volume += get_item_volume()
+		return
 	is_inside_container = true
 	container_id = container.id
-	container.container_contents.append(self)
+	if not container.container_contents.has(self):
+		container.container_contents.append(self)
 	container.contained_volume += get_item_volume()
 
 func remove_from_container() -> void:

@@ -566,10 +566,9 @@ func _pick_personality() -> void:
 func get_display_char() -> String:
 	if is_sleeping and ai_state == AIState.SLEEP:
 		return "z"
-	if ai_state == AIState.ATTACK or ai_state == AIState.HUNT:
-		return "!"
-	if is_hostile:
-		return "X"
+	# La especie nunca pierde su identidad visual. El estado de amenaza se
+	# comunica con color y barra de vida, no sustituyendo todos los animales
+	# por el mismo bloque X/!.
 	return glyph
 
 func get_display_color() -> Color:
@@ -626,7 +625,35 @@ func tick(world, minute_ticked: bool = false) -> void:
 		if not standing.is_empty():
 			world.apply_step_coatings(tile_pos, standing)
 			world.deposit_footprint(tile_pos, standing)
-	_make_ai_decision(world, minute_ticked)
+	if minute_ticked:
+		_make_ai_decision(world, true)
+	else:
+		_continue_current_behavior(world)
+
+func _continue_current_behavior(world) -> void:
+	# La decisión persiste y se ejecuta durante varios ticks. Así un animal no da
+	# un paso aislado y queda inmóvil hasta el siguiente minuto de simulación.
+	match ai_state:
+		AIState.HUNT, AIState.STALK, AIState.ATTACK:
+			var target = _find_entity_by_id(world, ai_target_id)
+			if CreatureDecisionRules.is_valid_living_target(target, self):
+				ai_target_pos = target.tile_pos
+				_move_toward(world, ai_target_pos)
+			else:
+				ai_target_id = -1
+				ai_state = AIState.IDLE
+		AIState.FOLLOW, AIState.SOCIALIZE, AIState.MATE:
+			var companion = _find_entity_by_id(world, ai_target_id)
+			if companion != null and companion.get("is_alive") != false:
+				ai_target_pos = companion.tile_pos
+				if tile_pos.distance_squared_to(ai_target_pos) > 2:
+					_move_toward(world, ai_target_pos)
+			else:
+				ai_target_id = -1
+				ai_state = AIState.IDLE
+		AIState.WANDER, AIState.SEEK_FOOD, AIState.SEEK_WATER, AIState.FLEE, AIState.MIGRATE, AIState.INVESTIGATE, AIState.PATROL:
+			if ai_target_pos.x >= 0 and tile_pos != ai_target_pos:
+				_move_toward(world, ai_target_pos)
 
 func _update_vitals(world = null) -> void:
 	hunger = minf(1.0, hunger + 0.003 * speed)
@@ -923,6 +950,7 @@ func _execute_flee(world) -> void:
 	var target = Vector3i(tile_pos.x + flee_dir.x * 5, tile_pos.y, tile_pos.z + flee_dir.z * 5)
 	target.x = clampi(target.x, 1, world.width - 2)
 	target.z = clampi(target.z, 1, world.depth - 2)
+	ai_target_pos = target
 	_move_toward(world, target)
 	if fear_level <= 0:
 		ai_state = AIState.IDLE
@@ -1277,17 +1305,18 @@ func creature_size_speed_mod() -> float:
 		_: return 1.0
 
 func _wander(world) -> void:
-	var ox = (randi() % 7) - 3
-	var oz = (randi() % 7) - 3
-	var target = Vector3i(
-		clampi(tile_pos.x + ox, 1, world.width - 2),
-		tile_pos.y,
-		clampi(tile_pos.z + oz, 1, world.depth - 2)
-	)
-	if not world.is_blocked(target) and not world.is_water(target):
-		_move_toward(world, target)
+	if ai_target_pos.x < 0 or tile_pos == ai_target_pos:
+		var ox = (randi() % 11) - 5
+		var oz = (randi() % 11) - 5
+		ai_target_pos = Vector3i(
+			clampi(tile_pos.x + ox, 1, world.width - 2),
+			tile_pos.y,
+			clampi(tile_pos.z + oz, 1, world.depth - 2)
+		)
+	if not world.is_blocked(ai_target_pos) and not world.is_water(ai_target_pos):
+		_move_toward(world, ai_target_pos)
 	else:
-		_move_toward(world, Vector3i(tile_pos.x, tile_pos.y, tile_pos.z))
+		ai_target_pos = Vector3i(-1, -1, -1)
 
 
 

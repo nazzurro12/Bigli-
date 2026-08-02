@@ -25,6 +25,8 @@ const DFDialogue = preload("res://df_mode/df_dialogue.gd")
 const DFFastTravel = preload("res://df_mode/df_fast_travel.gd")
 const DFQuestSystem = preload("res://df_mode/df_quest.gd")
 const DFSaveLoad = preload("res://df_mode/df_save_load.gd")
+const DFPlanetRegions = preload("res://df_mode/df_planet_regions.gd")
+const DFStoryDirector = preload("res://df_mode/df_story_director.gd")
 const DFWorldSimulationScript = preload("res://df_mode/core/simulation/world_simulation.gd")
 const WorldGenerationSettings = preload("res://world/world_generation_settings.gd")
 
@@ -34,9 +36,21 @@ var world_gen = null
 var history_gen = null
 var renderer: DFRenderer = null
 var designation: DFDesignation = null
+var active_planet_region: Vector2i = Vector2i.ZERO
+var planet_region_cache: Dictionary = {}
+var planet_designation_cache: Dictionary = {}
+var _planet_transition_thread: Thread = null
+var _planet_transition_in_progress: bool = false
+var _planet_transition_direction: Vector2i = Vector2i.ZERO
+var _planet_transition_target: Vector2i = Vector2i.ZERO
+var _planet_transition_was_paused: bool = false
+var story_director: DFStoryDirector = DFStoryDirector.new()
+var active_story_hook: Dictionary = {}
+var last_possession_report: Dictionary = {}
 
 var paused: bool = false
 var tick_interval: float = 0.1
+const MAX_CATCHUP_TICKS_PER_FRAME: int = 2
 var generation_seed: int = -1
 var minimap_open: bool = false
 var lore: DFLore = null
@@ -49,6 +63,13 @@ var _legends_select_mode: bool = false
 var _chronicle_events_game: Array = []
 
 var _time_accum: float = 0.0
+var performance_metrics: Dictionary = {
+	"tick_ms": 0.0,
+	"citizens_ms": 0.0,
+	"other_systems_ms": 0.0,
+	"tick_max_ms": 0.0,
+	"samples": 0,
+}
 var _game_minute: int = 0
 var _game_hour: int = 6
 var _game_day: int = 1
@@ -58,7 +79,9 @@ const SEASON_LIST: Array = ["Spring", "Summer", "Autumn", "Winter"]
 const SEASON_ENUM_MAP = {"Spring": DFWorld.Season.SPRING, "Summer": DFWorld.Season.SUMMER, "Autumn": DFWorld.Season.AUTUMN, "Winter": DFWorld.Season.WINTER}
 # Todos los residentes continúan existiendo y pensando fuera de cámara. Se reparten
 # entre varios ticks para evitar picos, sin convertirlos en estadísticas abstractas.
-const SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 4
+# Los residentes de ciudades lejanas conservan toda su lógica, pero se distribuyen
+# en fases para que una ciudad poblada no congele un fotograma completo.
+const SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 12
 
 const HOUSE_TEMPLATES = [
 	# Casa 0: Cabaña Estándar Cuadrada (3x3)
@@ -139,6 +162,7 @@ var _mouse_tile_pos: Vector3i = Vector3i(-1, -1, -1)
 var settings_menu: Control = null
 var possessed_dwarf: Object = null
 var last_possessed_dwarf: Object = null
+var possessed_inventory_index: int = 0
 var follow_time: float = 0.0
 
 # Repetición controlada para movimiento mantenido durante la posesión.
@@ -1012,40 +1036,76 @@ func _has_open_adjacent_tile(world_ref, pos: Vector3i) -> bool:
 	return false
 
 func _populate_creatures_local() -> void:
+	_populate_region_fauna(world, embark_cursor)
+
+func _ensure_biome_creature_index() -> void:
+	if not _biome_creature_index.is_empty():
+		return
 	var data = DFData.new(generation_seed)
 	DFWorld._init_plants_from_data()
 	var creature_templates = data.creatures
 	if creature_templates.is_empty():
 		creature_templates = [{"name": "Fox", "tile": "f", "color": "#FF8800", "biomes": ["grassland", "temperate_forest", "taiga", "savanna"], "size": "small"}]
-	
 	_biome_creature_index.clear()
 	for ct in creature_templates:
 		for biome in ct.get("biomes", []):
 			if not _biome_creature_index.has(biome):
 				_biome_creature_index[biome] = []
 			_biome_creature_index[biome].append(ct)
-	
+
+func _populate_region_fauna(target_world, region: Vector2i) -> int:
+	if target_world == null or world_gen == null:
+		return 0
+	_ensure_biome_creature_index()
+	var region_biome: String = str(world_gen.get_biome(region.x, region.y))
+	var possible: Array = _biome_creature_index.get(region_biome, [])
+	if possible.is_empty():
+		return 0
 	var rng_local = RandomNumberGenerator.new()
-	rng_local.seed = generation_seed + 9999
-	
-	for z in range(world.depth):
-		for x in range(world.width):
-			if rng_local.randf() > 0.015: continue
-			var wx = int(float(x) / float(world.width) * world_gen.world_width)
-			var wz = int(float(z) / float(world.depth) * world_gen.world_depth)
-			if wx >= world_gen.biome_map[0].size() or wz >= world_gen.biome_map.size(): continue
-			var creature_biome = world_gen.biome_map[wz][wx]
-			var possible = _biome_creature_index.get(creature_biome, [])
-			if possible.is_empty(): continue
-			var chosen = possible[rng_local.randi() % possible.size()]
-			var h = world.get_surface_height(x, z)
-			if h < 1 or h > 8: continue
-			var pos = Vector3i(x, h, z)
-			if world.is_water(pos) or world.is_blocked(pos): continue
-			var creature = DFCreature.new(pos, str(chosen.get("id", chosen["name"])).to_lower(), chosen.get("tile", chosen.get("glyph", "c")), Color(chosen.get("color", "#FFFFFF")), chosen.get("size", "medium"), chosen)
-			world.add_entity(creature)
+	rng_local.seed = generation_seed + region.x * 73856093 + region.y * 19349663
+	var desired_count: int = rng_local.randi_range(14, 28)
+	var spawned_count: int = 0
+	var attempt_budget: int = desired_count * 10
+	for _attempt_index in range(attempt_budget):
+		if spawned_count >= desired_count:
+			break
+		var x: int = rng_local.randi_range(4, target_world.width - 5)
+		var z: int = rng_local.randi_range(4, target_world.depth - 5)
+		var h: int = target_world.get_surface_height(x, z)
+		if h < 1 or h > 12:
+			continue
+		var pos := Vector3i(x, h, z)
+		if target_world.is_water(pos) or target_world.is_blocked(pos):
+			continue
+		var chosen: Dictionary = possible[rng_local.randi() % possible.size()]
+		var creature = DFCreature.new(
+			pos,
+			str(chosen.get("id", chosen.get("name", "animal"))).to_lower(),
+			chosen.get("tile", chosen.get("glyph", "c")),
+			Color(chosen.get("color", "#FFFFFF")),
+			chosen.get("size", "medium"),
+			chosen
+		)
+		target_world.add_entity(creature)
+		spawned_count += 1
+	return spawned_count
+
+func _populate_streamed_planet_region(target_world, region: Vector2i) -> void:
+	if target_world == null or bool(target_world.get_meta("regional_population_complete", false)):
+		return
+	var historical_count: int = 0
+	if history_gen != null:
+		historical_count = history_gen.materialize_near_embark(target_world, world_gen, region)
+	var fauna_count: int = _populate_region_fauna(target_world, region)
+	target_world.set_meta("regional_population_complete", true)
+	target_world.set_meta("regional_historical_entities", historical_count)
+	target_world.set_meta("regional_fauna_count", fauna_count)
+	add_message("Región %d,%d: %d entidades históricas y %d animales." % [
+		region.x, region.y, historical_count, fauna_count
+	])
 
 func _process(delta: float) -> void:
+	_poll_planet_transition()
 	if renderer == null:
 		return
 	if current_state == GameState.LOADING_PLAYING:
@@ -1108,8 +1168,9 @@ func _process(delta: float) -> void:
 		renderer._world_curse_desc = world_gen.world_curse_description
 		var ht = renderer._highlighted_tile
 		if ht.x >= 0:
-			var wx = int(float(ht.x) / float(world.width) * world_gen.world_width)
-			var wz = int(float(ht.z) / float(world.depth) * world_gen.world_depth)
+			var cursor_sample: Vector2 = world_gen._get_world_sample(ht.x, ht.z, world.width, world.depth)
+			var wx: int = floori(cursor_sample.x)
+			var wz: int = floori(cursor_sample.y)
 			if wx >= 0 and wx < world_gen.world_width and wz >= 0 and wz < world_gen.world_depth:
 				if world_gen.biome_map.size() > wz and world_gen.biome_map[wz].size() > wx:
 					renderer._biome_at_cursor = world_gen.biome_map[wz][wx]
@@ -1134,9 +1195,13 @@ func _process(delta: float) -> void:
 	# El mundo debe continuar aunque el jugador posea o siga a un enano.
 	if not paused:
 		_time_accum += minf(delta, 0.1)
-		while _time_accum >= tick_interval:
+		var catchup_ticks := 0
+		while _time_accum >= tick_interval and catchup_ticks < MAX_CATCHUP_TICKS_PER_FRAME:
 			_time_accum -= tick_interval
 			_tick()
+			catchup_ticks += 1
+		if catchup_ticks >= MAX_CATCHUP_TICKS_PER_FRAME:
+			_time_accum = minf(_time_accum, tick_interval)
 
 	# F solo sigue con la cámara. La posesión se inicia únicamente con P.
 	follow_time = 0.0
@@ -1162,6 +1227,7 @@ func _process(delta: float) -> void:
 		renderer._legend_mode = 0
 		renderer._family_tree_data = {}
 
+	_clamp_camera_to_region_view()
 	renderer.camera_pos = camera_pos
 	if dialogue != null:
 		renderer._dialogue_active = dialogue.is_active()
@@ -1215,7 +1281,9 @@ func _run_world_generation_loop() -> void:
 	await get_tree().process_frame
 	
 	world_gen = DFWorldGen.new(generation_seed)
-	var sizes: Array = [128, 256, 512, 1024]
+	# El máximo equivale exactamente a 197.376 casillas por eje:
+	# 257 regiones DF * 16 bloques * 48 casillas.
+	var sizes: Array = [128, 256, 512, DFWorldGen.MAX_PLANET_REGIONS_PER_AXIS]
 	var selected_size: int = clampi(setting_size, 0, sizes.size() - 1)
 	world_gen.world_width = int(sizes[selected_size])
 	world_gen.world_depth = int(sizes[selected_size])
@@ -1318,6 +1386,9 @@ func _run_world_generation_loop() -> void:
 func _tick() -> void:
 	if world == null:
 		return
+	var profile_tick_start: int = Time.get_ticks_usec()
+	var profile_citizens_start: int = 0
+	var profile_citizens_ms: float = 0.0
 	world._grid_version = -1  # force spatial grid rebuild this tick
 	var minute_ticked = false
 	var dwarves_count = 0
@@ -1332,6 +1403,10 @@ func _tick() -> void:
 		minute_ticked = true
 		_game_minute += 1
 		world.set_meta("simulation_minute", int(world.get_meta("simulation_minute", 0)) + 1)
+		var story_minute_now: int = int(world.get_meta("simulation_minute", 0))
+		active_story_hook = story_director.refresh(world, story_minute_now)
+		if not last_possession_report.is_empty() and story_minute_now - int(last_possession_report.get("minute", story_minute_now)) >= 60:
+			last_possession_report = {}
 		if _game_minute >= 60:
 			_game_minute = 0
 			_game_hour += 1
@@ -1353,7 +1428,7 @@ func _tick() -> void:
 		for e in world.items:
 			_fortress_wealth_calc += 1.0
 
-	if minute_ticked:
+	if _simulation_tick_clock == 6 and _game_minute % 2 == 0:
 		_maintain_autonomous_economy()
 
 	if world.invasion_system != null and minute_ticked and _game_minute % 10 == 0:
@@ -1498,6 +1573,7 @@ func _tick() -> void:
 		if _chronicle_events_game.size() > 50:
 			_chronicle_events_game.pop_front()
 
+	profile_citizens_start = Time.get_ticks_usec()
 	for e4 in world.dwarves.duplicate():
 		if e4.get("is_alive") == false:
 			continue
@@ -1512,17 +1588,17 @@ func _tick() -> void:
 				var move_z = signi(dist_z)
 				var new_follower_pos = e4.tile_pos + Vector3i(move_x, 0, move_z)
 				if not world.is_blocked(new_follower_pos):
-					e4.tile_pos = _fix_surface(new_follower_pos)
+					world.move_entity(e4, _fix_surface(new_follower_pos))
 		
 		var is_dwarf4: bool = e4.get("creature_type") == "dwarf"
 		var is_settlement_resident: bool = e4 is DFDwarf and bool(e4.get("is_world_settlement_resident"))
-		if is_dwarf4:
+		if is_dwarf4 and not is_settlement_resident:
 			# La existencia de la metadata no implica que el enano sea seguidor.
 			# Antes, is_follower=false también vaciaba su cola de trabajos.
 			var is_active_follower: bool = e4.has_meta("is_follower") and e4.get_meta("is_follower") == true
 			var available_jobs: Array = [] if is_active_follower else (designation.job_queue if designation != null else [])
 			e4.tick(world, available_jobs, minute_ticked)
-			if e4.get("is_resting_medical") == true and designation != null:
+			if minute_ticked and e4.get("is_resting_medical") == true and designation != null:
 				var has_medical_job = false
 				for job_item in designation.job_queue:
 					if job_item.job_type == DFJob.JobType.TEND_WOUNDS and job_item.has_meta("patient_id") and job_item.get_meta("patient_id") == e4.get_instance_id():
@@ -1540,11 +1616,16 @@ func _tick() -> void:
 
 		elif is_settlement_resident:
 			# Simulación temporal distribuida: cada residente ejecuta la misma IA y conserva
-			# inventario, necesidades, emociones, relaciones, rutas y profesión aunque no
-			# esté en cámara. Solo se reparten sus actualizaciones entre cuatro ticks.
+			# inventario, necesidades, emociones, relaciones, rutas y profesión. Los cambios
+			# de minuto se marcan como pendientes para no sincronizar toda la ciudad en un pico.
+			if minute_ticked:
+				e4.set_meta("settlement_minute_pending", true)
 			var resident_phase: int = posmod(int(e4.get("id")), SETTLEMENT_RESIDENT_TICK_BUCKETS)
-			if minute_ticked or posmod(_absolute_simulation_tick, SETTLEMENT_RESIDENT_TICK_BUCKETS) == resident_phase:
-				e4.tick(world, [], minute_ticked)
+			if posmod(_absolute_simulation_tick, SETTLEMENT_RESIDENT_TICK_BUCKETS) == resident_phase:
+				var resident_minute_due: bool = bool(e4.get_meta("settlement_minute_pending", false))
+				e4.tick(world, [], resident_minute_due)
+				if resident_minute_due:
+					e4.set_meta("settlement_minute_pending", false)
 
 		# Capture strange mood messages from dwarf
 		if is_dwarf4 and e4.get("mood") == DFDwarf.MoodState.STRANGE_MOOD and e4.get("strange_mood_phase") == DFDwarf.StrangeMoodPhase.SEEKING_WORKSHOP:
@@ -1554,6 +1635,10 @@ func _tick() -> void:
 				var mn = mood_names.get(mt, "Extraño")
 				if _game_minute % 30 == 0:
 					add_message("  [ %s ] %s busca desesperadamente un taller..." % [mn, e4.name])
+
+	# Esta métrica debe terminar con la IA. Antes incluía clima, reproducción,
+	# fauna, crónica y limpieza, y el diagnóstico culpaba a los habitantes.
+	profile_citizens_ms = float(Time.get_ticks_usec() - profile_citizens_start) / 1000.0
 
 	# --- APAGADO DE FOGATAS DE FORMA SISTÉMICA ---
 	var campfires_to_remove = []
@@ -1570,8 +1655,12 @@ func _tick() -> void:
 	for cb_bld in campfires_to_remove:
 		world.buildings.erase(cb_bld)
 
-	_recover_orphaned_jobs()
-	_cleanup_completed_jobs()
+	# El mantenimiento administrativo no necesita ejecutarse 25 veces por
+	# minuto simulado. Repartirlo elimina barridos repetidos de colonos,
+	# trabajos e inventario sin cambiar el resultado lógico.
+	if _simulation_tick_clock % 10 == 0:
+		_recover_orphaned_jobs()
+		_cleanup_completed_jobs()
 
 	# TICK DE REPRODUCCION: cada minuto de juego
 	if minute_ticked:
@@ -1585,9 +1674,18 @@ func _tick() -> void:
 		world.set_meta("_pending_births", null)
 
 	if _simulation_tick_clock % 4 == 0:
+		var simulation_minute_now := int(world.get_meta("simulation_minute", 0))
+		var creature_minute_bucket := floori(float(_simulation_tick_clock) / 4.0)
 		for e6 in world.creatures.duplicate():
 			if e6.get("is_alive") == true:
-				e6.tick(world, minute_ticked or _simulation_tick_clock % 20 == 0)
+				var last_creature_minute := int(e6.get_meta("last_simulated_minute", -1))
+				var creature_minute_due := (
+					last_creature_minute < simulation_minute_now
+					and posmod(int(e6.id), 7) == creature_minute_bucket
+				)
+				e6.tick(world, creature_minute_due)
+				if creature_minute_due:
+					e6.set_meta("last_simulated_minute", simulation_minute_now)
 
 	if minute_ticked:
 		for e_corpse in world.creatures:
@@ -1681,6 +1779,17 @@ func _tick() -> void:
 							"battle_site": "las tierras de la fortaleza"
 						})
 					add_message("¡La figura histórica '%s' ha muerto! Las crónicas recordarán su fin." % e_dead.name)
+	_record_performance_sample(profile_tick_start, profile_citizens_ms)
+
+func _record_performance_sample(tick_start_usec: int, citizens_ms: float) -> void:
+	var tick_ms: float = float(Time.get_ticks_usec() - tick_start_usec) / 1000.0
+	var sample_count: int = int(performance_metrics.get("samples", 0))
+	var smoothing: float = 1.0 if sample_count == 0 else 0.12
+	performance_metrics["tick_ms"] = lerpf(float(performance_metrics.get("tick_ms", tick_ms)), tick_ms, smoothing)
+	performance_metrics["citizens_ms"] = lerpf(float(performance_metrics.get("citizens_ms", citizens_ms)), citizens_ms, smoothing)
+	performance_metrics["other_systems_ms"] = lerpf(float(performance_metrics.get("other_systems_ms", 0.0)), maxf(0.0, tick_ms - citizens_ms), smoothing)
+	performance_metrics["tick_max_ms"] = maxf(float(performance_metrics.get("tick_max_ms", 0.0)) * 0.995, tick_ms)
+	performance_metrics["samples"] = sample_count + 1
 
 func _recover_orphaned_jobs() -> void:
 	if designation == null or world == null:
@@ -1746,16 +1855,179 @@ func _possess_dwarf(id: int) -> void:
 			possessed_dwarf = e
 			last_possessed_dwarf = e
 			possessed_dwarf.is_possessed = true
+			var story_minute: int = int(world.get_meta("simulation_minute", 0))
+			story_director.begin_possession(possessed_dwarf, story_minute)
+			last_possession_report = {}
+			active_story_hook = story_director.refresh(world, story_minute, true)
 			add_message("! POSESION INICIADA ! (WASD para mover)")
 			renderer.follow_dwarf = -1
 			return
 			
 func _exit_possession() -> void:
 	if possessed_dwarf != null:
+		var released_dwarf = possessed_dwarf
+		var story_minute: int = int(world.get_meta("simulation_minute", 0))
+		last_possession_report = story_director.end_possession(released_dwarf, story_minute)
 		possessed_dwarf.is_possessed = false
 		possessed_dwarf = null
-		add_message("Posesion terminada. (L para volver)")
+		renderer.follow_dwarf = released_dwarf.id
+		active_story_hook = story_director.refresh(world, story_minute, true)
+		add_message("Posesion terminada: ahora observa las consecuencias. (F sigue al habitante)")
+		if not last_possession_report.is_empty():
+			add_message(str(last_possession_report.get("interpretation", "")))
 		follow_time = 0.0
+
+func _focus_story_hook() -> void:
+	if world == null or active_story_hook.is_empty():
+		add_message("No hay una historia personal disponible todavía.")
+		return
+	var actor_id: int = int(active_story_hook.get("actor_id", -1))
+	var actor = world.get_dwarf_by_id(actor_id)
+	if actor == null or actor.get("is_alive") == false:
+		active_story_hook = story_director.refresh(world, int(world.get_meta("simulation_minute", 0)), true)
+		return
+	renderer.follow_dwarf = actor_id
+	camera_pos = actor.tile_pos
+	add_message("Siguiendo: %s. Pulsa P para poseerlo." % str(active_story_hook.get("title", actor.name)))
+
+func _possessed_context_action() -> void:
+	if possessed_dwarf == null or world == null:
+		return
+	var minute: int = int(world.get_meta("simulation_minute", 0))
+	var need_action: Dictionary = _consume_possessed_need_item()
+	if bool(need_action.get("success", false)):
+		var need_message: String = str(need_action.get("message", "Consumió un recurso."))
+		story_director.record_action(str(need_action.get("type", "consume")), need_message, minute, possessed_dwarf.tile_pos)
+		add_message(need_message)
+		return
+
+	var candidates: Array[Vector3i] = [possessed_dwarf.tile_pos]
+	var preferred_direction: Vector2i = _held_move_direction
+	if preferred_direction != Vector2i.ZERO:
+		candidates.push_front(possessed_dwarf.tile_pos + Vector3i(preferred_direction.x, 0, preferred_direction.y))
+	for direction: Vector3i in [Vector3i(-1,0,0), Vector3i(1,0,0), Vector3i(0,0,-1), Vector3i(0,0,1)]:
+		var adjacent: Vector3i = possessed_dwarf.tile_pos + direction
+		if not candidates.has(adjacent):
+			candidates.append(adjacent)
+	for target: Vector3i in candidates:
+		if target.x < 0 or target.x >= world.width or target.z < 0 or target.z >= world.depth:
+			continue
+		var result: Dictionary = DFActorActionExecutor.contextual_action(possessed_dwarf, world, target)
+		if bool(result.get("success", false)):
+			var action_message: String = str(result.get("message", "Realizó una acción."))
+			story_director.record_action("interact", action_message, minute, target)
+			add_message(action_message)
+			return
+	add_message("No hay comida, bebida, objeto, árbol o roca utilizable al alcance.")
+
+func _consume_possessed_need_item() -> Dictionary:
+	if possessed_dwarf == null:
+		return {"success": false}
+	var wants_drink: bool = float(possessed_dwarf.thirst) >= 0.25
+	var wants_food: bool = float(possessed_dwarf.hunger) >= 0.25
+	for item_index: int in range(possessed_dwarf.inventory.size()):
+		var item: Variant = possessed_dwarf.inventory[item_index]
+		var consume_type: String = ""
+		var relief: float = 0.0
+		if wants_drink and item.get("is_drink") == true:
+			consume_type = "drink"
+			relief = maxf(0.35, float(item.get("hydration")))
+			possessed_dwarf.thirst = maxf(0.0, possessed_dwarf.thirst - relief)
+			if possessed_dwarf.needs is Dictionary:
+				possessed_dwarf.needs[DFDwarf.Need.DRINK] = maxf(0.0, float(possessed_dwarf.needs.get(DFDwarf.Need.DRINK, 0.0)) - relief)
+		elif wants_food and item.get("is_edible") == true:
+			consume_type = "eat"
+			relief = maxf(0.20, float(item.get("nutrition")))
+			possessed_dwarf.hunger = maxf(0.0, possessed_dwarf.hunger - relief)
+			if possessed_dwarf.needs is Dictionary:
+				possessed_dwarf.needs[DFDwarf.Need.FOOD] = maxf(0.0, float(possessed_dwarf.needs.get(DFDwarf.Need.FOOD, 0.0)) - relief)
+		if consume_type.is_empty():
+			continue
+		if possessed_dwarf.has_method("record_consumption"):
+			possessed_dwarf.record_consumption(item)
+		var item_name: String = str(item.get("name"))
+		var stack_size: int = maxi(1, int(item.get("stack_size")))
+		if stack_size > 1:
+			item.set("stack_size", stack_size - 1)
+		else:
+			possessed_dwarf.inventory.remove_at(item_index)
+		possessed_dwarf.needs_display_update = true
+		var verb: String = "Bebió" if consume_type == "drink" else "Comió"
+		return {"success": true, "type": consume_type, "message": "%s %s." % [verb, item_name]}
+	return {"success": false}
+
+func _possessed_drop_item() -> void:
+	if possessed_dwarf == null or world == null:
+		return
+	var result: Dictionary = DFActorActionExecutor.execute(
+		possessed_dwarf,
+		world,
+		DFActorActionExecutor.ActionType.DROP,
+		possessed_dwarf.tile_pos
+	)
+	var message: String = str(result.get("message", "No pudo soltar el objeto."))
+	if bool(result.get("success", false)):
+		story_director.record_action("drop", message, int(world.get_meta("simulation_minute", 0)), possessed_dwarf.tile_pos)
+	add_message(message)
+
+func _cycle_possessed_item() -> void:
+	if possessed_dwarf == null or possessed_dwarf.inventory.is_empty():
+		add_message("No lleva objetos.")
+		return
+	possessed_inventory_index = posmod(possessed_inventory_index + 1, possessed_dwarf.inventory.size())
+	var item: Variant = possessed_dwarf.inventory[possessed_inventory_index]
+	add_message("Objeto seleccionado: %s" % str(item.get("name")))
+
+func _use_selected_possessed_item() -> void:
+	if possessed_dwarf == null or possessed_dwarf.inventory.is_empty():
+		add_message("No hay ningún objeto que usar.")
+		return
+	possessed_inventory_index = clampi(possessed_inventory_index, 0, possessed_dwarf.inventory.size() - 1)
+	var item: Variant = possessed_dwarf.inventory[possessed_inventory_index]
+	var item_type: String = str(item.get("item_type")).to_lower()
+	var item_name: String = str(item.get("name"))
+	if item_type in ["weapon", "tool"]:
+		var lower_name: String = item_name.to_lower()
+		possessed_dwarf.equipped_weapon = (
+			"pickaxe" if "pico" in lower_name
+			else "axe" if "hacha" in lower_name
+			else "crossbow" if "ballesta" in lower_name
+			else "sword" if "espada" in lower_name
+			else lower_name
+		)
+		add_message("%s equipa %s." % [possessed_dwarf.name, item_name])
+		return
+	if item_type in ["food", "meal", "meat", "plant"]:
+		possessed_dwarf.hunger = maxf(0.0, possessed_dwarf.hunger - 0.45)
+	elif item_type in ["drink", "water", "beer"]:
+		possessed_dwarf.thirst = maxf(0.0, possessed_dwarf.thirst - 0.55)
+	else:
+		add_message("%s no puede usarse directamente." % item_name)
+		return
+	possessed_dwarf.inventory.remove_at(possessed_inventory_index)
+	possessed_inventory_index = maxi(0, possessed_inventory_index - 1)
+	add_message("%s usa %s." % [possessed_dwarf.name, item_name])
+
+func _possessed_attack() -> void:
+	if possessed_dwarf == null or world == null or world.combat_system == null:
+		return
+	var direction := _held_move_direction
+	if direction == Vector2i.ZERO:
+		direction = Vector2i(1, 0)
+	var target_pos: Vector3i = Vector3i(possessed_dwarf.tile_pos) + Vector3i(direction.x, 0, direction.y)
+	var target: Variant = world.get_entity_at(target_pos)
+	if target == null or target == possessed_dwarf or target.get("is_alive") == false:
+		add_message("No hay un objetivo vivo en esa dirección.")
+		return
+	var result: Dictionary = world.combat_system.creature_attack(possessed_dwarf, target)
+	var target_name: String = str(target.get("name"))
+	var outcome: String = "ataca a %s" % target_name
+	if bool(result.get("hit", false)):
+		outcome += " y acierta"
+	else:
+		outcome += " pero falla"
+	add_message("%s %s." % [possessed_dwarf.name, outcome])
+	story_director.record_action("attack", outcome, int(world.get_meta("simulation_minute", 0)), target_pos)
 
 func _try_move_possessed(direction: Vector2i) -> bool:
 	if possessed_dwarf == null or world == null or direction == Vector2i.ZERO:
@@ -1764,13 +2036,154 @@ func _try_move_possessed(direction: Vector2i) -> bool:
 	var next_x: int = current_position.x + direction.x
 	var next_z: int = current_position.z + direction.y
 	if next_x < 0 or next_x >= world.width or next_z < 0 or next_z >= world.depth:
+		_request_planet_transition(direction)
 		return false
 	var target_position: Vector3i = _fix_surface(Vector3i(next_x, current_position.y, next_z))
 	if world.is_blocked(target_position):
+		# El relieve procedural puede formar una pared exactamente sobre el borde.
+		# Esa pared no debe convertir una región del planeta en una caja cerrada.
+		const BORDER_EXIT_MARGIN := 3
+		var leaving_through_border: bool = (
+			(direction.x < 0 and current_position.x <= BORDER_EXIT_MARGIN)
+			or (direction.x > 0 and current_position.x >= world.width - BORDER_EXIT_MARGIN - 1)
+			or (direction.y < 0 and current_position.z <= BORDER_EXIT_MARGIN)
+			or (direction.y > 0 and current_position.z >= world.depth - BORDER_EXIT_MARGIN - 1)
+		)
+		if leaving_through_border:
+			_request_planet_transition(direction)
 		return false
 	possessed_dwarf.tile_pos = target_position
 	camera_pos = target_position
 	return true
+
+func _planet_dimensions() -> Vector2i:
+	if world_gen == null:
+		return Vector2i.ONE
+	return Vector2i(maxi(1, int(world_gen.world_width)), maxi(1, int(world_gen.world_depth)))
+
+func _region_is_habitable(candidate: Vector2i) -> bool:
+	if world_gen == null:
+		return false
+	var planet_size := _planet_dimensions()
+	var atlas_candidate := DFPlanetRegions.atlas_region(candidate, planet_size.x, planet_size.y)
+	if world_gen.is_ocean(atlas_candidate.x, atlas_candidate.y) or world_gen.is_lake(atlas_candidate.x, atlas_candidate.y):
+		return false
+	var land_samples: int = 0
+	var total_samples: int = 0
+	for sample_z in range(-2, 3):
+		for sample_x in range(-2, 3):
+			var atlas_sample := DFPlanetRegions.atlas_region(
+				candidate + Vector2i(sample_x, sample_z),
+				planet_size.x,
+				planet_size.y
+			)
+			total_samples += 1
+			if not world_gen.is_ocean(atlas_sample.x, atlas_sample.y) and not world_gen.is_lake(atlas_sample.x, atlas_sample.y):
+				land_samples += 1
+	return total_samples > 0 and float(land_samples) / float(total_samples) >= 0.72
+
+func _resolve_habitable_embark_region(requested: Vector2i) -> Vector2i:
+	if world_gen == null:
+		return requested
+	var planet_size := _planet_dimensions()
+	var normalized := DFPlanetRegions.normalize_region(requested, planet_size.x, planet_size.y)
+	if _region_is_habitable(normalized):
+		return normalized
+	for radius in range(1, 97):
+		for offset_z in range(-radius, radius + 1):
+			for offset_x in range(-radius, radius + 1):
+				if abs(offset_x) != radius and abs(offset_z) != radius:
+					continue
+				var candidate := DFPlanetRegions.normalize_region(
+					normalized + Vector2i(offset_x, offset_z),
+					planet_size.x,
+					planet_size.y
+				)
+				if _region_is_habitable(candidate):
+					return candidate
+	return normalized
+
+func _request_planet_transition(direction: Vector2i) -> void:
+	if _planet_transition_in_progress or world == null or world_gen == null:
+		return
+	var planet_size := _planet_dimensions()
+	_planet_transition_direction = direction
+	_planet_transition_target = DFPlanetRegions.neighbor(active_planet_region, direction, planet_size.x, planet_size.y)
+	var target_key: String = DFPlanetRegions.region_key(_planet_transition_target)
+	_planet_transition_in_progress = true
+	_planet_transition_was_paused = paused
+	paused = true
+	if planet_region_cache.has(target_key):
+		_activate_planet_region(planet_region_cache[target_key])
+		return
+	add_message("Cargando región planetaria %s..." % target_key)
+	_planet_transition_thread = Thread.new()
+	_planet_transition_thread.start(_build_planet_region.bind(_planet_transition_target))
+
+func _build_planet_region(region: Vector2i):
+	var generated_world = DFWorld.new(256, 256, 16)
+	generated_world.world_name = world_name
+	generated_world.geology_seed = generation_seed
+	generated_world.set_meta("active_world_region", [region.x, region.y])
+	world_gen.generate_local_map(generated_world, region)
+	return generated_world
+
+func _poll_planet_transition() -> void:
+	if not _planet_transition_in_progress or _planet_transition_thread == null:
+		return
+	if _planet_transition_thread.is_alive():
+		return
+	var generated_world = _planet_transition_thread.wait_to_finish()
+	_planet_transition_thread = null
+	if generated_world == null:
+		_planet_transition_in_progress = false
+		paused = _planet_transition_was_paused
+		add_message("No se pudo cargar la región vecina.")
+		return
+	_activate_planet_region(generated_world)
+
+func _activate_planet_region(target_world) -> void:
+	if world == null or target_world == null:
+		_planet_transition_in_progress = false
+		return
+	var old_key: String = DFPlanetRegions.region_key(active_planet_region)
+	var traveler = possessed_dwarf
+	if traveler != null:
+		world.remove_entity(traveler)
+	planet_region_cache[old_key] = world
+	planet_designation_cache[old_key] = designation
+	world = target_world
+	active_planet_region = _planet_transition_target
+	_populate_streamed_planet_region(world, active_planet_region)
+	var entry_2d: Vector2i = DFPlanetRegions.entry_tile(
+		_planet_transition_direction, world.width, world.depth
+	)
+	var entry_position := _fix_surface(Vector3i(entry_2d.x, 3, entry_2d.y))
+	if traveler != null:
+		traveler.tile_pos = entry_position
+		world.add_entity(traveler)
+		possessed_dwarf = traveler
+	camera_pos = entry_position
+	var target_key: String = DFPlanetRegions.region_key(active_planet_region)
+	designation = planet_designation_cache.get(target_key, null)
+	if designation == null:
+		designation = DFDesignation.new(world)
+	else:
+		designation.world = world
+	renderer.set_world(world)
+	renderer.designation = designation
+	renderer.camera_pos = camera_pos
+	if dialogue != null:
+		dialogue.world_ref = world
+	if fast_travel != null:
+		fast_travel.world_ref = world
+	if quest_system != null:
+		quest_system.world_ref = world
+	world.set_meta("active_world_region", [active_planet_region.x, active_planet_region.y])
+	_planet_transition_in_progress = false
+	paused = _planet_transition_was_paused
+	renderer.paused = paused
+	add_message("Entraste en la región planetaria %s." % DFPlanetRegions.region_key(active_planet_region))
 
 func _get_held_move_direction() -> Vector2i:
 	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
@@ -1813,9 +2226,38 @@ func _process_held_movement(delta: float) -> void:
 	else:
 		# En modo cámara, mantener WASD desplaza continuamente y deja de seguir.
 		renderer.follow_dwarf = -1
-		camera_pos.x = clampi(camera_pos.x + direction.x * 2, 0, world.width - 1)
-		camera_pos.z = clampi(camera_pos.z + direction.y * 2, 0, world.depth - 1)
+		_move_planet_camera(direction, 2)
 	_held_move_timer = HELD_MOVE_REPEAT_INTERVAL
+
+func _move_planet_camera(direction: Vector2i, step: int = 2) -> void:
+	if world == null or direction == Vector2i.ZERO:
+		return
+	var next_x: int = camera_pos.x + direction.x * step
+	var next_z: int = camera_pos.z + direction.y * step
+	var limits: Rect2i = _camera_region_limits()
+	if next_x < limits.position.x or next_x > limits.end.x or next_z < limits.position.y or next_z > limits.end.y:
+		_request_planet_transition(direction)
+		return
+	camera_pos.x = next_x
+	camera_pos.z = next_z
+
+func _camera_region_limits() -> Rect2i:
+	if world == null:
+		return Rect2i(0, 0, 1, 1)
+	var visible_width: int = maxi(1, renderer.view_width if renderer != null else 80)
+	var visible_depth: int = maxi(1, renderer.view_height if renderer != null else 25)
+	var min_x: int = mini(world.width / 2, visible_width / 2)
+	var min_z: int = mini(world.depth / 2, visible_depth / 2)
+	var max_x: int = maxi(min_x, world.width - (visible_width - visible_width / 2))
+	var max_z: int = maxi(min_z, world.depth - (visible_depth - visible_depth / 2))
+	return Rect2i(min_x, min_z, max_x - min_x, max_z - min_z)
+
+func _clamp_camera_to_region_view() -> void:
+	if world == null:
+		return
+	var limits: Rect2i = _camera_region_limits()
+	camera_pos.x = clampi(camera_pos.x, limits.position.x, limits.end.x)
+	camera_pos.z = clampi(camera_pos.z, limits.position.y, limits.end.y)
 
 func _handle_escape() -> void:
 	# ESC actúa sobre una sola capa, de la más específica a la más general.
@@ -2006,6 +2448,12 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	# Step 1
 	load_status = "Generando relieve, biomas y asentamientos locales"
 	await get_tree().process_frame
+	var resolved_embark_region := _resolve_habitable_embark_region(embark_cursor)
+	if resolved_embark_region != embark_cursor:
+		add_message("La zona elegida era oceánica. La expedición llegó a tierra firme en %d,%d." % [
+			resolved_embark_region.x, resolved_embark_region.y
+		])
+		embark_cursor = resolved_embark_region
 	# Una región local puede reutilizar el mismo objeto World. Limpiar antes de
 	# materializar impide duplicar edificios, residentes y almacenes.
 	world.entities.clear()
@@ -2017,6 +2465,9 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	world.growing_crops.clear()
 	world.set_meta("generated_world_sites", [])
 	world.set_meta("active_world_region", [embark_cursor.x, embark_cursor.y])
+	active_planet_region = embark_cursor
+	planet_region_cache.clear()
+	planet_designation_cache.clear()
 	world_gen.generate_local_map(world, embark_cursor)
 	# El centro debe calcularse después de crear el terreno. Antes podía quedar dentro del agua.
 	local_center_surface = _find_safe_settlement_center(Vector2i(128, 128))
@@ -2118,7 +2569,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 		for rel_j in range(embark_colonists.size()):
 			if rel_i != rel_j:
 				var other_id: int = embark_colonists[rel_j].id
-				embark_colonists[rel_i].relationships[other_id] = 60 + (randi() % 40)
+				embark_colonists[rel_i].relationships[other_id] = randf_range(0.60, 0.95)
 				if not other_id in embark_colonists[rel_i].friends:
 					embark_colonists[rel_i].friends.append(other_id)
 				
@@ -2156,6 +2607,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	load_status = "Poblando fauna y flora indómita"
 	await get_tree().process_frame
 	_populate_creatures_local()
+	world.set_meta("regional_population_complete", true)
 	camera_pos = local_center_surface
 	load_progress = 0.95
 	await get_tree().process_frame
@@ -2364,6 +2816,8 @@ func _build_initial_settlement(center: Vector3i) -> void:
 	var warehouse_built: bool = _build_large_initial_warehouse(Vector3i(hx, sy, hz), rng)
 	if not warehouse_built:
 		add_message("ADVERTENCIA: no se encontró una zona plana para el almacén 20x20.")
+	_ensure_basic_sanitation()
+	_ensure_basic_water_supply()
 
 	# --- Templo religioso completo (3x3), también validado como una sola pieza ---
 	var temple_pos := _find_safe_house_origin(Vector3i(hx, sy, hz + 12), utility_template, used_house_origins)
@@ -2556,6 +3010,19 @@ func _build_large_initial_warehouse(settlement_pos: Vector3i, _rng: RandomNumber
 			var shelf: DFBuilding = DFBuilding.new(DFBuilding.BuildingType.FOOD_STORE, shelf_position)
 			world.buildings.append(shelf)
 			shelf_tiles.append(shelf_position)
+			var chest: DFItem = world._spawn_item(
+				shelf_position,
+				"Cofre de Almacén",
+				"storage_chest",
+				DFWorld.MatType.WOOD,
+				"□",
+				Color("#B8793C")
+			)
+			if chest != null:
+				chest.is_container = true
+				chest.container_volume = 32.0
+				chest.max_stack = 1
+				chest.is_in_stockpile = true
 
 	var stockpile: DFStockpile = DFStockpile.new(stockpile_tiles)
 	stockpile.accepts_categories = [
@@ -2606,10 +3073,139 @@ func _build_large_initial_warehouse(settlement_pos: Vector3i, _rng: RandomNumber
 		if spawned_item != null:
 			spawned_item.is_in_stockpile = true
 			if str(resource_data[1]) in ["food", "drink"]:
-				spawned_item.is_inside_container = true
+				for possible_container in world.entities:
+					if (
+						possible_container is DFItem
+						and possible_container.is_container
+						and possible_container.tile_pos == resource_position
+						and possible_container.has_container_space(spawned_item)
+					):
+						spawned_item.put_in_container(possible_container)
+						break
 
-	add_message("Gran almacén construido: 20x20 interiores, muros, dos puertas y %d estanterías." % shelf_tiles.size())
+	add_message("Gran almacén construido: 20x20 interiores, dos puertas y %d cofres utilizables." % shelf_tiles.size())
 	return true
+
+func _reconcile_storage_containers() -> void:
+	if world == null:
+		return
+	var containers_by_position: Dictionary = {}
+	var containers_by_id: Dictionary = {}
+	for entity_value: Variant in world.entities:
+		if entity_value is DFItem and entity_value.is_container:
+			var existing_container: DFItem = entity_value
+			existing_container.container_contents.clear()
+			existing_container.contained_volume = 0.0
+			containers_by_position[existing_container.tile_pos] = existing_container
+			containers_by_id[existing_container.id] = existing_container
+
+	# Las partidas anteriores ya tienen estantes FOOD_STORE, pero no cofres
+	# físicos. Esta migración es idempotente y conserva la partida.
+	for building_value: Variant in world.buildings:
+		if not (building_value is DFBuilding):
+			continue
+		var storage_building: DFBuilding = building_value
+		if storage_building.type != DFBuilding.BuildingType.FOOD_STORE:
+			continue
+		if containers_by_position.has(storage_building.tile_pos):
+			continue
+		var chest: DFItem = world._spawn_item(
+			storage_building.tile_pos,
+			"Cofre de Almacén",
+			"storage_chest",
+			DFWorld.MatType.WOOD,
+			"□",
+			Color("#B8793C")
+		)
+		if chest == null:
+			continue
+		chest.is_container = true
+		chest.container_volume = 32.0
+		chest.max_stack = 1
+		chest.is_in_stockpile = true
+		containers_by_position[chest.tile_pos] = chest
+		containers_by_id[chest.id] = chest
+
+	# Reconstruir las relaciones que el formato de guardado representa mediante
+	# container_id y reparar referencias a cofres antiguos inexistentes.
+	for stored_value: Variant in world.entities:
+		if not (stored_value is DFItem):
+			continue
+		var stored_item: DFItem = stored_value
+		if stored_item.is_container:
+			continue
+		var target_container: DFItem = containers_by_id.get(stored_item.container_id, null)
+		if target_container == null and stored_item.is_inside_container:
+			target_container = containers_by_position.get(stored_item.tile_pos, null)
+		if target_container == null or not target_container.has_container_space(stored_item):
+			stored_item.is_inside_container = false
+			stored_item.container_id = -1
+			continue
+		stored_item.is_in_stockpile = true
+		stored_item.put_in_container(target_container)
+
+func _ensure_basic_sanitation() -> void:
+	if world == null:
+		return
+	var existing_latrines: int = 0
+	for existing_building: Variant in world.buildings:
+		if existing_building is DFBuilding and existing_building.type == DFBuilding.BuildingType.LATRINE:
+			existing_latrines += 1
+	if existing_latrines >= 4:
+		return
+	var center_value: Variant = world.get_meta("settlement_center", settlement_center)
+	var center: Vector3i = center_value if center_value is Vector3i else settlement_center
+	var offsets: Array[Vector2i] = [
+		Vector2i(-7, -7), Vector2i(7, -7), Vector2i(-7, 7), Vector2i(7, 7),
+		Vector2i(-10, 0), Vector2i(10, 0), Vector2i(0, -10), Vector2i(0, 10)
+	]
+	for sanitation_offset: Vector2i in offsets:
+		if existing_latrines >= 4:
+			break
+		var sanitation_x: int = center.x + sanitation_offset.x
+		var sanitation_z: int = center.z + sanitation_offset.y
+		if sanitation_x < 2 or sanitation_x >= world.width - 2 or sanitation_z < 2 or sanitation_z >= world.depth - 2:
+			continue
+		var sanitation_y: int = world.get_surface_height(sanitation_x, sanitation_z)
+		var sanitation_position := Vector3i(sanitation_x, sanitation_y, sanitation_z)
+		if world.is_water(sanitation_position) or world.is_blocked(sanitation_position):
+			continue
+		world.set_tile(sanitation_position, DFWorld.TileType.CONSTRUCTED_FLOOR)
+		world.set_material(sanitation_position, DFWorld.MatType.STONE)
+		var latrine := DFBuilding.new(DFBuilding.BuildingType.LATRINE, sanitation_position)
+		latrine.sanitation_capacity = 20.0
+		world.buildings.append(latrine)
+		existing_latrines += 1
+
+func _ensure_basic_water_supply() -> void:
+	if world == null:
+		return
+	var existing_wells: int = 0
+	for building_value: Variant in world.buildings:
+		if building_value is DFBuilding and building_value.type == DFBuilding.BuildingType.WATER_WELL:
+			existing_wells += 1
+	if existing_wells >= 2:
+		return
+	var center_value: Variant = world.get_meta("settlement_center", settlement_center)
+	var center: Vector3i = center_value if center_value is Vector3i else settlement_center
+	for offset: Vector2i in [Vector2i(-4, 0), Vector2i(4, 0), Vector2i(0, -5), Vector2i(0, 5)]:
+		if existing_wells >= 2:
+			break
+		var well_x: int = center.x + offset.x
+		var well_z: int = center.z + offset.y
+		if well_x < 2 or well_x >= world.width - 2 or well_z < 2 or well_z >= world.depth - 2:
+			continue
+		var well_y: int = world.get_surface_height(well_x, well_z)
+		var well_position := Vector3i(well_x, well_y, well_z)
+		if world.is_water(well_position) or world.is_blocked(well_position):
+			continue
+		world.set_tile(well_position, DFWorld.TileType.CONSTRUCTED_FLOOR)
+		world.set_material(well_position, DFWorld.MatType.STONE)
+		var well := DFBuilding.new(DFBuilding.BuildingType.WATER_WELL, well_position)
+		well.water_capacity = 80.0
+		well.water_volume = 60.0
+		world.buildings.append(well)
+		existing_wells += 1
 
 func _find_safe_settlement_center(preferred: Vector2i) -> Vector3i:
 	if world == null:
@@ -2621,8 +3217,9 @@ func _find_safe_settlement_center(preferred: Vector2i) -> Vector3i:
 			for dx in range(-radius, radius + 1, 3):
 				if radius > 0 and abs(dx) != radius and abs(dz) != radius:
 					continue
-				var x: int = clampi(preferred.x + dx, 18, world.width - 19)
-				var z: int = clampi(preferred.y + dz, 18, world.depth - 19)
+				var safe_margin: int = 48
+				var x: int = clampi(preferred.x + dx, safe_margin, world.width - safe_margin - 1)
+				var z: int = clampi(preferred.y + dz, safe_margin, world.depth - safe_margin - 1)
 				var y: int = world.get_surface_height(x, z)
 				var center_pos := Vector3i(x, y, z)
 				if world.is_water(center_pos) or world.is_blocked(center_pos):
@@ -2738,6 +3335,19 @@ func _find_pending_workshop_building(building_type: int) -> DFBuilding:
 				return building
 	return null
 
+func _find_open_colony_project_job(project_id: String) -> DFJob:
+	if designation == null:
+		return null
+	for job_value: Variant in designation.job_queue:
+		if not (job_value is DFJob):
+			continue
+		var project_job: DFJob = job_value
+		if str(project_job.get_meta("colony_project", "")) != project_id:
+			continue
+		if project_job.state in [DFJob.JobState.UNASSIGNED, DFJob.JobState.ASSIGNED, DFJob.JobState.IN_PROGRESS]:
+			return project_job
+	return null
+
 func _autonomous_workshop_site_is_clear(position: Vector3i) -> bool:
 	if world == null:
 		return false
@@ -2784,15 +3394,19 @@ func _find_autonomous_workshop_site() -> Vector3i:
 func _ensure_carpentry_workshop() -> DFWorkshop:
 	var existing: DFWorkshop = _find_workshop_by_type(DFWorkshop.WorkshopType.CARPENTRY)
 	if existing != null:
+		world.set_meta("carpentry_project_announced", true)
 		return existing
 	var pending_building: DFBuilding = _find_pending_workshop_building(DFBuilding.BuildingType.CARPENTRY)
+	var pending_job: DFJob = _find_open_colony_project_job("carpentry_chain")
 	if pending_building != null:
-		if designation != null and not designation.has_job_at(pending_building.tile_pos, DFJob.JobType.BUILD_WORKSHOP):
+		if designation != null and pending_job == null and not designation.has_job_at(pending_building.tile_pos, DFJob.JobType.BUILD_WORKSHOP):
 			var continued_job: DFJob = DFJob.new(DFJob.JobType.BUILD_WORKSHOP, pending_building.tile_pos, 9)
 			continued_job.result_tile_type = DFBuilding.BuildingType.CARPENTRY
 			continued_job.set_meta("required_material_type", "wood")
 			continued_job.set_meta("colony_project", "carpentry_chain")
 			designation.job_queue.append(continued_job)
+		return null
+	if pending_job != null:
 		return null
 	if designation == null:
 		return null
@@ -2807,7 +3421,9 @@ func _ensure_carpentry_workshop() -> DFWorkshop:
 	build_job.set_meta("required_material_type", "wood")
 	build_job.set_meta("colony_project", "carpentry_chain")
 	designation.job_queue.append(build_job)
-	add_message("La colonia inició el proyecto persistente de una carpintería.")
+	if not bool(world.get_meta("carpentry_project_announced", false)):
+		add_message("La colonia inició el proyecto persistente de una carpintería.")
+		world.set_meta("carpentry_project_announced", true)
 	return null
 
 func _queue_workshop_recipe_once(workshop: DFWorkshop, recipe_id: String) -> bool:
@@ -2987,6 +3603,8 @@ func _maintain_autonomous_economy() -> void:
 	_queue_resource_collection_jobs("stone", DFJob.JobType.COLLECT_STONE, 5, 8)
 	_queue_harvest_jobs(8)
 	_queue_colony_production_jobs(alive_dwarves, food_count, drink_count)
+	_queue_sanitation_jobs(alive_dwarves)
+	_tick_water_infrastructure()
 
 	# Caza moderada cuando la reserva alimentaria baja.
 	if food_count < alive_dwarves * 3 and _count_open_jobs(DFJob.JobType.HUNT) < 2:
@@ -3014,6 +3632,83 @@ func _job_targets_item(job_type: int, item_id: int) -> bool:
 		if int(queued_job.get_meta("target_item_id", -1)) == item_id:
 			return true
 	return false
+
+func _queue_sanitation_jobs(alive_dwarves: int) -> void:
+	if designation == null or world == null or alive_dwarves <= 0:
+		return
+
+	# La limpieza no puede apropiarse de toda la mano de obra.
+	var clean_limit: int = clampi(1 + alive_dwarves / 5, 1, 4)
+	var open_clean: int = _count_open_jobs(DFJob.JobType.CLEAN)
+	if open_clean < clean_limit:
+		for dirty_position_value: Variant in world.splatters.keys():
+			if open_clean >= clean_limit:
+				break
+			if not (dirty_position_value is Vector3i):
+				continue
+			var dirty_position: Vector3i = dirty_position_value
+			var distance_to_colony: int = abs(dirty_position.x - settlement_center.x) + abs(dirty_position.z - settlement_center.z)
+			if distance_to_colony > 45:
+				continue
+			var substances: Dictionary = world.splatters.get(dirty_position, {})
+			var sanitary_load: float = (
+				float(substances.get("feces", 0.0))
+				+ float(substances.get("urine", 0.0)) * 0.30
+				+ float(substances.get("vomit", 0.0)) * 0.70
+				+ float(substances.get("pathogen", 0.0)) * 1.50
+				+ float(substances.get("miasma", 0.0))
+			)
+			if sanitary_load < 0.03:
+				continue
+			var clean_priority: int = 10 if sanitary_load >= 0.35 else 8
+			if _queue_job_once(DFJob.JobType.CLEAN, dirty_position, clean_priority):
+				open_clean += 1
+
+	var open_empty: int = _count_open_jobs(DFJob.JobType.EMPTY_LATRINE)
+	var empty_limit: int = clampi(1 + alive_dwarves / 8, 1, 3)
+	if open_empty >= empty_limit:
+		return
+	var disposal_position: Vector3i = _find_sanitary_disposal_position()
+	for latrine in world.buildings:
+		if open_empty >= empty_limit:
+			break
+		if latrine.type != DFBuilding.BuildingType.LATRINE:
+			continue
+		if latrine.get_sanitation_fill_ratio() < 0.65:
+			continue
+		if _queue_job_once(DFJob.JobType.EMPTY_LATRINE, latrine.tile_pos, 9):
+			var empty_job: DFJob = designation.job_queue.back()
+			empty_job.disposal_pos = disposal_position
+			open_empty += 1
+
+func _tick_water_infrastructure() -> void:
+	for building_value: Variant in world.buildings:
+		if not (building_value is DFBuilding):
+			continue
+		var well: DFBuilding = building_value
+		if well.type != DFBuilding.BuildingType.WATER_WELL:
+			continue
+		var local_contamination: float = world.get_water_contamination(well.tile_pos)
+		# Aproximadamente 0.12 L por cada planificación de dos minutos.
+		# Una fuente limpia se depura lentamente; una fuga cercana la contamina.
+		well.recharge_water(0.12, local_contamination)
+
+func _find_sanitary_disposal_position() -> Vector3i:
+	for radius in range(22, 37):
+		var candidates: Array[Vector2i] = [
+			Vector2i(settlement_center.x + radius, settlement_center.z),
+			Vector2i(settlement_center.x - radius, settlement_center.z),
+			Vector2i(settlement_center.x, settlement_center.z + radius),
+			Vector2i(settlement_center.x, settlement_center.z - radius),
+		]
+		for candidate in candidates:
+			if candidate.x < 2 or candidate.x >= world.width - 2 or candidate.y < 2 or candidate.y >= world.depth - 2:
+				continue
+			var candidate_y: int = world.get_surface_height(candidate.x, candidate.y)
+			var candidate_pos := Vector3i(candidate.x, candidate_y, candidate.y)
+			if not world.is_water(candidate_pos) and not world.is_blocked(candidate_pos):
+				return candidate_pos
+	return settlement_center
 
 func _queue_resource_collection_jobs(item_type: String, job_type: int, max_jobs: int, priority: int) -> void:
 	if designation == null or world == null:
@@ -3857,7 +4552,7 @@ func _handle_key(event: InputEvent) -> void:
 					_held_move_direction = Vector2i(0, -1)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
 				else:
-					camera_pos.z = clampi(camera_pos.z - 2, 0, world.depth - 1)
+					_move_planet_camera(Vector2i(0, -1), 2)
 					renderer.follow_dwarf = -1
 					_held_move_direction = Vector2i(0, -1)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
@@ -3867,7 +4562,7 @@ func _handle_key(event: InputEvent) -> void:
 					_held_move_direction = Vector2i(0, 1)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
 				else:
-					camera_pos.z = clampi(camera_pos.z + 2, 0, world.depth - 1)
+					_move_planet_camera(Vector2i(0, 1), 2)
 					renderer.follow_dwarf = -1
 					_held_move_direction = Vector2i(0, 1)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
@@ -3877,7 +4572,7 @@ func _handle_key(event: InputEvent) -> void:
 					_held_move_direction = Vector2i(-1, 0)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
 				else:
-					camera_pos.x = clampi(camera_pos.x - 2, 0, world.width - 1)
+					_move_planet_camera(Vector2i(-1, 0), 2)
 					renderer.follow_dwarf = -1
 					_held_move_direction = Vector2i(-1, 0)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
@@ -3887,7 +4582,7 @@ func _handle_key(event: InputEvent) -> void:
 					_held_move_direction = Vector2i(1, 0)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
 				else:
-					camera_pos.x = clampi(camera_pos.x + 2, 0, world.width - 1)
+					_move_planet_camera(Vector2i(1, 0), 2)
 					renderer.follow_dwarf = -1
 					_held_move_direction = Vector2i(1, 0)
 					_held_move_timer = HELD_MOVE_INITIAL_DELAY
@@ -3916,9 +4611,22 @@ func _handle_key(event: InputEvent) -> void:
 				if designation != null:
 					designation.set_mode(DFDesignation.DesignationMode.DECONSTRUCT)
 			KEY_F:
-				_cycle_follow()
+				if possessed_dwarf != null:
+					_possessed_attack()
+				else:
+					_cycle_follow()
 			KEY_P:
 				_possess_dwarf(renderer.follow_dwarf)
+			KEY_Y:
+				_focus_story_hook()
+			KEY_E:
+				_possessed_context_action()
+			KEY_U:
+				_use_selected_possessed_item()
+			KEY_TAB:
+				_cycle_possessed_item()
+			KEY_R:
+				_possessed_drop_item()
 			KEY_V:
 				if possessed_dwarf != null and fast_travel != null:
 					fast_travel.start_fast_travel(camera_pos.x, camera_pos.z)

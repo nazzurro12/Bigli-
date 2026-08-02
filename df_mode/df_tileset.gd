@@ -48,6 +48,15 @@ func _build_char_map() -> void:
 	_char_map["\u21E8"] = 0x1A  # RIGHTWARDS WHITE ARROW -> CP437 →
 	_char_map["\u2502"] = 0xB3  # BOX DRAWINGS VERTICAL -> CP437 │
 	_char_map["\u2500"] = 0xC4  # BOX DRAWINGS HORIZONTAL -> CP437 ─
+	_char_map["\u250C"] = 0xDA  # BOX DRAWINGS DOWN AND RIGHT -> CP437 ┌
+	_char_map["\u2510"] = 0xBF  # BOX DRAWINGS DOWN AND LEFT -> CP437 ┐
+	_char_map["\u2514"] = 0xC0  # BOX DRAWINGS UP AND RIGHT -> CP437 └
+	_char_map["\u2518"] = 0xD9  # BOX DRAWINGS UP AND LEFT -> CP437 ┘
+	_char_map["\u251C"] = 0xC3  # BOX DRAWINGS VERTICAL AND RIGHT -> CP437 ├
+	_char_map["\u2524"] = 0xB4  # BOX DRAWINGS VERTICAL AND LEFT -> CP437 ┤
+	_char_map["\u252C"] = 0xC2  # BOX DRAWINGS DOWN AND HORIZONTAL -> CP437 ┬
+	_char_map["\u2534"] = 0xC1  # BOX DRAWINGS UP AND HORIZONTAL -> CP437 ┴
+	_char_map["\u253C"] = 0xC5  # BOX DRAWINGS CROSS -> CP437 ┼
 	_char_map["\u2550"] = 0xCD  # BOX DRAWINGS DOUBLE HORIZONTAL -> CP437 ═
 	_char_map["\u2551"] = 0xBA  # BOX DRAWINGS DOUBLE VERTICAL -> CP437 ║
 	_char_map["\u256C"] = 0xCE  # BOX DRAWINGS DOUBLE CROSS -> CP437 ╬
@@ -65,6 +74,7 @@ func _build_char_map() -> void:
 	_char_map["\u0022"] = 0x22  # QUOTATION MARK (")
 	_char_map["\u0060"] = 0x60  # GRAVE ACCENT (`)
 	_char_map["\u00B7"] = 0xF9  # MIDDLE DOT -> CP437 ∙
+	_char_map["\u2248"] = 0xF7  # ALMOST EQUAL TO -> CP437 ≈
 
 func get_tile_code(char_str: String) -> int:
 	return _char_map.get(char_str, 0x20)  # Default to space

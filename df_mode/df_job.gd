@@ -21,7 +21,8 @@ enum JobType {
 	LAY_NEST_BOX, COLLECT_EGGS, SHEAR_CREATURE,
 	MILK_CREATURE, MAKE_CHEESE, MAKE_LYE, MAKE_POTASH,
 	MAKE_PEARLASH, POTTERY, GLAZING, GLASS_MAKING,
-	BOOK_BINDING, SCROLL_WRITING, STORE_IN_CONTAINER, DECONSTRUCT
+	BOOK_BINDING, SCROLL_WRITING, STORE_IN_CONTAINER, DECONSTRUCT,
+	EMPTY_LATRINE
 }
 
 enum JobState { UNASSIGNED, ASSIGNED, IN_PROGRESS, COMPLETED, CANCELLED, SUSPENDED }
@@ -92,7 +93,8 @@ const JOB_LABOR_MAP = {
 	JobType.PULL_LEVER: LaborCategory.ENGINEERING, JobType.CLEAN: LaborCategory.HAULING,
 	JobType.FEED_WAR_ANIMAL: LaborCategory.MILITARY,
 	JobType.BUILD_WORKSHOP: LaborCategory.STONECRAFT, JobType.CONSTRUCT_BUILDING: LaborCategory.ENGINEERING,
-	JobType.DECONSTRUCT: LaborCategory.STONECRAFT
+	JobType.DECONSTRUCT: LaborCategory.STONECRAFT,
+	JobType.EMPTY_LATRINE: LaborCategory.HAULING
 }
 
 const LABOR_NAMES = {
@@ -155,6 +157,7 @@ var assigned_tick: int = -1
 var started_tick: int = -1
 var completed_tick: int = -1
 var cancel_reason: String = ""
+var disposal_pos: Vector3i = Vector3i(-1, -1, -1)
 
 func _init(type: int, pos: Vector3i, prio: int = 5):
 	job_type = type
@@ -203,7 +206,7 @@ func get_description_spanish() -> String:
 		JobType.MAKE_POTASH: "Hacer Potasa", JobType.MAKE_PEARLASH: "Hacer Sosa",
 		JobType.BOOK_BINDING: "Encuadernar", JobType.SCROLL_WRITING: "Escribir Pergamino",
 		JobType.STORE_IN_CONTAINER: "Guardar en Almacén de Comida",
-		JobType.DECONSTRUCT: "Desmantelar"
+		JobType.DECONSTRUCT: "Desmantelar", JobType.EMPTY_LATRINE: "Vaciar Letrina"
 	}
 	return names.get(job_type, "Desconocido")
 
@@ -269,6 +272,7 @@ func get_required_skill() -> int:
 		JobType.BOOK_BINDING: return DFDwarf.Skill.MECHANICS
 		JobType.SCROLL_WRITING: return DFDwarf.Skill.WRITING
 		JobType.RECOVER: return DFDwarf.Skill.DRESSING_WOUNDS
+		JobType.EMPTY_LATRINE: return DFDwarf.Skill.ORGANIZING
 		_: return DFDwarf.Skill.MINING
 
 func get_labor_category() -> int:
@@ -384,6 +388,7 @@ func get_display_char() -> String:
 		JobType.BUILD_WORKSHOP: return "W"
 		JobType.STORE_IN_CONTAINER: return "S"
 		JobType.DECONSTRUCT: return "x"
+		JobType.EMPTY_LATRINE: return "L"
 		_: return "?"
 
 func get_display_color() -> Color:
@@ -410,4 +415,5 @@ func get_display_color() -> Color:
 		JobType.SURGERY: return Color("#FF4444")
 		JobType.STORE_IN_CONTAINER: return Color("#BB8844")
 		JobType.DECONSTRUCT: return Color("#FF3333")
+		JobType.EMPTY_LATRINE: return Color("#A67C52")
 		_: return get_priority_color()
