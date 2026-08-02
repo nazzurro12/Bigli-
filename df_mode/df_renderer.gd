@@ -3190,7 +3190,7 @@ func _advance_interactive_tutorial() -> void:
 		_tutorial_step = -1
 		var main_node := get_parent()
 		if main_node != null and main_node.has_method("add_message"):
-			main_node.add_message("TUTORIAL COMPLETADO: ya puedes observar o intervenir libremente.")
+			main_node.call("add_message", "TUTORIAL COMPLETADO: ya puedes observar o intervenir libremente.")
 	queue_redraw()
 
 func tick_tutorial(delta: float) -> void:
