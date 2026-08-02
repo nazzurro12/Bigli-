@@ -26,7 +26,10 @@ const DFFastTravel = preload("res://df_mode/df_fast_travel.gd")
 const DFQuestSystem = preload("res://df_mode/df_quest.gd")
 const DFSaveLoad = preload("res://df_mode/df_save_load.gd")
 const DFConsequenceSystem = preload("res://df_mode/df_consequence_system.gd")
+const DFJusticeSystem = preload("res://df_mode/df_justice.gd")
 const DFWorldSimulationScript = preload("res://df_mode/core/simulation/world_simulation.gd")
+const DFCorpse = preload("res://df_mode/df_corpse.gd")
+const DFFluidSystem = preload("res://df_mode/df_fluid_system.gd")
 const WorldGenerationSettings = preload("res://world/world_generation_settings.gd")
 
 var world = null
@@ -41,13 +44,13 @@ var tick_interval: float = 0.1
 var generation_seed: int = -1
 var minimap_open: bool = false
 var lore: DFLore = null
-var legends: DFLegends = null
 var caravan_system: DFCaravan = null
 var caravan_menu_open: bool = false
-var legends_mode: bool = false
-var legends_category: int = 0
-var _legends_select_mode: bool = false
+var legends: DFLegends = null
 var _chronicle_events_game: Array = []
+var legends_mode: bool = false
+var _legends_select_mode: bool = false
+var _mode_switch_selected_idx: int = 0
 
 var _time_accum: float = 0.0
 var _game_minute: int = 0
@@ -190,6 +193,9 @@ var gen_rolling_events: Array = []
 var gen_step: int = 0
 
 var embark_cursor: Vector2i = Vector2i(0, 0)
+## Posicion del mapa global donde se genero el mapa local.
+## Todos los modos (fortaleza/aventura/leyendas) usan este mismo mapa.
+var _world_gen_embark_cursor: Vector2i = Vector2i(128, 128)
 var embark_flash_timer: float = 0.0
 
 var embark_prepare_points: int = 100
@@ -228,12 +234,18 @@ var fast_travel: DFFastTravel = null
 var quest_system: DFQuestSystem = null
 var _world_gen_in_progress: bool = false
 var _loading_in_progress: bool = false
+var _dwarf_stats_open: bool = false
+var _dwarf_stats_inv_idx: int = 0
+var _education_system = null
+var justice_system: DFJusticeSystem = null
 
 func _ready() -> void:
 	randomize()
 	dialogue = DFDialogue.new(null, self)
 	fast_travel = DFFastTravel.new(null, self)
 	quest_system = DFQuestSystem.new(null, self)
+	_education_system = preload("res://df_mode/df_education.gd").new(null, self)
+	justice_system = DFJusticeSystem.new(self)
 	renderer = DFRenderer.new()
 	renderer.name = "Renderer"
 	renderer.anchor_left = 0.0
@@ -337,11 +349,16 @@ func _workshop_has_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> boo
 			continue
 		var input_definition: Dictionary = input_value
 		var remaining: int = maxi(1, int(input_definition.get("count", 1)))
+		# Buscar items en un radio mas amplio (distancia Manhattan <= 3 desde el taller)
+		var workshop_pos: Vector3i = workshop.tile_pos
 		for world_entry: Variant in world_ref.entities:
 			if not (world_entry is DFItem):
 				continue
 			var candidate_item: DFItem = world_entry
-			if candidate_item.tile_pos.distance_squared_to(workshop.tile_pos) > 2:
+			var dist: int = abs(candidate_item.tile_pos.x - workshop_pos.x) + abs(candidate_item.tile_pos.z - workshop_pos.z) + abs(candidate_item.tile_pos.y - workshop_pos.y)
+			if dist > 3:
+				continue
+			if candidate_item.carried_by_id >= 0:
 				continue
 			if _recipe_input_matches_item(input_definition, candidate_item):
 				remaining -= maxi(1, candidate_item.stack_size)
@@ -384,13 +401,17 @@ func _consume_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> void:
 			continue
 		var input_definition: Dictionary = input_value
 		var remaining: int = maxi(1, int(input_definition.get("count", 1)))
+		var workshop_pos: Vector3i = workshop.tile_pos
 		for world_entry: Variant in world_ref.entities.duplicate():
 			if remaining <= 0:
 				break
 			if not (world_entry is DFItem):
 				continue
 			var candidate_item: DFItem = world_entry
-			if candidate_item.tile_pos.distance_squared_to(workshop.tile_pos) > 2:
+			var dist: int = abs(candidate_item.tile_pos.x - workshop_pos.x) + abs(candidate_item.tile_pos.z - workshop_pos.z) + abs(candidate_item.tile_pos.y - workshop_pos.y)
+			if dist > 3:
+				continue
+			if candidate_item.carried_by_id >= 0:
 				continue
 			if not _recipe_input_matches_item(input_definition, candidate_item):
 				continue
@@ -939,21 +960,53 @@ var _current_cycle_follow_index: int = 0
 func _cycle_follow() -> void:
 	if world == null:
 		return
-	var dwarves = []
-	for e in world.dwarves:
-		if e.get("is_alive") != false:
-			dwarves.append(e)
-	if dwarves.is_empty():
-		add_message("No hay enanos vivos para seguir.")
+	var targets = []
+	for dw in world.dwarves:
+		if dw.get("is_alive") != false:
+			targets.append(dw)
+	for cr in world.creatures:
+		if cr.get("is_alive") != false and not cr.get("is_hostile"):
+			targets.append(cr)
+	if targets.is_empty():
+		for ent in world.entities:
+			if (ent is DFDwarf or ent is DFCreature) and ent.get("is_alive") != false and not ent.get("is_hostile"):
+				targets.append(ent)
+	if targets.is_empty():
+		add_message("No hay aldeanos ni enanos vivos para seguir.")
 		return
-	_current_cycle_follow_index = (_current_cycle_follow_index + 1) % dwarves.size()
-	var target = dwarves[_current_cycle_follow_index]
-	if target.has_method("get_id") or target.get("id") != null:
-		var tid = target.id if target.get("id") != null else target.get_instance_id()
-		renderer.follow_dwarf = tid
-		camera_pos = target.tile_pos
-		add_message("Siguiendo a %s (%d/%d)" % [target.name, _current_cycle_follow_index + 1, dwarves.size()])
+	_current_cycle_follow_index = (_current_cycle_follow_index + 1) % targets.size()
+	var target = targets[_current_cycle_follow_index]
+	var tid = target.id if target.get("id") != null else target.get_instance_id()
+	renderer.follow_dwarf = tid
+	camera_pos = target.tile_pos
+	if renderer != null:
+		renderer.camera_pos = camera_pos
+		renderer.queue_redraw()
+	var target_type_str = "Enano" if target is DFDwarf else "Aldeano"
+	add_message("Siguiendo a %s: %s (%d/%d)" % [target_type_str, target.name, _current_cycle_follow_index + 1, targets.size()])
 	_exit_possession()
+
+func _toggle_possess() -> void:
+	"""Alterna entre poseer al enano mas cercano o salir de posesion."""
+	if possessed_dwarf != null:
+		_exit_possession()
+	else:
+		# Encontrar el enano vivo mas cercano
+		var closest = null
+		var best_d = 999999
+		for ent in world.entities:
+			if ent is DFDwarf and ent.is_alive and not ent.is_possessed:
+				var d = abs(ent.tile_pos.x - camera_pos.x) + abs(ent.tile_pos.z - camera_pos.z)
+				if d < best_d:
+					best_d = d
+					closest = ent
+		if closest != null:
+			_possess_dwarf(closest.id)
+			add_message("Poseyendo a %s. WASD para moverte, ESC para salir." % closest.name)
+		# Restaurar pausa al cerrar el menu
+		paused = false
+		if renderer != null:
+			renderer.paused = false
 
 func _fix_surface(pos: Vector3i) -> Vector3i:
 	if world != null:
@@ -1050,20 +1103,9 @@ func _process(delta: float) -> void:
 		renderer.queue_redraw()
 		return
 	if current_state in [GameState.SETTINGS_MENU, GameState.MODE_SELECT, GameState.EMBARK_MAP_SELECT, GameState.EMBARK_PREPARE]:
-		if current_state == GameState.EMBARK_MAP_SELECT:
-			embark_flash_timer += delta
 		renderer.queue_redraw()
 		return
 	if world == null:
-		if legends_mode and legends != null:
-			renderer._legend_text = legends.get_current_text()
-			renderer._legend_page = legends.get_page_info()
-			renderer._legend_mode = legends.current_mode
-			if legends.current_mode == DFLegends.ViewMode.FIGURE_DETAIL:
-				renderer._family_tree_data = legends.get_figure_detail_data(legends.selected_figure_id)
-			else:
-				renderer._family_tree_data = {}
-			renderer.queue_redraw()
 		return
 
 	renderer.game_hour = _game_hour
@@ -1125,11 +1167,15 @@ func _process(delta: float) -> void:
 	# El mundo debe continuar aunque el jugador posea o siga a un enano.
 	if not paused:
 		_time_accum += minf(delta, 0.1)
-		while _time_accum >= tick_interval:
+		var max_ticks = 2
+		var ticks_run = 0
+		while _time_accum >= tick_interval and ticks_run < max_ticks:
 			_time_accum -= tick_interval
 			_tick()
+			ticks_run += 1
+		if ticks_run >= max_ticks:
+			_time_accum = 0.0
 
-	# F solo sigue con la cámara. La posesión se inicia únicamente con P.
 	follow_time = 0.0
 
 	if current_state == GameState.PLAYING and not paused:
@@ -1139,16 +1185,7 @@ func _process(delta: float) -> void:
 		camera_pos = possessed_dwarf.tile_pos
 	elif renderer.follow_dwarf >= 0:
 		_follow_dwarf_camera()
-
-	if legends_mode and legends != null:
-		renderer._legend_text = legends.get_current_text()
-		renderer._legend_page = legends.get_page_info()
-		renderer._legend_mode = legends.current_mode
-		if legends.current_mode == DFLegends.ViewMode.FIGURE_DETAIL:
-			renderer._family_tree_data = legends.get_figure_detail_data(legends.selected_figure_id)
-		else:
-			renderer._family_tree_data = {}
-	else:
+	elif not legends_mode:
 		renderer._legend_text = ""
 		renderer._legend_mode = 0
 		renderer._family_tree_data = {}
@@ -1297,14 +1334,16 @@ func _run_world_generation_loop() -> void:
 	lore = DFLore.new(generation_seed, world_name)
 	legends = DFLegends.new(generation_seed, world_name)
 	legends.load_from_history(world_gen, history_gen)
+	# El mapa local se genera SOLO al hacer clic en Embarcar (en _run_loading_playing_loop).
+	# Todos los modos (fortaleza, aventura, leyendas) usaran el mismo mapa de la primera generacion.
 	embark_cursor = Vector2i(world_gen.world_width / 2, world_gen.world_depth / 2)
 	
 	if has_meta("quick_start_pending") and get_meta("quick_start_pending") == true:
 		remove_meta("quick_start_pending")
 		_finalize_embark_and_land(true)
 	else:
-		current_state = GameState.MODE_SELECT
-		
+		_finalize_embark_and_land(true)
+	
 	_world_gen_in_progress = false
 
 func _tick() -> void:
@@ -1316,7 +1355,6 @@ func _tick() -> void:
 		var removed_environment_entries: int = int(stabilization.get("weather_items", 0)) + int(stabilization.get("fluid_tiles", 0))
 		if removed_environment_entries > 0:
 			add_message("Entorno estabilizado: %d acumulaciones antiguas retiradas." % removed_environment_entries)
-	world._grid_version = -1  # force spatial grid rebuild this tick
 	var minute_ticked = false
 	var dwarves_count = 0
 	var mil_strength = 0.0
@@ -1325,6 +1363,14 @@ func _tick() -> void:
 	_absolute_simulation_tick += 1
 	world.set_meta("simulation_tick_total", _absolute_simulation_tick)
 	_simulation_tick_clock += 1
+	if _simulation_tick_clock % 2 == 0:
+		DFFluidSystem.process_fluids(world)
+	if _education_system != null and _simulation_tick_clock % 6 == 0:
+		_education_system.tick(world)
+	if justice_system != null:
+		var justice_msgs: Array = justice_system.tick(world, minute_ticked or _simulation_tick_clock % 10 == 0, _game_minute)
+		for jmsg in justice_msgs:
+			add_message(str(jmsg))
 	if _simulation_tick_clock >= 25:
 		_simulation_tick_clock = 0
 		minute_ticked = true
@@ -1342,15 +1388,16 @@ func _tick() -> void:
 					_game_year += 1
 
 	if minute_ticked:
-		for e in world.dwarves:
-			if e.get("is_alive") == true:
+		for dwarf_ent in world.dwarves:
+			if dwarf_ent.get("is_alive") == true:
 				dwarves_count += 1
-				mil_strength += e.combat_skill
+				mil_strength += dwarf_ent.combat_skill
 				_fortress_wealth_calc += 10.0
 		for e in world.items:
 			_fortress_wealth_calc += 1.0
 
 	if minute_ticked:
+		DFFluidSystem.process_temperature_freeze_thaw(world, _game_season)
 		_maintain_autonomous_economy()
 		_ensure_consequence_system()
 		if _game_minute % 10 == 0:
@@ -1542,6 +1589,13 @@ func _tick() -> void:
 				if _game_minute % 30 == 0:
 					add_message("  [ %s ] %s busca desesperadamente un taller..." % [mn, e4.name])
 
+	var creature_bucket_phase: int = posmod(_absolute_simulation_tick, 4)
+	for c_ent in world.creatures:
+		if c_ent.get("is_alive") != false:
+			var c_phase: int = posmod(c_ent.get_instance_id(), 4)
+			if minute_ticked or c_phase == creature_bucket_phase:
+				c_ent.tick(world, minute_ticked)
+
 	# --- APAGADO DE FOGATAS DE FORMA SISTÉMICA ---
 	var campfires_to_remove = []
 	for b in world.buildings:
@@ -1577,6 +1631,8 @@ func _tick() -> void:
 				e6.tick(world, minute_ticked or _simulation_tick_clock % 20 == 0)
 
 	if minute_ticked:
+		# --- SISTEMA DE CADÁVERES ---
+		# Criaturas: crear cadáver DFItem para criaturas que murieron
 		for e_corpse in world.creatures:
 			if e_corpse.get("is_alive") == false and not bool(e_corpse.get_meta("_has_corpse", false)):
 				e_corpse.set_meta("_has_corpse", true)
@@ -1586,6 +1642,79 @@ func _tick() -> void:
 				corpse_item_1259.set_meta("creature_name", str(_safe_get(e_corpse, "name", "")))
 				corpse_item_1259.set_meta("creature_size", str(_safe_get(e_corpse, "size_label", "medium")))
 				world.add_entity(corpse_item_1259)
+		# Enanos: crear DFCorpse para enanos que murieron (usando create_corpse en df_dwarf.gd)
+		for dwarf_entry in world.dwarves:
+			if not dwarf_entry.is_alive and not dwarf_entry.has_meta("_has_corpse"):
+				dwarf_entry.set_meta("_has_corpse", true)
+				# Determinar causa de muerte
+				var death_cause: String = "Desconocida"
+				if dwarf_entry.hunger > 1.0:
+					death_cause = "Inanición (hambre)"
+				elif dwarf_entry.thirst > 1.0:
+					death_cause = "Inanición (sed)"
+				elif dwarf_entry.health <= 0.0:
+					death_cause = "Heridas mortales"
+				elif dwarf_entry.bleeding_rate > 0.1:
+					death_cause = "Desangramiento"
+				var corpse = dwarf_entry.create_corpse(world, death_cause)
+				# Notificar a otros enanos de la muerte
+				for other_dwarf in world.dwarves:
+					if other_dwarf != dwarf_entry and other_dwarf.is_alive:
+						if other_dwarf.has_relationship_with(dwarf_entry.id):
+							other_dwarf.add_thought("Se enteró de la muerte de %s." % dwarf_entry.name, -0.08)
+							other_dwarf.modify_relationship(dwarf_entry.id, -0.1)
+						elif randi() % 5 == 0:
+							other_dwarf.add_thought("Un compañero ha muerto: %s." % dwarf_entry.name, -0.03)
+				# Añadir trabajo de entierro si hay un cementerio o zona de entierro designada
+				_ensure_burial_job(world, corpse)
+
+	# Procesar pudricion de cadaveres (DFCorpse)
+	_process_corpses_decay(world, minute_ticked)
+	
+	# Procesar rituales funerarios
+	_process_funerals(world, minute_ticked)
+
+	# -- POSESION FANTASMAL: los fantasmas sin enterrar pueden poseer enanos dormidos --
+	if minute_ticked and _game_minute % 15 == 0 and world != null:
+		var active_ghosts: Array[Dictionary] = []
+		for entity in world.entities:
+			if entity.get("creature_type") == "ghost" and entity.get("is_alive") != false:
+				# Encontrar el cadaver asociado a este fantasma para obtener el nombre
+				var ghost_corpse_name = "un espiritu"
+				for ce in world.entities:
+					if ce is DFCorpse and ce.ghost_id == entity.get_instance_id():
+						ghost_corpse_name = ce.dwarf_name
+						break
+				active_ghosts.append({"entity": entity, "corpse_name": ghost_corpse_name})
+		
+		if not active_ghosts.is_empty() and randi() % 3 == 0:
+			# Elegir un fantasma aleatorio
+			var ghost_data = active_ghosts[randi() % active_ghosts.size()]
+			# Buscar un enano dormido cercano para poseer
+			var sleeping_dwarves: Array = []
+			for dwarf in world.dwarves:
+				if dwarf.get("is_alive") == true and dwarf.get("is_sleeping") == true and not dwarf.get("is_possessed") and dwarf.get("is_world_settlement_resident") != true:
+					var gdist = abs(dwarf.tile_pos.x - int(ghost_data.entity.tile_pos.x)) + abs(dwarf.tile_pos.z - int(ghost_data.entity.tile_pos.z))
+					if gdist < 30:
+						sleeping_dwarves.append(dwarf)
+			if not sleeping_dwarves.is_empty():
+				var target = sleeping_dwarves[randi() % sleeping_dwarves.size()]
+				if randi() % 4 == 0:  # 25% de probabilidad de posesion
+					# Posesion temporal: el enano se despierta confundido
+					target.is_sleeping = false
+					target.current_task = "Poseido"
+					target.add_thought("Siente que algo se apodera de su cuerpo. Suenos y realidad se mezclan.", -0.08)
+					target.stress = minf(1.0, target.stress + 0.08)
+					# Efecto de posesion: el enano deambula sin rumbo por unos ticks
+					target.set_meta("ghost_possessed_ticks", 5 + randi() % 10)
+					target.set_meta("ghost_possessor_name", ghost_data.corpse_name)
+					world.messages.append("¡%s se retuerce en la cama! El espiritu de %s lo posee." % [target.name, ghost_data.corpse_name])
+				else:
+					# Pesadilla: solo sueno, sin posesion
+					var dream_msg = target._get_ghost_dream_message()
+					dream_msg = dream_msg.replace("un espiritu", ghost_data.corpse_name)
+					target.add_thought(dream_msg, -0.05)
+					target.stress = minf(1.0, target.stress + 0.03)
 
 	if minute_ticked and _game_minute % 10 == 0:
 		for e7 in world.items:
@@ -1723,7 +1852,221 @@ func _follow_dwarf_camera() -> void:
 	var fd = world.get_dwarf_by_id(renderer.follow_dwarf)
 	if fd != null and (fd.get("is_alive") != false):
 		camera_pos = fd.tile_pos
+		renderer.camera_pos = camera_pos
+	else:
+		renderer.follow_dwarf = -1
+
+# ===================== SISTEMA DE CADÁVERES Y ENTIERROS =====================
+
+func _ensure_burial_job(world_ref, corpse: DFCorpse) -> void:
+	"""Crea un trabajo de entierro para un cadáver.
+	Si el funeral no se ha completado, se pospone el entierro para que primero ocurra el ritual."""
+	if designation == null or corpse == null:
 		return
+	
+	# Iniciar funeral (no entierro directo)
+	if corpse.funeral_state == DFCorpse.FuneralState.NONE:
+		corpse.funeral_state = DFCorpse.FuneralState.GATHERING
+		corpse.funeral_start_tick = _absolute_simulation_tick
+		add_message("! FUNERAL: La colonia se prepara para despedir a %s." % corpse.dwarf_name)
+		# Asignar asistentes al funeral
+		var mourners = _assign_funeral_participants(world_ref, corpse)
+		corpse.funeral_participant_ids = mourners
+		add_message("%d enanos asistiran al funeral de %s." % [mourners.size(), corpse.dwarf_name])
+		return  # No crear trabajo de entierro hasta que el funeral termine
+	
+	# Solo crear trabajo de entierro si el funeral ha terminado
+	if corpse.funeral_state == DFCorpse.FuneralState.COMPLETED and not corpse.funeral_completed:
+		corpse.funeral_completed = true
+		var burial_job = DFJob.new(DFJob.JobType.BURY_CORPSE, corpse.tile_pos, 6)
+		burial_job.set_meta("corpse_id", corpse.id)
+		burial_job.set_meta("corpse_name", corpse.dwarf_name)
+		designation.job_queue.append(burial_job)
+		add_message("Entierro de %s programado tras el funeral." % corpse.dwarf_name)
+
+func _process_funerals(world_ref, minute_ticked: bool) -> void:
+	"""Procesa el estado de todos los funerales activos cada minuto.
+	Fases: GATHERING -> asistentes se reúnen -> MOURNING -> duelo -> COMPLETED -> se permite entierro."""
+	if world_ref == null or not minute_ticked:
+		return
+	
+	for entity in world_ref.entities:
+		if entity is DFCorpse and entity.funeral_state > DFCorpse.FuneralState.NONE and entity.funeral_state < DFCorpse.FuneralState.COMPLETED:
+			var corpse: DFCorpse = entity
+			var elapsed = _absolute_simulation_tick - corpse.funeral_start_tick
+			
+			if corpse.funeral_state == DFCorpse.FuneralState.GATHERING:
+				# Verificar cuantos asistentes han llegado cerca del cadaver
+				var arrived_count = 0
+				var total_invited = corpse.funeral_participant_ids.size()
+				for dwarf in world_ref.dwarves:
+					if dwarf.funeral_corpse_id == corpse.id and dwarf.is_alive:
+						var dist = abs(dwarf.tile_pos.x - corpse.tile_pos.x) + abs(dwarf.tile_pos.z - corpse.tile_pos.z)
+						if dist <= 3 and not dwarf.is_sleeping:
+							arrived_count += 1
+						# Mover al enano hacia el funeral si no esta cerca
+						elif dist > 3 and not dwarf.is_sleeping and dwarf.current_task != "Asistiendo a funeral":
+							dwarf.current_task = "Asistiendo a funeral"
+							dwarf.autonomous_target = corpse.tile_pos
+				
+				# Avanzar a MOURNING si han llegado suficientes o paso el tiempo maximo de reunion
+				var gathering_time = float(elapsed) / 25.0  # ~25 ticks = 1 minuto de juego
+				if arrived_count >= maxi(2, total_invited / 2) or gathering_time >= corpse.funeral_gathering_duration:
+					corpse.funeral_state = DFCorpse.FuneralState.MOURNING
+					corpse.funeral_timer = 0.0
+					# Generar epitafio ahora que comienza el duelo
+					if corpse.epitaph.is_empty():
+						# Buscar dwarf original para generar epitafio personalizado
+						for d in world_ref.dwarves:
+							if d.id == corpse.dwarf_id:
+								corpse._generate_epitaph_from_life(d)
+								break
+					add_message("! FUNERAL: La colonia guarda luto por %s." % corpse.dwarf_name)
+			
+			elif corpse.funeral_state == DFCorpse.FuneralState.MOURNING:
+				corpse.funeral_timer += 1.0  # 1 minuto de juego por tick
+				
+				# Efectos en los asistentes cada 10 minutos de duelo
+				if int(corpse.funeral_timer) % 10 == 0:
+					for dwarf2 in world_ref.dwarves:
+						if dwarf2.funeral_corpse_id == corpse.id and dwarf2.is_alive:
+							var dist2 = abs(dwarf2.tile_pos.x - corpse.tile_pos.x) + abs(dwarf2.tile_pos.z - corpse.tile_pos.z)
+							if dist2 <= 3:
+								# Duelo: tristeza pero tambien cierre emocional
+								dwarf2.stress = maxf(0.0, dwarf2.stress - 0.02)
+								dwarf2.add_thought("Participa en el funeral de %s. La comunidad lo despide." % corpse.dwarf_name, -0.01)
+				
+				# Verificar si el duelo ha terminado
+				if corpse.funeral_timer >= corpse.funeral_mourning_duration:
+					corpse.funeral_state = DFCorpse.FuneralState.COMPLETED
+					# Mostrar epitafio al final del funeral
+					if corpse.epitaph.is_empty():
+						corpse.epitaph = corpse._get_base_epitaph()
+					add_message("¡EPITAFIO: %s" % corpse.get_epitaph_text().replace("\n", " "))
+					add_message("El funeral de %s ha concluido. Ya puede ser enterrado." % corpse.dwarf_name)
+					# Liberar a los asistentes
+					for dwarf3 in world_ref.dwarves:
+						if dwarf3.funeral_corpse_id == corpse.id:
+							dwarf3.attending_funeral = false
+							dwarf3.funeral_corpse_id = -1
+							dwarf3.funeral_role = ""
+							dwarf3.current_task = "idle"
+					# Crear trabajo de entierro ahora que el funeral termino
+					_ensure_burial_job(world_ref, corpse)
+
+func _assign_funeral_participants(world_ref, corpse: DFCorpse) -> Array:
+	"""Selecciona los enanos que asistiran al funeral.
+	Prioridad: esposo/a > hijos > amigos > compañeros de trabajo > el mas cercano."""
+	var participants: Array = []
+	var scored = []  # Array de Dictionaries: { id, score }
+	
+	for dwarf in world_ref.dwarves:
+		if not dwarf.is_alive or dwarf.id == corpse.dwarf_id or dwarf.attending_funeral:
+			continue
+		
+		var score = 0.0
+		# Relaciones familiares
+		if dwarf.family.spouse == corpse.dwarf_id or dwarf.family.children.has(corpse.dwarf_id):
+			score = 100.0
+		elif dwarf.id == dwarf.family.spouse:  # El fallecido era esposo/a
+			score = 90.0
+		# Relacion social
+		var rel = dwarf.get_relationship_value(corpse.dwarf_id)
+		if rel > 0.3:
+			score = 30.0 + rel * 50.0
+		elif rel > 0.0:
+			score = 10.0
+		# Cercania fisica (bonus)
+		var dist = abs(dwarf.tile_pos.x - corpse.tile_pos.x) + abs(dwarf.tile_pos.z - corpse.tile_pos.z)
+		score += maxf(0.0, 8.0 - dist * 0.1)
+		
+		# Penalizacion por estar muy lejos (>50 tiles)
+		if dist > 50:
+			score *= 0.3
+		
+		if score > 1.0:
+			scored.append({"dwarf": dwarf, "score": score})
+	
+	# Ordenar por puntuacion (mayor primero)
+	var sorted = []
+	while not scored.is_empty():
+		var best_idx = 0
+		var best_score = -999.0
+		for i in range(scored.size()):
+			if scored[i]["score"] > best_score:
+				best_score = scored[i]["score"]
+				best_idx = i
+		var entry = scored[best_idx]
+		var dwarf_entry = entry["dwarf"]
+		dwarf_entry.attending_funeral = true
+		dwarf_entry.funeral_corpse_id = corpse.id
+		dwarf_entry.funeral_role = "Mourner"
+		participants.append(dwarf_entry.id)
+		scored.remove_at(best_idx)
+		# Maximo 6 participantes
+		if participants.size() >= 6:
+			break
+	
+	return participants
+
+
+
+func _process_corpses_decay(world_ref, minute_ticked: bool) -> void:
+	"""Procesa la pudrición de todos los cadáveres cada minuto de juego."""
+	if world_ref == null or not minute_ticked:
+		return
+	var corpses_to_remove = []
+	for entity in world_ref.entities:
+		if entity is DFCorpse:
+			var events = entity.tick_decay(1.0)
+			if events.get("decayed_away", false):
+				corpses_to_remove.append(entity)
+				add_message("El cadáver de %s se ha desintegrado en polvo." % entity.dwarf_name)
+			elif events.get("ghost_spawned", false):
+				_spawn_ghost(world_ref, entity)
+			# Miasma: aplicar efecto de pudrición cada 5 ticks
+			if entity.has_miasma() and _simulation_tick_clock % 5 == 0:
+				_apply_miasma_effect(world_ref, entity)
+	# Eliminar cadáveres desintegrados y sus fantasmas
+	for corpse in corpses_to_remove:
+		if corpse.ghost_id >= 0:
+			# Buscar y eliminar el fantasma asociado
+			for ghost_ent in world_ref.entities.duplicate():
+				if ghost_ent.get_instance_id() == corpse.ghost_id:
+					world_ref.entities.erase(ghost_ent)
+					break
+		world_ref.entities.erase(corpse)
+
+func _spawn_ghost(world_ref, corpse) -> void:
+	"""Crea un fantasma para un cadáver que lleva demasiado tiempo sin enterrar."""
+	if corpse.ghost_summoned:
+		return
+	corpse.ghost_summoned = true
+	var ghost = DFCreature.new(corpse.tile_pos, "ghost", "φ", Color("#CCCCFF"), "medium", {})
+	ghost.creature_type = "ghost"
+	ghost.is_alive = true
+	corpse.ghost_id = ghost.get_instance_id()
+	world_ref.add_entity(ghost)
+	add_message("¡El espíritu de %s se ha levantado! El cadáver necesita un entierro." % corpse.dwarf_name)
+
+func _apply_miasma_effect(world_ref, corpse) -> void:
+	"""Aplica efectos de miasma alrededor de un cadáver en descomposición."""
+	if world_ref == null or corpse == null:
+		return
+	var miasma_range = corpse.miasma_radius
+	for dz in range(-miasma_range, miasma_range + 1):
+		for dx in range(-miasma_range, miasma_range + 1):
+			var miasma_pos = Vector3i(
+				corpse.tile_pos.x + dx,
+				corpse.tile_pos.y,
+				corpse.tile_pos.z + dz
+			)
+			var dist = abs(dx) + abs(dz)
+			if dist > miasma_range:
+				continue
+			if world_ref.has_method("add_splatter"):
+				var intensity = corpse.miasma_intensity * (1.0 - float(dist) / float(miasma_range))
+				world_ref.add_splatter(miasma_pos, "miasma", intensity)
 	renderer.follow_dwarf = -1
 
 func _possess_dwarf(id: int) -> void:
@@ -1820,6 +2163,10 @@ func _process_held_movement(delta: float) -> void:
 
 func _handle_escape() -> void:
 	# ESC actúa sobre una sola capa, de la más específica a la más general.
+	if renderer != null and renderer.show_help:
+		renderer.show_help = false
+		renderer.queue_redraw()
+		return
 	if fast_travel != null and fast_travel.active:
 		fast_travel.cancel()
 		return
@@ -1830,13 +2177,17 @@ func _handle_escape() -> void:
 		dialogue.close_dialogue()
 		renderer._dialogue_active = false
 		return
+	if renderer != null and renderer._mode_switch_open:
+		renderer._mode_switch_open = false
+		renderer.queue_redraw()
+		return
 	if legends_mode:
 		legends_mode = false
-		_legends_select_mode = false
 		renderer._legend_text = ""
 		renderer._legend_mode = 0
 		renderer._family_tree_data = {}
 		add_message("Crónicas cerradas.")
+		renderer.queue_redraw()
 		return
 	if settings_menu.visible:
 		_on_settings_close()
@@ -1852,19 +2203,21 @@ func _handle_escape() -> void:
 	paused = true
 	renderer.paused = true
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var kc = event.keycode
 		if current_state != GameState.PLAYING:
 			_handle_menu_key(kc)
+			get_viewport().set_input_as_handled()
 			return
 		if kc == KEY_ESCAPE:
 			_handle_escape()
 			get_viewport().set_input_as_handled()
 			return
-		if settings_menu.visible:
+		if settings_menu != null and settings_menu.visible:
 			return
 		_handle_key(event)
+		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		_handle_mouse(event)
 
@@ -1882,22 +2235,18 @@ func _handle_menu_key(kc: int) -> void:
 						2: setting_civ_density = posmod(setting_civ_density + step, 3)
 						3: setting_beast_density = posmod(setting_beast_density + step, 3)
 				KEY_R: generation_seed = randi()
-				KEY_Q:
+				KEY_ENTER, KEY_SPACE, KEY_Q:
 					if generation_seed < 0: generation_seed = randi()
 					current_state = GameState.GENERATING_WORLD
 					gen_step = 0
 					set_meta("quick_start_pending", true)
-				KEY_ENTER:
-					if generation_seed < 0: generation_seed = randi()
-					current_state = GameState.GENERATING_WORLD
-					gen_step = 0
 		GameState.GENERATING_WORLD:
-			if kc == KEY_ENTER:
+			if kc in [KEY_ENTER, KEY_SPACE]:
 				gen_max_years = gen_year
 		GameState.MODE_SELECT:
 			match kc:
 				KEY_UP, KEY_DOWN: setting_selected_index = posmod(setting_selected_index + (1 if kc == KEY_DOWN else -1), 3)
-				KEY_ENTER:
+				KEY_ENTER, KEY_SPACE:
 					if setting_selected_index == 0:
 						current_state = GameState.EMBARK_MAP_SELECT
 						setting_selected_index = 0
@@ -1907,7 +2256,6 @@ func _handle_menu_key(kc: int) -> void:
 						add_message("=== MODO AVENTURA: generando expedición... ===")
 						_finalize_embark_and_land(true)
 					else:
-						legends_mode = true
 						add_message("=== MODO LEYENDAS: generando mundo... ===")
 						_finalize_embark_and_land(true)
 						legends.switch_mode(DFLegends.ViewMode.OVERVIEW)
@@ -1919,13 +2267,13 @@ func _handle_menu_key(kc: int) -> void:
 				KEY_LEFT: embark_cursor.x = clampi(embark_cursor.x - world_navigation_step, 0, world_gen.world_width - 1)
 				KEY_RIGHT: embark_cursor.x = clampi(embark_cursor.x + world_navigation_step, 0, world_gen.world_width - 1)
 				KEY_ESCAPE: current_state = GameState.MODE_SELECT; setting_selected_index = 0
-				KEY_ENTER: current_state = GameState.EMBARK_PREPARE; embark_prepare_step = 0; setting_selected_index = 0; embark_prepare_points = 100
+				KEY_ENTER, KEY_SPACE: current_state = GameState.EMBARK_PREPARE; embark_prepare_step = 0; setting_selected_index = 0; embark_prepare_points = 100
 		GameState.EMBARK_PREPARE:
 			if embark_prepare_step == 0:
 				match kc:
 					KEY_UP, KEY_DOWN: setting_selected_index = posmod(setting_selected_index + (1 if kc == KEY_DOWN else -1), 2)
 					KEY_ESCAPE: current_state = GameState.EMBARK_MAP_SELECT
-					KEY_ENTER:
+					KEY_ENTER, KEY_SPACE, KEY_E, KEY_Q:
 						if setting_selected_index == 0:
 							_finalize_embark_and_land(true)
 						else:
@@ -2016,8 +2364,13 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	world.stockpiles.clear()
 	world.growing_crops.clear()
 	world.set_meta("generated_world_sites", [])
-	world.set_meta("active_world_region", [embark_cursor.x, embark_cursor.y])
-	world_gen.generate_local_map(world, embark_cursor)
+	# El mapa local se genera SOLO la PRIMERA VEZ que se embarca.
+	# Todas las veces siguientes (cambiar de modo, reiniciar sin regenerar mundo) usan el mismo terreno.
+	if not world.get_meta("local_map_generated"):
+		_world_gen_embark_cursor = embark_cursor
+		world.set_meta("active_world_region", [embark_cursor.x, embark_cursor.y])
+		world_gen.generate_local_map(world, embark_cursor)
+		world.set_meta("local_map_generated", true)
 	# El centro debe calcularse después de crear el terreno. Antes podía quedar dentro del agua.
 	local_center_surface = _find_safe_settlement_center(Vector2i(128, 128))
 	settlement_center = local_center_surface
@@ -2036,7 +2389,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	load_status = "Materializando artefactos y bestias"
 	await get_tree().process_frame
 	if history_gen != null:
-		var spawned = history_gen.materialize_near_embark(world, world_gen, embark_cursor)
+		var spawned = history_gen.materialize_near_embark(world, world_gen, _world_gen_embark_cursor)
 		add_message("  *** %d entidades históricas materializadas en el área ***" % spawned)
 	
 	# Step 4
@@ -2167,6 +2520,7 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	designation = DFDesignation.new(world)
 	_build_initial_settlement(local_center_surface)
 	_auto_designate_initial_jobs(local_center_surface)
+	_build_initial_infrastructure(local_center_surface)
 	var simulation_database = load("res://df_mode/resources/world_database.tres")
 	world_simulation = DFWorldSimulationScript.new(simulation_database)
 
@@ -2202,8 +2556,8 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 		add_message("========================================")
 	else:
 		var alive_count = 0
-		for ent in world.dwarves:
-			if ent.get("is_alive") != false:
+		for ent2 in world.dwarves:
+			if ent2.get("is_alive") != false:
 				alive_count += 1
 		add_message("========================================")
 		add_message("  NUEVO EMBARQUE EN %s!" % world_name.to_upper())
@@ -2317,10 +2671,10 @@ func _build_initial_settlement(center: Vector3i) -> void:
 		if bed_item != null:
 			bed_item.is_bed = true
 		if i < settlement_dwarves.size():
-			var resident = settlement_dwarves[i]
-			resident.preferred_bed = bed_offset_pos
-			if world.is_water(resident.tile_pos) or world.is_blocked(resident.tile_pos):
-				resident.tile_pos = bed_offset_pos
+			var resident_dwarf = settlement_dwarves[i]
+			resident_dwarf.preferred_bed = bed_offset_pos
+			if world.is_water(resident_dwarf.tile_pos) or world.is_blocked(resident_dwarf.tile_pos):
+				resident_dwarf.tile_pos = bed_offset_pos
 			
 		var door_offset_pos = bpos + Vector3i(template.door.x, 0, template.door.y)
 		world._spawn_item(door_offset_pos, "Puerta de Madera", "door", 0, "p", Color("#8B5A2B"))
@@ -2719,6 +3073,45 @@ func _queue_house_construction_job(job_type: int, pos: Vector3i, priority: int =
 		house_job.set_meta("colony_project", "housing")
 	return true
 
+func _count_workshops_by_type(workshop_type: int) -> int:
+	# Cuenta cuantos talleres de un tipo existen (construidos + en construccion)
+	var count: int = 0
+	if world == null:
+		return 0
+	for ws_val: Variant in world.workshops:
+		if ws_val is DFWorkshop:
+			var ws: DFWorkshop = ws_val
+			if ws.workshop_type == workshop_type:
+				count += 1
+	# Tambien contar los que estan en construccion (pending buildings)
+	if world.buildings != null:
+		for bld_val: Variant in world.buildings:
+			if bld_val is DFBuilding and not bld_val.is_constructed:
+				# Mapear BuildingType a WorkshopType (coinciden en valor numerico)
+				if bld_val.type == workshop_type:
+					count += 1
+	return count
+
+func _can_build_workshop(workshop_type: int) -> bool:
+	# Limite: maximo 1 taller por cada 3 enanos, maximo 2 del mismo tipo
+	if world == null:
+		return false
+	# Contar enanos vivos
+	var alive_dwarves: int = 0
+	for ent_val: Variant in world.entities:
+		if ent_val.get("creature_type") == "dwarf" and ent_val.get("is_alive") == true:
+			alive_dwarves += 1
+	# Limite total: 1 taller cada 3 enanos
+	var total_workshops: int = world.workshops.size() if world.workshops != null else 0
+	var max_total: int = maxi(1, alive_dwarves / 3)
+	if total_workshops >= max_total:
+		return false
+	# Limite por tipo: maximo 2 del mismo tipo
+	var same_type_count: int = _count_workshops_by_type(workshop_type)
+	if same_type_count >= 2:
+		return false
+	return true
+
 func _find_workshop_by_type(workshop_type: int) -> DFWorkshop:
 	if world == null:
 		return null
@@ -2742,12 +3135,15 @@ func _find_pending_workshop_building(building_type: int) -> DFBuilding:
 func _autonomous_workshop_site_is_clear(position: Vector3i) -> bool:
 	if world == null:
 		return false
+	var center_height: int = world.get_surface_height(position.x, position.z)
 	for local_z: int in range(-1, 2):
 		for local_x: int in range(-1, 2):
 			var tile_position: Vector3i = position + Vector3i(local_x, 0, local_z)
 			if tile_position.x < 2 or tile_position.x >= world.width - 2 or tile_position.z < 2 or tile_position.z >= world.depth - 2:
 				return false
-			if world.get_surface_height(tile_position.x, tile_position.z) != position.y:
+			# Verificar que el tile este en superficie (misma altura o una diferencia de 1)
+			var tile_height: int = world.get_surface_height(tile_position.x, tile_position.z)
+			if abs(tile_height - center_height) > 1:
 				return false
 			if world.is_water(tile_position) or world.is_blocked(tile_position):
 				return false
@@ -2764,10 +3160,16 @@ func _autonomous_workshop_site_is_clear(position: Vector3i) -> bool:
 func _find_autonomous_workshop_site() -> Vector3i:
 	if world == null:
 		return Vector3i(-1, -1, -1)
+	# Buscar en un area cuadrada completa (no solo perimetro) desde radio 8 hasta 32
 	for radius: int in range(8, 33):
-		for local_z: int in range(-radius, radius + 1):
-			for local_x: int in range(-radius, radius + 1):
-				if abs(local_x) != radius and abs(local_z) != radius:
+		var min_d: int = -radius
+		var max_d: int = radius
+		# Primero buscar en todo el cuadrado (no solo perimetro)
+		for local_z: int in range(max(-radius, -radius), min(radius + 1, radius + 1)):
+			for local_x: int in range(max(-radius, -radius), min(radius + 1, radius + 1)):
+				# Solo verificar tiles en este radio (evitar duplicados con radios anteriores)
+				var max_prev: int = radius - 1
+				if abs(local_x) <= max_prev and abs(local_z) <= max_prev:
 					continue
 				var world_x: int = settlement_center.x + local_x
 				var world_z: int = settlement_center.z + local_z
@@ -2784,6 +3186,8 @@ func _find_autonomous_workshop_site() -> Vector3i:
 
 func _ensure_carpentry_workshop() -> DFWorkshop:
 	var existing: DFWorkshop = _find_workshop_by_type(DFWorkshop.WorkshopType.CARPENTRY)
+	if existing == null and not _can_build_workshop(DFWorkshop.WorkshopType.CARPENTRY):
+		return null
 	if existing != null:
 		return existing
 	var pending_building: DFBuilding = _find_pending_workshop_building(DFBuilding.BuildingType.CARPENTRY)
@@ -2999,9 +3403,61 @@ func _maintain_autonomous_economy() -> void:
 					if _count_open_jobs(DFJob.JobType.HUNT) >= 2:
 						break
 
+	# -- CEMENTERIO: cavar tumbas cuando hay cadaveres sin enterrar --
+	var unburied_corpses: int = 0
+	var existing_graves: int = 0
+	var used_graves: int = 0
+	for entity2 in world.entities:
+		if entity2 is DFCorpse and entity2.burial_state == DFCorpse.BurialState.UNBURIED:
+			unburied_corpses += 1
+		elif entity2 is DFCorpse and entity2.burial_state == DFCorpse.BurialState.BURIED and entity2.grave_pos.x >= 0:
+			# Solo contar como tumba ocupada si hay un edificio GRAVE en esa posicion
+			var has_grave_building = false
+			for bld_check in world.buildings:
+				if bld_check.type == DFBuilding.BuildingType.GRAVE and bld_check.tile_pos == entity2.grave_pos:
+					has_grave_building = true
+					break
+			if has_grave_building:
+				used_graves += 1
+	for bld in world.buildings:
+		if bld.type == DFBuilding.BuildingType.GRAVE:
+			existing_graves += 1
+	var free_graves: int = existing_graves - used_graves
+	var graves_needed: int = unburied_corpses - free_graves
+	var pending_grave_jobs: int = _count_open_jobs(DFJob.JobType.DIG_GRAVE)
+	graves_needed -= pending_grave_jobs
+	if graves_needed > 0 and unburied_corpses > 0:
+		# Designar tumbas cerca del centro del asentamiento
+		for g_radius in range(1, 25):
+			if graves_needed <= 0:
+				break
+			for g_dz in range(-g_radius, g_radius + 1):
+				for g_dx in range(-g_radius, g_radius + 1):
+					if graves_needed <= 0:
+						break
+					if abs(g_dx) != g_radius and abs(g_dz) != g_radius:
+						continue
+					var gx: int = center.x + g_dx
+					var gz: int = center.z + g_dz
+					if gx < 1 or gx >= world.width - 1 or gz < 1 or gz >= world.depth - 1:
+						continue
+					var gy: int = world.get_surface_height(gx, gz)
+					var gpos := Vector3i(gx, gy, gz)
+					if not world.is_blocked(gpos):
+						# No designar sobre otro edificio
+						var has_building = false
+						for b in world.buildings:
+							if b.is_inside(gpos):
+								has_building = true
+								break
+						if not has_building:
+							if _queue_job_once(DFJob.JobType.DIG_GRAVE, gpos, 5):
+								graves_needed -= 1
+
 	_queue_training_jobs(alive_dwarves)
 	_finish_autonomous_house_projects()
 	if _game_hour == 6 and _game_minute == 0:
+		_auto_expand_colony(alive_dwarves)
 		_queue_house_expansion_if_needed(alive_dwarves)
 
 func _job_targets_item(job_type: int, item_id: int) -> bool:
@@ -3018,6 +3474,14 @@ func _job_targets_item(job_type: int, item_id: int) -> bool:
 
 func _queue_resource_collection_jobs(item_type: String, job_type: int, max_jobs: int, priority: int) -> void:
 	if designation == null or world == null:
+		return
+	var has_stockpile_space: bool = false
+	for sp in world.stockpiles:
+		var free_pos = sp.get_free_tile(world)
+		if free_pos.y != -1:
+			has_stockpile_space = true
+			break
+	if not has_stockpile_space:
 		return
 	var open_jobs: int = _count_open_jobs(job_type)
 	if open_jobs >= max_jobs:
@@ -3129,6 +3593,72 @@ func _queue_training_jobs(alive_dwarves: int) -> void:
 		var training_position: Vector3i = settlement_center + Vector3i(column - 3, 0, 3 + row)
 		if not world.is_blocked(training_position) and not world.is_water(training_position):
 			_queue_job_once(DFJob.JobType.TRAIN, training_position, 2)
+
+func _auto_expand_colony(alive_dwarves: int) -> void:
+	# Expansion automatica: cuando la poblacion crece, expandir granja y cocina
+	if world == null or designation == null:
+		return
+	var colony_x = settlement_center.x
+	var colony_z = settlement_center.z
+	var colony_y = settlement_center.y
+
+	# 1. EXPANSION DE GRANJA: 5x5 adicional cada 5 enanos
+	var farm_expansions = int(alive_dwarves / 5)
+	var existing_farm_tiles = 0
+	for scan_x in range(colony_x - 20, colony_x + 20):
+		for scan_z in range(colony_z - 20, colony_z + 20):
+			if scan_x < 0 or scan_x >= world.width or scan_z < 0 or scan_z >= world.depth:
+				continue
+			if world.get_tile(Vector3i(scan_x, colony_y, scan_z)) == DFWorld.TileType.FARM_SOIL:
+				existing_farm_tiles += 1
+	var target_farm_tiles = 25 + farm_expansions * 25
+	if existing_farm_tiles < target_farm_tiles:
+		var farm_missing = target_farm_tiles - existing_farm_tiles
+		var farm_placed = 0
+		for farm_dz in range(5, 15):
+			for farm_dx in range(-8, 8):
+				if farm_placed >= farm_missing:
+					break
+				var fp = Vector3i(colony_x + farm_dx, colony_y, colony_z + farm_dz)
+				if fp.x < 2 or fp.x >= world.width - 2 or fp.z < 2 or fp.z >= world.depth - 2:
+					continue
+				if not world.is_blocked(fp) and not world.is_water(fp) and world.get_tile(fp) != DFWorld.TileType.FARM_SOIL:
+					world.set_tile(fp, DFWorld.TileType.FARM_SOIL)
+					farm_placed += 1
+					# Job de recolectar la nueva parcela
+					var farm_job = DFJob.new(DFJob.JobType.FARM_PLANT, fp, 8)
+					designation.job_queue.append(farm_job)
+			if farm_placed >= farm_missing:
+				break
+		if farm_placed > 0:
+			add_message("  ** Colonia expandida: %d nuevas parcelas de cultivo **" % farm_placed)
+
+	# 2. EXPANSION DE COCINA: si hay mas de 10 enanos y no hay cocina ampliada
+	if alive_dwarves >= 10:
+		var kitchen_expanded = world.get_meta("kitchen_expanded_v2") == true
+		if not kitchen_expanded:
+			# Agregar fogones al lado de la cocina existente
+			var stove_pos = Vector3i(colony_x + 8, colony_y, colony_z + 2)
+			if stove_pos.x >= 2 and stove_pos.x < world.width - 2 and stove_pos.z >= 2 and stove_pos.z < world.depth - 2:
+				if not world.is_blocked(stove_pos) and not world.is_water(stove_pos):
+					world.set_tile(stove_pos, DFWorld.TileType.CONSTRUCTED_FLOOR)
+					world.set_meta("kitchen_expanded_v2", true)
+					add_message("  ** Cocina expandida para la creciente poblacion **")
+
+	# 3. TALLER DE COCINA ADICIONAL si hay mas de 15 enanos
+	if alive_dwarves >= 15:
+		var second_kitchen_pos = Vector3i(colony_x + 9, colony_y, colony_z)
+		if second_kitchen_pos.x >= 2 and second_kitchen_pos.x < world.width - 2 and second_kitchen_pos.z >= 2 and second_kitchen_pos.z < world.depth - 2:
+			if not world.is_blocked(second_kitchen_pos) and not world.is_water(second_kitchen_pos):
+				var has_second = false
+				for ws_check in world.workshops:
+					if ws_check.workshop_type == DFWorkshop.WorkshopType.KITCHEN and ws_check.tile_pos != Vector3i(colony_x + 7, colony_y, colony_z + 1):
+						has_second = true
+						break
+				if not has_second:
+					var kitchen2 = DFWorkshop.new(DFWorkshop.WorkshopType.KITCHEN, second_kitchen_pos)
+					world.workshops.append(kitchen2)
+					add_message("  ** Segundo taller de cocina construido **")
 
 func _queue_house_expansion_if_needed(alive_dwarves: int) -> void:
 	var bedroom_count := 0
@@ -3327,6 +3857,77 @@ func _finish_autonomous_house_projects() -> void:
 
 		_autonomous_house_projects.erase(project)
 		add_message("Los enanos terminaron una nueva vivienda.")
+
+func _build_initial_infrastructure(center: Vector3i) -> void:
+	# Construye cocina, granja y corral cerca del asentamiento.
+	if world == null:
+		return
+	var infra_y = center.y
+	var infra_x = center.x
+	var infra_z = center.z
+	var built = 0
+
+	# 1. COCINA: 3x3 junto a la plaza
+	var kitchen_origin = Vector3i(infra_x + 6, infra_y, infra_z)
+	for kz in range(3):
+		for kx in range(3):
+			var kp = Vector3i(kitchen_origin.x + kx, infra_y, kitchen_origin.z + kz)
+			if kp.x < 2 or kp.x >= world.width - 2 or kp.z < 2 or kp.z >= world.depth - 2:
+				continue
+			if not world.is_blocked(kp) and not world.is_water(kp):
+				world.set_tile(kp, DFWorld.TileType.CONSTRUCTED_FLOOR)
+				built += 1
+	if built > 0:
+		add_message('  ** Cocina construida cerca de la plaza (3x3) **')
+
+	# 2. PARCELA DE CULTIVO: 5x5 en tierra fertil
+	var farm_positions = []
+	var found_farm = false
+	for farm_dz in range(5, 12):
+		for farm_dx in range(-4, 5):
+			var fp = Vector3i(infra_x + farm_dx, infra_y, infra_z + farm_dz)
+			if fp.x < 2 or fp.x >= world.width - 2 or fp.z < 2 or fp.z >= world.depth - 2:
+				continue
+			if not world.is_blocked(fp) and not world.is_water(fp):
+				world.set_tile(fp, DFWorld.TileType.FARM_SOIL)
+				farm_positions.append(fp)
+				found_farm = true
+		if found_farm:
+			break
+	if found_farm:
+		add_message('  ** Parcela de cultivo 5x5 arada **')
+		var seed_types = ['Plump Helmet', 'Sweet Pod', 'Cave Wheat']
+		for seed_i in range(min(6, farm_positions.size())):
+			var seed_pos = farm_positions[seed_i]
+			var seed_name = seed_types[seed_i % seed_types.size()]
+			world._spawn_item(seed_pos, 'Semilla de %s' % seed_name, 'seed', 0, '.', Color('#88AA44'))
+
+	# 3. CORRAL PARA ANIMALES: 4x4
+	var pen_origin = Vector3i(infra_x - 7, infra_y, infra_z)
+	for pz in range(4):
+		for px in range(4):
+			var pp = Vector3i(pen_origin.x + px, infra_y, pen_origin.z + pz)
+			if pp.x < 2 or pp.x >= world.width - 2 or pp.z < 2 or pp.z >= world.depth - 2:
+				continue
+			if not world.is_blocked(pp) and not world.is_water(pp):
+				if px == 0 or px == 3 or pz == 0 or pz == 3:
+					world.set_tile(pp, DFWorld.TileType.CONSTRUCTED_WALL)
+					world.set_material(pp, DFWorld.MatType.WOOD)
+				else:
+					world.set_tile(pp, DFWorld.TileType.CONSTRUCTED_FLOOR)
+					world.set_material(pp, DFWorld.MatType.WOOD)
+	add_message('  ** Corral de animales construido (4x4) **')
+
+	# 4. TALLER DE COCINA
+	var has_kitchen_ws = false
+	for ws in world.workshops:
+		if ws.workshop_type == DFWorkshop.WorkshopType.KITCHEN:
+			has_kitchen_ws = true
+			break
+	if not has_kitchen_ws:
+		var kitchen_ws = DFWorkshop.new(DFWorkshop.WorkshopType.KITCHEN, Vector3i(infra_x + 7, infra_y, infra_z + 1))
+		world.workshops.append(kitchen_ws)
+		add_message('  ** Taller de Cocina construido **')
 
 func _auto_designate_initial_jobs(center: Vector3i) -> void:
 	# Genera trabajos iniciales: talar arboles, cavar refugio, construir puerta
@@ -3566,8 +4167,29 @@ func _auto_designate_initial_jobs(center: Vector3i) -> void:
 		designation.job_queue.append(store_job)
 		craft_jobs_created += 1
 
+	# 9. Designar construccion de COCINA si no hay ninguna
+	var has_kitchen = false
+	for ws in world.workshops:
+		if ws.workshop_type == DFWorkshop.WorkshopType.KITCHEN:
+			has_kitchen = true
+			break
+	if not has_kitchen:
+		var kitchen_pos = Vector3i(cx + 3, sy, cz + 2)
+		if world != null:
+			if kitchen_pos.x >= 2 and kitchen_pos.x < world.width - 2 and kitchen_pos.z >= 2 and kitchen_pos.z < world.depth - 2:
+				if not world.is_wall(kitchen_pos) and not world.is_water(kitchen_pos):
+					var kitchen_build_job = DFJob.new(DFJob.JobType.BUILD_WORKSHOP, kitchen_pos, 9)
+					kitchen_build_job.set_meta("workshop_type", DFWorkshop.WorkshopType.KITCHEN)
+					designation.job_queue.append(kitchen_build_job)
+					# Crear la estructura del taller para que los enanos puedan construirlo
+					var kitchen_bld = DFBuilding.new(9, kitchen_pos) # BUILDING_KITCHEN = 9
+					kitchen_bld.is_constructed = false
+					kitchen_bld.type = 9
+					world.buildings.append(kitchen_bld)
+					craft_jobs_created += 1
+
 	var total_added = designation.job_queue.size() - total_jobs_before
-	add_message("  Trabajos auto-generados: " + str(trees_designated) + " talar, " + str(dug_tiles) + " cavar, " + str(built_tiles) + " construir, " + str(haul_jobs) + " recolectar, " + str(hunt_jobs_created) + " cazar, " + str(fish_jobs_created) + " pescar, " + str(craft_jobs_created) + " artesan?a. Total: " + str(total_added) + " trabajos.")
+	add_message("  Trabajos auto-generados: " + str(trees_designated) + " talar, " + str(dug_tiles) + " cavar, " + str(built_tiles) + " construir, " + str(haul_jobs) + " recolectar, " + str(hunt_jobs_created) + " cazar, " + str(fish_jobs_created) + " pescar, " + str(craft_jobs_created) + " artesania. Total: " + str(total_added) + " trabajos.")
 	if total_added == 0:
 		add_message("  ADVERTENCIA: No se encontraron recursos cerca. Expande el radio de busqueda manualmente.")
 func _generate_historical_settlements() -> void:
@@ -3577,8 +4199,8 @@ func _generate_historical_settlements() -> void:
 	rng.seed = generation_seed
 	var half_win = 3.0
 	for site in world_gen.sites:
-		var dx = site.get("x", 0) - embark_cursor.x
-		var dz = site.get("z", 0) - embark_cursor.y
+		var dx = site.get("x", 0) - _world_gen_embark_cursor.x
+		var dz = site.get("z", 0) - _world_gen_embark_cursor.y
 		if abs(dx) <= half_win and abs(dz) <= half_win:
 			var lx = clampi(int(128.0 + dx * 42.67), 25, 230)
 			var lz = clampi(int(128.0 + dz * 42.67), 25, 230)
@@ -3602,17 +4224,17 @@ func _generate_historical_settlements() -> void:
 					continue
 				cx = ruin_origin.x
 				cz = ruin_origin.z
-				var sy = ruin_origin.y
+				var site_y = ruin_origin.y
 				for dz_h in range(-int(hd/2), int(hd/2) + 1):
 					for dx_h in range(-int(hw/2), int(hw/2) + 1):
 						var px = cx + dx_h
 						var pz = cz + dz_h
 						if px < 2 or px >= world.width - 2 or pz < 2 or pz >= world.depth - 2:
 							continue
-						var p = Vector3i(px, sy, pz)
+						var p = Vector3i(px, site_y, pz)
 						world.set_tile(p, DFWorld.TileType.CONSTRUCTED_FLOOR)
 						world.set_material(p, DFWorld.MatType.WOOD if rng.randf() < 0.5 else DFWorld.MatType.STONE)
-						for check_y in range(sy + 1, sy + 3):
+						for check_y in range(site_y + 1, site_y + 3):
 							world.set_tile(Vector3i(px, check_y, pz), DFWorld.TileType.FLOOR)
 							world.set_material(Vector3i(px, check_y, pz), DFWorld.MatType.CONSTRUCTION)
 						var is_border = (dx_h == -int(hw/2) or dx_h == int(hw/2) or dz_h == -int(hd/2) or dz_h == int(hd/2))
@@ -3621,7 +4243,7 @@ func _generate_historical_settlements() -> void:
 							world.set_tile(p, DFWorld.TileType.CONSTRUCTED_WALL)
 							world.set_material(p, DFWorld.MatType.WOOD if rng.randf() < 0.5 else DFWorld.MatType.STONE)
 				if rng.randf() < 0.7:
-					var chest_pos = Vector3i(cx, sy, cz)
+					var chest_pos = Vector3i(cx, site_y, cz)
 					world._spawn_item(chest_pos, "Cofre de la Ruina", "tool", DFWorld.MatType.IRON, "[", Color("#B0C4DE"))
 					var placed_artifact = false
 					if history_gen != null and history_gen.artifact_instances.size() > 0:
@@ -3631,7 +4253,7 @@ func _generate_historical_settlements() -> void:
 							if ai.get("site_id", -1) == site_id:
 								site_arts.append(ai)
 						for chosen in site_arts:
-							var art_pos = _fix_surface(Vector3i(cx + rng.randi_range(-1, 1), sy, cz + rng.randi_range(-1, 1)))
+							var art_pos = _fix_surface(Vector3i(cx + rng.randi_range(-1, 1), site_y, cz + rng.randi_range(-1, 1)))
 							var art_item = DFItem.new(art_pos, chosen["name"], "weapon", 0, chosen["glyph"], chosen["color"])
 							art_item.is_artifact = true
 							art_item.artifact_name = chosen["name"]
@@ -3652,7 +4274,7 @@ func _generate_historical_settlements() -> void:
 						for bi in history_gen.beast_instances:
 							var hf_rec = history_gen._get_hf(bi.get("hf_id", -1))
 							if hf_rec != null and hf_rec.death_year != -1 and hf_rec.death_site_id == target_site_id:
-								var bones_pos = _fix_surface(Vector3i(cx + rng.randi_range(-2, 2), sy, cz + rng.randi_range(-2, 2)))
+								var bones_pos = _fix_surface(Vector3i(cx + rng.randi_range(-2, 2), site_y, cz + rng.randi_range(-2, 2)))
 								var bones_item = DFItem.new(bones_pos, "Huesos de " + bi.get("name", "la Bestia"), "stone", DFWorld.MatType.LIMESTONE, "*", Color("#F5F5DC"))
 								bones_item.set_meta("is_beast_bones", true)
 								bones_item.set_meta("beast_name", bi.get("name"))
@@ -3672,7 +4294,7 @@ func _generate_historical_settlements() -> void:
 									is_assoc = true
 								
 								if is_assoc:
-									var npc_pos = _fix_surface(Vector3i(cx + rng.randi_range(-3, 3), sy, cz + rng.randi_range(-3, 3)))
+									var npc_pos = _fix_surface(Vector3i(cx + rng.randi_range(-3, 3), site_y, cz + rng.randi_range(-3, 3)))
 									if hf.race == "dwarf":
 										var dwarf_name = hf.name
 										var dwarf = DFDwarf.new(npc_pos, dwarf_name)
@@ -3695,7 +4317,7 @@ func _generate_historical_settlements() -> void:
 					if not placed_artifact:
 						var items = [["Madera antigua", "wood", DFWorld.MatType.WOOD, "=", Color("#8B5A2B")],["Carne Seca", "food", DFWorld.MatType.WOOD, "%", Color("#FF8844")],["Vino del Pasado", "drink", DFWorld.MatType.WOOD, "~", Color("#FFCC00")],["Pico Oxidado", "weapon", DFWorld.MatType.IRON, "p", Color("#88CCFF")]]
 						var selected_item = items[rng.randi() % items.size()]
-						var item_pos = _fix_surface(Vector3i(cx + rng.randi_range(-1, 1), sy, cz + rng.randi_range(-1, 1)))
+						var item_pos = _fix_surface(Vector3i(cx + rng.randi_range(-1, 1), site_y, cz + rng.randi_range(-1, 1)))
 						world._spawn_item(item_pos, selected_item[0], selected_item[1], selected_item[2], selected_item[3], selected_item[4])
 				if rng.randf() < 0.5:
 					var fx = clampi(cx + rng.randi_range(6, 12) * (1 if rng.randf() < 0.5 else -1), 10, 245)
@@ -3730,6 +4352,42 @@ func _advance_time(minutes: int) -> void:
 func _handle_key(event: InputEvent) -> void:
 	if event is InputEventKey:
 		var kc = event.keycode
+		# Si el menú de selección de modo está abierto, interceptar y controlar
+		if renderer != null and renderer._mode_switch_open:
+			match kc:
+				KEY_UP:
+					_mode_switch_selected_idx = posmod(_mode_switch_selected_idx - 1, 3)
+					renderer.queue_redraw()
+				KEY_DOWN:
+					_mode_switch_selected_idx = posmod(_mode_switch_selected_idx + 1, 3)
+					renderer.queue_redraw()
+				KEY_ENTER, KEY_SPACE:
+					renderer._mode_switch_open = false
+					match _mode_switch_selected_idx:
+						0: # Fortaleza
+							legends_mode = false
+							if possessed_dwarf != null:
+								_exit_possession()
+							add_message("=== MODO FORTALEZA ACTIVADO ===")
+						1: # Aventura
+							legends_mode = false
+							if possessed_dwarf == null and world != null and not world.dwarves.is_empty():
+								for d_ent in world.dwarves:
+									if d_ent.get("is_alive") != false:
+										_possess_dwarf(d_ent.id)
+										break
+							add_message("=== MODO AVENTURA ACTIVADO ===")
+						2: # Leyendas
+							legends_mode = true
+							if legends != null:
+								legends.switch_mode(DFLegends.ViewMode.OVERVIEW)
+							add_message("=== MODO LEYENDAS ACTIVADO ===")
+					renderer.queue_redraw()
+				KEY_ESCAPE, KEY_M:
+					renderer._mode_switch_open = false
+					renderer.queue_redraw()
+			return
+
 		# Si el viaje rápido está activo, interceptar y controlar
 		if fast_travel != null and fast_travel.active:
 			match fast_travel.phase:
@@ -3744,7 +4402,14 @@ func _handle_key(event: InputEvent) -> void:
 				DFFastTravel.TravelPhase.ENCOUNTER, DFFastTravel.TravelPhase.COMPLETE:
 					if kc in [KEY_ENTER, KEY_SPACE, KEY_ESCAPE]:
 						fast_travel.resume_travel()
-			renderer.queue_redraw()
+			if renderer != null:
+				renderer._fast_travel_active = fast_travel.active
+				renderer._fast_travel_phase = fast_travel.phase
+				renderer._fast_travel_dest_x = fast_travel.destination_x
+				renderer._fast_travel_dest_z = fast_travel.destination_z
+				var dti = fast_travel.get_destination_tile_info()
+				renderer._fast_travel_biome = dti.get("biome", "")
+				renderer.queue_redraw()
 			return
 
 		# Si el quest log esta abierto, flechas para navegar
@@ -3785,7 +4450,7 @@ func _handle_key(event: InputEvent) -> void:
 				KEY_0:
 					if legends.current_mode == DFLegends.ViewMode.FIGURE_DETAIL:
 						legends.switch_mode(DFLegends.ViewMode.FIGURES)
-						_legends_select_mode = false
+						
 					else:
 						_legends_select_mode = true
 						add_message("[0] Seleccion: pulsa numero de la figura")
@@ -3794,62 +4459,103 @@ func _handle_key(event: InputEvent) -> void:
 						_finish_legends_select(1)
 					else:
 						legends.switch_mode(DFLegends.ViewMode.OVERVIEW)
-						_legends_select_mode = false
+						
 				KEY_2:
 					if _legends_select_mode and legends.current_mode == DFLegends.ViewMode.FIGURES:
 						_finish_legends_select(2)
 					else:
 						legends.switch_mode(DFLegends.ViewMode.CHRONOLOGY)
-						_legends_select_mode = false
+						
 				KEY_3:
 					if _legends_select_mode and legends.current_mode == DFLegends.ViewMode.FIGURES:
 						_finish_legends_select(3)
 					else:
 						legends.switch_mode(DFLegends.ViewMode.CIVILIZATIONS)
-						_legends_select_mode = false
+						
 				KEY_4:
 					if _legends_select_mode and legends.current_mode == DFLegends.ViewMode.FIGURES:
 						_finish_legends_select(4)
 					else:
 						legends.switch_mode(DFLegends.ViewMode.FIGURES)
-						_legends_select_mode = false
+						
 				KEY_5:
 					if _legends_select_mode and legends.current_mode == DFLegends.ViewMode.FIGURES:
 						_finish_legends_select(5)
 					else:
 						legends.switch_mode(DFLegends.ViewMode.BEASTS)
-						_legends_select_mode = false
+						
 				KEY_6:
 					if _legends_select_mode and legends.current_mode == DFLegends.ViewMode.FIGURES:
 						_finish_legends_select(6)
 					else:
 						legends.switch_mode(DFLegends.ViewMode.ARTIFACTS)
-						_legends_select_mode = false
+						
 				KEY_7:
 					if _legends_select_mode and legends.current_mode == DFLegends.ViewMode.FIGURES:
 						_finish_legends_select(7)
 					else:
 						legends.switch_mode(DFLegends.ViewMode.SITES)
-						_legends_select_mode = false
+						
 				KEY_8:
 					if _legends_select_mode and legends.current_mode == DFLegends.ViewMode.FIGURES:
 						_finish_legends_select(8)
 					else:
 						legends.switch_mode(DFLegends.ViewMode.WARS)
-						_legends_select_mode = false
+						
 				KEY_9:
 					if _legends_select_mode and legends.current_mode == DFLegends.ViewMode.FIGURES:
 						_finish_legends_select(9)
 					else:
 						legends.switch_mode(DFLegends.ViewMode.FAMILIES)
-						_legends_select_mode = false
+						
 				KEY_L, KEY_ESCAPE:
 					legends_mode = false
-					_legends_select_mode = false
 					renderer._legend_text = ""
 					renderer._legend_mode = 0
 					renderer._family_tree_data = {}
-					add_message("Cronicas cerradas.")
+					add_message("Crónicas cerradas.")
+					renderer.queue_redraw()
+			return
+		if _dwarf_stats_open and possessed_dwarf != null:
+			match kc:
+				KEY_UP:
+					_dwarf_stats_inv_idx = posmod(_dwarf_stats_inv_idx - 1, possessed_dwarf.inventory.size() + 1)
+					renderer.queue_redraw()
+				KEY_DOWN:
+					_dwarf_stats_inv_idx = posmod(_dwarf_stats_inv_idx + 1, possessed_dwarf.inventory.size() + 1)
+					renderer.queue_redraw()
+				KEY_E:
+					# Equip item seleccionado
+					if _dwarf_stats_inv_idx > 0 and _dwarf_stats_inv_idx <= possessed_dwarf.inventory.size():
+						var item = possessed_dwarf.inventory[_dwarf_stats_inv_idx - 1]
+						if item is DFItem:
+							if item.is_weapon or "weapon" in item.item_type or "tool" in item.item_type:
+								possessed_dwarf.equipped_weapon = item.name
+								add_message("Equipado: %s" % item.name)
+							elif item.is_armor or "armor" in item.item_type:
+								possessed_dwarf.equipped_armor = item.name
+								add_message("Equipado: %s" % item.name)
+							else:
+								add_message("No se puede equipar: %s" % item.name)
+							renderer.queue_redraw()
+				KEY_D:
+					# Soltar item seleccionado al suelo
+					if _dwarf_stats_inv_idx > 0 and _dwarf_stats_inv_idx <= possessed_dwarf.inventory.size():
+						var item_to_drop = possessed_dwarf.inventory[_dwarf_stats_inv_idx - 1]
+						item_to_drop.carried_by_id = -1
+						item_to_drop.tile_pos = possessed_dwarf.tile_pos
+						if world != null:
+							world.add_entity(item_to_drop)
+						possessed_dwarf.inventory.remove_at(_dwarf_stats_inv_idx - 1)
+						_dwarf_stats_inv_idx = mini(_dwarf_stats_inv_idx, possessed_dwarf.inventory.size())
+						add_message("Soltado: %s" % item_to_drop.name)
+						renderer.queue_redraw()
+				KEY_U, KEY_ESCAPE:
+					_dwarf_stats_open = false
+					renderer._dwarf_stats_open = false
+					paused = false
+					renderer.paused = false
+					renderer.queue_redraw()
 			return
 		match kc:
 			KEY_UP, KEY_W:
@@ -3895,7 +4601,7 @@ func _handle_key(event: InputEvent) -> void:
 			KEY_SPACE:
 				paused = not paused
 				renderer.paused = paused
-			KEY_H, KEY_QUESTION:
+			KEY_H, KEY_QUESTION, KEY_F1:
 				renderer.show_help = not renderer.show_help
 				renderer.queue_redraw()
 			KEY_1:
@@ -3918,19 +4624,49 @@ func _handle_key(event: InputEvent) -> void:
 					designation.set_mode(DFDesignation.DesignationMode.DECONSTRUCT)
 			KEY_F:
 				_cycle_follow()
+			KEY_U:
+				if possessed_dwarf != null:
+					_dwarf_stats_open = not _dwarf_stats_open
+					renderer._dwarf_stats_open = _dwarf_stats_open
+					if _dwarf_stats_open:
+						_dwarf_stats_inv_idx = 0
+						paused = true
+						renderer.paused = true
+					else:
+						paused = false
+						renderer.paused = false
+					renderer.queue_redraw()
 			KEY_P:
 				_possess_dwarf(renderer.follow_dwarf)
 			KEY_V:
-				if possessed_dwarf != null and fast_travel != null:
+				if fast_travel == null:
+					fast_travel = DFFastTravel.new(world, self)
+				if fast_travel != null:
+					fast_travel.world_ref = world
 					fast_travel.start_fast_travel(camera_pos.x, camera_pos.z)
-					add_message("=== VIAJE RÁPIDO === (Elige destino con WASD, ENTER para viajar)")
+					if renderer != null:
+						renderer._fast_travel_active = true
+						renderer._fast_travel_phase = fast_travel.phase
+						renderer._fast_travel_dest_x = fast_travel.destination_x
+						renderer._fast_travel_dest_z = fast_travel.destination_z
+						renderer.queue_redraw()
+					add_message("=== VIAJE RÁPIDO CONTINENTAL (1024x1024) === (Navega con WASD/Flechas, ENTER para viajar, ESC para cancelar)")
 			KEY_L:
 				legends_mode = not legends_mode
 				if legends_mode and legends != null:
 					legends.switch_mode(DFLegends.ViewMode.OVERVIEW)
-					add_message("[L] Cronicas abiertas. PgUp/PgDn para navegar.")
+					add_message("[L] Crónicas abiertas. PgUp/PgDn para navegar.")
 				else:
-					add_message("[L] Cronicas cerradas - viendo el mundo.")
+					renderer._legend_text = ""
+					renderer._legend_mode = 0
+					renderer._family_tree_data = {}
+					add_message("[L] Crónicas cerradas - viendo el mundo.")
+				renderer.queue_redraw()
+			KEY_M:
+				if renderer != null:
+					renderer._mode_switch_open = not renderer._mode_switch_open
+					_mode_switch_selected_idx = 2 if legends_mode else (1 if possessed_dwarf != null else 0)
+					renderer.queue_redraw()
 			KEY_G:
 				_regenerate_world()
 			KEY_C, KEY_KP_ADD:
@@ -4015,7 +4751,7 @@ func _handle_key(event: InputEvent) -> void:
 										break
 					
 func _finish_legends_select(num: int) -> void:
-	_legends_select_mode = false
+	
 	if legends == null or history_gen == null:
 		return
 	if legends.current_mode != DFLegends.ViewMode.FIGURES:
@@ -4126,10 +4862,10 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 				if pos.x >= minimap_x and pos.x <= minimap_x + minimap_size and pos.y >= minimap_y and pos.y <= minimap_y + minimap_size:
 					var relative_mx = pos.x - minimap_x
 					var relative_my = pos.y - minimap_y
-					var target_wx = int(relative_mx / float(minimap_size) * map_w)
-					var target_wz = int(relative_my / float(minimap_size) * map_h)
-					embark_cursor.x = clampi(target_wx, 0, map_w - 1)
-					embark_cursor.y = clampi(target_wz, 0, map_h - 1)
+					var target_wx2 = int(relative_mx / float(minimap_size) * map_w)
+					var target_wz2 = int(relative_my / float(minimap_size) * map_h)
+					embark_cursor.x = clampi(target_wx2, 0, map_w - 1)
+					embark_cursor.y = clampi(target_wz2, 0, map_h - 1)
 					renderer.queue_redraw()
 					return
 				
@@ -4249,11 +4985,11 @@ func _get_spiral_offsets(count: int) -> Array:
 		for tz in range(-ring + 1, ring + 1):
 			offsets.append(Vector2i(ring * step, tz * step))
 		# Bottom edge
-		for tx in range(ring - 1, -ring - 1, -1):
-			offsets.append(Vector2i(tx * step, ring * step))
+		for tx2 in range(ring - 1, -ring - 1, -1):
+			offsets.append(Vector2i(tx2 * step, ring * step))
 		# Left edge
-		for tz in range(ring - 1, -ring, -1):
-			offsets.append(Vector2i(-ring * step, tz * step))
+		for tz2 in range(ring - 1, -ring, -1):
+			offsets.append(Vector2i(-ring * step, tz2 * step))
 		ring += 1
 	return offsets
 
@@ -4316,36 +5052,36 @@ func _simulate_embark_demographics(years: int) -> Array:
 		# 2. Marriage
 		var single_males = []
 		var single_females = []
-		for d in list_dwarves:
-			if d.alive and d.age >= 18 and d.spouse == null:
-				if d.gender_male:
-					single_males.append(d)
+		for d2 in list_dwarves:
+			if d2.alive and d2.age >= 18 and d2.spouse == null:
+				if d2.gender_male:
+					single_males.append(d2)
 				else:
-					single_females.append(d)
+					single_females.append(d2)
 		
 		# Match couples
 		single_males.shuffle()
 		single_females.shuffle()
 		var p_count = mini(single_males.size(), single_females.size())
-		for i in range(p_count):
+		for i2 in range(p_count):
 			if rng.randf() < 0.20: # 20% marriage chance per year
-				single_males[i].spouse = single_females[i].name
-				single_females[i].spouse = single_males[i].name
+				single_males[i2].spouse = single_females[i2].name
+				single_females[i2].spouse = single_males[i2].name
 				
 		# 3. Births
 		var newborns = []
-		for d in list_dwarves:
+		for d3 in list_dwarves:
 			# Female, alive, married, of child-bearing age
-			if d.alive and not d.gender_male and d.spouse != null and d.age >= 18 and d.age <= 45:
+			if d3.alive and not d3.gender_male and d3.spouse != null and d3.age >= 18 and d3.age <= 45:
 				if rng.randf() < 0.25: # 25% birth chance per married female
 					newborns.append({
-						"name": world_gen.namegen.generate_dwarf_name() if world_gen and world_gen.namegen else "Hijo de " + d.name.split(" ")[0],
+						"name": world_gen.namegen.generate_dwarf_name() if world_gen and world_gen.namegen else "Hijo de " + d3.name.split(" ")[0],
 						"gender_male": rng.randf() < 0.5,
 						"age": 0,
 						"spouse": null,
 						"alive": true,
 						"profession": DFDwarf.Profession.CRAFTSMAN,
-						"generation": d.generation + 1,
+						"generation": d3.generation + 1,
 						"equipped_weapon": "",
 						"priorities": {}
 					})
@@ -4353,12 +5089,12 @@ func _simulate_embark_demographics(years: int) -> Array:
 		
 		# 4. Critical Population Immigration
 		var alive_count = 0
-		for d in list_dwarves:
-			if d.alive: alive_count += 1
+		for d4 in list_dwarves:
+			if d4.alive: alive_count += 1
 		if alive_count < 3:
 			# Immigrants join
 			var imm_count = rng.randi_range(2, 4)
-			for i in range(imm_count):
+			for i3 in range(imm_count):
 				list_dwarves.append({
 					"name": world_gen.namegen.generate_dwarf_name() if world_gen and world_gen.namegen else "Refugiado",
 					"gender_male": rng.randf() < 0.5,
@@ -4373,9 +5109,9 @@ func _simulate_embark_demographics(years: int) -> Array:
 				
 	# Filter survivors
 	var survivors = []
-	for d in list_dwarves:
-		if d.alive:
-			survivors.append(d)
+	for d5 in list_dwarves:
+		if d5.alive:
+			survivors.append(d5)
 			
 	# Limit survivors to a reasonable maximum (e.g. 50) to avoid crowding, but usually it stabilizes around 7-30
 	if survivors.size() > 50:

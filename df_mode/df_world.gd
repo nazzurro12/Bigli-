@@ -10,7 +10,7 @@ const DFGeologyLayers = preload("res://core/world/df_geology_layers.gd")
 
 
 enum TileType {
-	FLOOR, WALL, WATER_DEEP, WATER_SHALLOW, TREE, RAMP,
+	EMPTY, FLOOR, WALL, WATER_DEEP, WATER_SHALLOW, TREE, RAMP,
 	STAIRS_UP, STAIRS_DOWN, STAIRS_UPDOWN, CAVE_FLOOR, CAVE_WALL,
 	MAGMA, BRIDGE, GRASS, DIRT, SAND, SNOW, ICE, STONE_FLOOR,
 	SOIL, FARM_SOIL, MURKY_POOL, BROOK, FORTIFICATION,
@@ -32,7 +32,7 @@ enum Season { SPRING, SUMMER, AUTUMN, WINTER }
 enum DisasterType { NONE, CAVE_IN, FLOOD, FIRE, EARTHQUAKE, MAGMA_FLOOD, TORNADO }
 
 const TILE_CHARS = {
-	TileType.FLOOR: ".", TileType.WALL: "#", TileType.WATER_DEEP: "~",
+	TileType.EMPTY: " ", TileType.FLOOR: ".", TileType.WALL: "#", TileType.WATER_DEEP: "~",
 	TileType.WATER_SHALLOW: "=", TileType.TREE: "\u25A3", TileType.RAMP: "\u25B2",
 	TileType.STAIRS_UP: "<", TileType.STAIRS_DOWN: ">",
 	TileType.STAIRS_UPDOWN: "\u25A1", TileType.CAVE_FLOOR: ".",
@@ -46,7 +46,7 @@ const TILE_CHARS = {
 }
 
 const TILE_COLORS = {
-	TileType.FLOOR: Color("#808080"), TileType.WALL: Color("#A0A0A0"),
+	TileType.EMPTY: Color(0, 0, 0, 0), TileType.FLOOR: Color("#808080"), TileType.WALL: Color("#A0A0A0"),
 	TileType.WATER_DEEP: Color("#0000AA"), TileType.WATER_SHALLOW: Color("#4444FF"),
 	TileType.TREE: Color("#008000"), TileType.RAMP: Color("#8B4513"),
 	TileType.STAIRS_UP: Color("#FFFFFF"), TileType.STAIRS_DOWN: Color("#FFFFFF"),
@@ -301,7 +301,8 @@ func get_tile(pos: Vector3i) -> int:
 			return TileType.CAVE_WALL
 		if pos.y == surface:
 			return TileType.FLOOR
-	return TileType.CAVE_FLOOR
+		return TileType.EMPTY
+	return TileType.EMPTY
 
 func set_tile(pos: Vector3i, tile_type: int) -> void:
 	tiles[pos] = tile_type
@@ -355,9 +356,33 @@ func is_blocked(pos: Vector3i) -> bool:
 		(t in [TileType.WATER_DEEP] and pos.y >= 0) or \
 		(t in [TileType.MAGMA] and pos.y >= 0)
 
+# Verifica si un tile esta ocupado por una entidad viva (enano o criatura)
+# Los items NO bloquean, solo entidades con is_alive=true
+func is_blocked_by_entity(pos: Vector3i) -> bool:
+	_rebuild_grid_if_needed()
+	var at_pos = _entity_grid.get(pos, [])
+	for e in at_pos:
+		if e is DFDwarf or e is DFCreature:
+			var alive = e.get("is_alive")
+			if alive == null or alive == true:
+				return true
+	return false
+
+# Cuenta cuantas entidades vivas hay en un tile (para pathfinding con congestion)
+func count_entities_at(pos: Vector3i) -> int:
+	_rebuild_grid_if_needed()
+	var at_pos = _entity_grid.get(pos, [])
+	var count = 0
+	for e in at_pos:
+		if e is DFDwarf or e is DFCreature:
+			var alive = e.get("is_alive")
+			if alive == null or alive == true:
+				count += 1
+	return count
+
 func is_wall(pos: Vector3i) -> bool:
 	var t = get_tile(pos)
-	return t in [TileType.WALL, TileType.CAVE_WALL, TileType.CONSTRUCTED_WALL, TileType.FORTIFICATION]
+	return t in [TileType.WALL, TileType.CAVE_WALL, TileType.CONSTRUCTED_WALL, TileType.FORTIFICATION, TileType.SOIL, TileType.DIRT, TileType.SAND, TileType.GRASS]
 
 func is_floor(pos: Vector3i) -> bool:
 	var t = get_tile(pos)
@@ -397,24 +422,28 @@ func get_surface_height(x: int, z: int) -> int:
 # ---- ENTITY HELPERS ----
 func get_entity_at(pos: Vector3i):
 	_rebuild_grid_if_needed()
-	var key = "%d,%d,%d" % [pos.x, pos.y, pos.z]
-	var at_pos = _entity_grid.get(key, [])
+	var at_pos = _entity_grid.get(pos, [])
 	for e in at_pos:
 		if e.get("is_alive") != false:
 			return e
 	return null
 
 func get_dwarf_by_id(dwarf_id: int):
-	for e in entities:
-		if e is DFDwarf and e.id == dwarf_id:
-			return e
+	for dw in dwarves:
+		if dw.id == dwarf_id or dw.get_instance_id() == dwarf_id:
+			return dw
+	for cr in creatures:
+		if cr.id == dwarf_id or cr.get_instance_id() == dwarf_id:
+			return cr
+	for ent in entities:
+		if (ent.get("id") != null and ent.id == dwarf_id) or ent.get_instance_id() == dwarf_id:
+			return ent
 	return null
 
 func get_hostile_entities_at(pos: Vector3i, exclude_id: int = -1) -> Array:
 	_rebuild_grid_if_needed()
 	var result = []
-	var key = "%d,%d,%d" % [pos.x, pos.y, pos.z]
-	var at_pos = _entity_grid.get(key, [])
+	var at_pos = _entity_grid.get(pos, [])
 	for e in at_pos:
 		var is_hostile = e.get("is_hostile") == true
 		if (e.get("is_alive") != false) and is_hostile and e.id != exclude_id:
@@ -424,8 +453,7 @@ func get_hostile_entities_at(pos: Vector3i, exclude_id: int = -1) -> Array:
 func get_creatures_at(pos: Vector3i, creature_type: String = "") -> Array:
 	_rebuild_grid_if_needed()
 	var result = []
-	var key = "%d,%d,%d" % [pos.x, pos.y, pos.z]
-	var at_pos = _entity_grid.get(key, [])
+	var at_pos = _entity_grid.get(pos, [])
 	for e in at_pos:
 		if e.get("is_alive") == false: continue
 		if creature_type != "" and e.get("creature_type") != creature_type: continue
@@ -436,8 +464,7 @@ func get_creatures_at(pos: Vector3i, creature_type: String = "") -> Array:
 func get_items_at(pos: Vector3i) -> Array:
 	_rebuild_grid_if_needed()
 	var result = []
-	var key = "%d,%d,%d" % [pos.x, pos.y, pos.z]
-	var at_pos = _entity_grid.get(key, [])
+	var at_pos = _entity_grid.get(pos, [])
 	for e in at_pos:
 		if e is DFItem:
 			result.append(e)
@@ -452,14 +479,14 @@ func _rebuild_grid_if_needed() -> void:
 	_grid_version = world_version
 
 func _index_entity(e) -> void:
-	var key = "%d,%d,%d" % [e.tile_pos.x, e.tile_pos.y, e.tile_pos.z]
-	if not _entity_grid.has(key):
-		_entity_grid[key] = []
-	_entity_grid[key].append(e)
+	var pos: Vector3i = e.tile_pos
+	if not _entity_grid.has(pos):
+		_entity_grid[pos] = []
+	_entity_grid[pos].append(e)
 
 func _unindex_entity(e) -> void:
-	var key = "%d,%d,%d" % [e.tile_pos.x, e.tile_pos.y, e.tile_pos.z]
-	var at_pos = _entity_grid.get(key)
+	var pos: Vector3i = e.tile_pos
+	var at_pos = _entity_grid.get(pos)
 	if at_pos != null:
 		at_pos.erase(e)
 
@@ -508,14 +535,14 @@ func create_workshop(type: int, pos: Vector3i):
 # ---- DIG / CHOP / BUILD ----
 func dig_tile(pos: Vector3i) -> bool:
 	var t = get_tile(pos)
-	if t == TileType.WALL or t == TileType.CAVE_WALL:
+	if t == TileType.WALL or t == TileType.CAVE_WALL or t == TileType.SOIL or t == TileType.DIRT or t == TileType.SAND or t == TileType.GRASS:
 		var mat = get_material(pos)
 		var above_pos = Vector3i(pos.x, pos.y + 1, pos.z)
 		var above_t = get_tile(above_pos)
 		if above_t in [TileType.FLOOR, TileType.CAVE_FLOOR, TileType.GRASS, TileType.DIRT, TileType.SAND, TileType.SOIL]:
 			set_tile(pos, TileType.RAMP)
 		else:
-			set_tile(pos, TileType.STONE_FLOOR if t == TileType.WALL else TileType.CAVE_FLOOR)
+			set_tile(pos, TileType.STONE_FLOOR if (t == TileType.WALL or t == TileType.CAVE_WALL) else TileType.CAVE_FLOOR)
 		set_material(pos, mat)
 		set_revealed(pos, true)
 		_check_cavein(pos)
@@ -528,7 +555,10 @@ func dig_tile(pos: Vector3i) -> bool:
 		elif mat == MatType.SILVER: item_type = "silver_ore"; item_name = "Mena de Plata"
 		elif mat == MatType.TIN: item_type = "tin_ore"; item_name = "Mena de Estaño"
 		elif mat == MatType.PLATINUM: item_type = "platinum_ore"; item_name = "Mena de Platino"
+		elif t == TileType.SOIL or t == TileType.DIRT or t == TileType.SAND or t == TileType.GRASS: item_type = "stone"; item_name = "Tierra / Arcilla"
 		_spawn_item(pos, item_name, item_type, mat, "*", get_tile_color(pos))
+		return true
+	elif t in [TileType.STONE_FLOOR, TileType.CAVE_FLOOR, TileType.EMPTY, TileType.RAMP, TileType.STAIRS_UP, TileType.STAIRS_DOWN, TileType.STAIRS_UPDOWN]:
 		return true
 	return false
 

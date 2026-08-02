@@ -697,7 +697,8 @@ func _apply_data_driven_triggers(world) -> bool:
 		return false
 	var closest = null
 	var closest_distance := sight_range + 1
-	for entity in world.entities:
+	var living_candidates: Array = world.dwarves + world.creatures
+	for entity in living_candidates:
 		if not CreatureDecisionRules.is_valid_living_target(entity, self):
 			continue
 		var distance := CreatureDecisionRules.manhattan_distance(entity.tile_pos, tile_pos)
@@ -728,26 +729,20 @@ func _passive_ai(world) -> void:
 	elif thirst > 0.6:
 		_seek_water(world)
 	elif fatigue > 0.8:
-		ai_state = AIState.SLEEP; is_sleeping = true
-	elif ai_state == AIState.IDLE or ai_state == AIState.WANDER:
-		if randi() % 10 == 0:
-			ai_state = AIState.WANDER
-			_wander(world)
-		else:
-			ai_state = AIState.IDLE
+		ai_state = AIState.SLEEP
+		is_sleeping = true
+	elif randi() % 4 == 0:
+		_wander(world)
 
 func _nervous_ai(world) -> void:
-	if hunger > 0.7:
+	if hunger > 0.6:
 		_seek_food(world)
-	elif thirst > 0.7:
+	elif thirst > 0.6:
 		_seek_water(world)
-	elif fatigue > 0.9:
-		ai_state = AIState.SLEEP; is_sleeping = true
+	elif randi() % 3 == 0:
+		_wander(world)
 	else:
-		if randi() % 3 == 0:
-			ai_state = AIState.WANDER; _wander(world)
-		else:
-			ai_state = AIState.IDLE
+		ai_state = AIState.IDLE
 	_scan_for_danger(world)
 
 func _social_ai(world) -> void:
@@ -899,7 +894,8 @@ func _check_threats(world) -> void:
 			fear_level = maxf(0.0, fear_level - 0.01)
 		return
 	if personality in [PersonalityType.SKITTISH, PersonalityType.NERVOUS, PersonalityType.PASSIVE]:
-		for e in world.entities:
+		var candidates: Array = world.dwarves + world.creatures
+		for e in candidates:
 			if e == self: continue
 			var e_type = e.get("creature_type")
 			if e_type == null: continue
@@ -1231,14 +1227,7 @@ func _move_toward(world, target: Vector3i) -> void:
 
 	if next_step != tile_pos:
 		# Entity collision avoidance
-		var blocked_by_entity = false
-		for e in world.entities:
-			if e == self: continue
-			if e is DFItem: continue
-			var _ial = e.get("is_alive"); if (_ial != null and _ial == false): continue
-			if e.tile_pos == next_step:
-				blocked_by_entity = true
-				break
+		var blocked_by_entity: bool = world.is_blocked_by_entity(next_step)
 		if blocked_by_entity:
 			var dirs = [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1),
 				Vector3i(-1, 0, -1), Vector3i(1, 0, 1), Vector3i(-1, 0, 1), Vector3i(1, 0, -1)]
@@ -1248,15 +1237,7 @@ func _move_toward(world, target: Vector3i) -> void:
 				var alt = tile_pos + d
 				if alt.x < 0 or alt.x >= world.width or alt.z < 0 or alt.z >= world.depth: continue
 				if world.is_blocked(alt): continue
-				var alt_blocked = false
-				for e_851 in world.entities:
-					if e_851 == self: continue
-					if e_851 is DFItem: continue
-					var _ial2 = e_851.get("is_alive"); if (_ial2 != null and _ial2 == false): continue
-					if e_851.tile_pos == alt:
-						alt_blocked = true
-						break
-				if not alt_blocked:
+				if not world.is_blocked_by_entity(alt):
 					tile_pos = alt
 					found_alt = true
 					break

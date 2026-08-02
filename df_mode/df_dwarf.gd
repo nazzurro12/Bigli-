@@ -133,6 +133,10 @@ var speed: float = 1.0
 var has_moved_this_tick: bool = false
 var needs_display_update: bool = true
 
+var coins: int = 15
+var digestion_level: float = 0.0
+var latrine_need: float = 0.0
+
 var strength: float = 5.0 + randi() % 8
 var agility: float = 5.0 + randi() % 8
 var toughness: float = 5.0 + randi() % 8
@@ -194,6 +198,12 @@ var social_roles: Array = []
 var known_reputations: Dictionary = {}
 var rumors: Array = []
 var legal_record: Array = []
+var is_arrested: bool = false
+var is_imprisoned: bool = false
+var prison_cell: Vector3i = Vector3i(-1, -1, -1)
+var sentence_remaining: int = 0
+var sentence_type: String = ""
+var crimes_convicted: int = 0
 var life_decisions: Array = []
 var possession_count: int = 0
 var last_possession_event_id: int = -1
@@ -319,6 +329,7 @@ func _init(pos: Vector3i, dwarf_name: String = ""):
 	tile_pos = pos
 	id = _id_counter
 	_id_counter += 1
+	move_tick_counter = (id * 17 + (randi() % 5)) % 3
 	body = DFAnatomy.Body.new("humanoid")
 	genome = DFGenetics.Genome.new(1.0, 1.0, 1.0, 1.0).mutate(0.05, 0.1)
 	body_mass_kg = 70.0 * genome.size_multiplier
@@ -815,6 +826,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		tick_metabolism(world)
 		tick_grooming()
 		tick_hygiene(world)
+		tick_digestion(world)
 		tick_social(world)
 		tick_inspect(world)
 		
@@ -1281,8 +1293,8 @@ func _has_tool_named(tokens: Array) -> bool:
 	for item in inventory:
 		var item_name: String = str(item.name).to_lower() if "name" in item else ""
 		var item_type: String = str(item.item_type).to_lower() if "item_type" in item else ""
-		for token in tokens:
-			var lowered: String = str(token).to_lower()
+		for tok in tokens:
+			var lowered: String = str(tok).to_lower()
 			if lowered in item_name or lowered in item_type:
 				return true
 	return false
@@ -1599,8 +1611,11 @@ func _work_on_job(world) -> void:
 		current_task = "idle"
 		return
 	if current_job.state == DFJob.JobState.IN_PROGRESS:
-		current_task = current_job.get_description()
-		_execute_job(world)
+		task_progress += 0.20 + get_skill_level(current_job.get_required_skill()) * 0.08
+		if task_progress >= 1.0:
+			_execute_job(world)
+		else:
+			current_task = current_job.get_description() + " (%.0f%%)" % (task_progress * 100)
 		return
 
 	if current_job.job_type == DFJob.JobType.BUILD_WALL or current_job.job_type == DFJob.JobType.BUILD_FLOOR or current_job.job_type == DFJob.JobType.BUILD_WORKSHOP:
@@ -1820,6 +1835,25 @@ func tick_hygiene(world) -> void:
 				add_thought("Se lavó la suciedad en el agua.", 0.03)
 				return
 
+# ---- DIGESTIÓN Y HIGIENE SANITARIA ----
+func tick_digestion(world: Object) -> void:
+	if not is_alive: return
+	if body.ingested_substances.has("food") and body.ingested_substances["food"] > 0.0:
+		var digested: float = minf(body.ingested_substances["food"], 0.05)
+		body.ingested_substances["food"] -= digested
+		digestion_level += digested
+		latrine_need = minf(1.0, latrine_need + digested * 0.8)
+
+	if latrine_need > 0.70 and (current_task == "idle" or current_task == ""):
+		_use_latrine(world)
+
+func _use_latrine(world: Object) -> void:
+	latrine_need = 0.0
+	digestion_level = 0.0
+	current_task = "Aliviándose en la letrina"
+	needs_display_update = true
+	add_thought("Se alivió en la letrina y mantiene excelente higiene corporal.", 0.04)
+
 # ---- SOCIAL ----
 func tick_social(world) -> void:
 	if current_task != "idle": return
@@ -1923,15 +1957,18 @@ func _satisfy_needs(world) -> bool:
 			current_task = "Bebiendo"
 			needs_display_update = true
 
-			if "Ale" in item.name or "Cerveza" in item.name or "Vino" in item.name:
+			var iname_lower = item.name.to_lower()
+			var is_alcohol = ("ale" in iname_lower or "cerveza" in iname_lower or "vino" in iname_lower or "beer" in iname_lower or "wine" in iname_lower or "hidromiel" in iname_lower or "mead" in iname_lower or "lager" in iname_lower or "rum" in iname_lower or "ron" in iname_lower or "cider" in iname_lower or "sidra" in iname_lower)
+			if is_alcohol:
 				minutes_since_alcohol = 0
-				stress *= 0.9
+				stress *= 0.85
+				speed = 1.2
 				if item.name == preferred_drink:
-					add_thought("Bebió su alcohol favorito: %s. ¡Excelente!" % item.name, 0.10)
+					add_thought("Bebió su alcohol favorito: %s. ¡Una obra maestra!" % item.name, 0.12)
 				else:
-					add_thought("Se sintió reconfortado al beber buen alcohol enano.", 0.08)
+					add_thought("Se sintió reconfortado y vigorizado al beber buen alcohol enano.", 0.08)
 			else:
-				add_thought("Bebió agua (preferiría alcohol).", -0.01)
+				add_thought("Bebió agua (un verdadero enano preferiría alcohol).", -0.01)
 			break
 
 	if ate or drank:
@@ -1943,30 +1980,11 @@ func _satisfy_needs(world) -> bool:
 	# Busqueda mas agresiva: buscar en todo el mapa cuando es critico
 	var target_food: DFItem = null
 	var target_drink: DFItem = null
-	var best_dist = 99999
-	var max_search_radius = 30 if (hunger > 0.8 or thirst > 0.8) else 15
+	var best_dist_food = 99999
+	var best_dist_drink = 99999
+	var max_search_radius = 35 if (hunger > 0.8 or thirst > 0.8) else 20
 
-	# Buscar comida en stockpiles (items almacenados)
-	if not world.stockpiles.is_empty():
-		for sp in world.stockpiles:
-			for stock_tile in sp.tiles:
-				var d = abs(stock_tile.x - tile_pos.x) + abs(stock_tile.z - tile_pos.z) + abs(stock_tile.y - tile_pos.y) * 2
-				if d > max_search_radius:
-					continue
-				# Buscar items en este tile del stockpile
-				for ent in world.entities:
-					if ent is DFItem and ent.tile_pos == stock_tile:
-						if ent.is_decayed:
-							continue
-						if d < best_dist:
-							if hunger > 0.5 and ent.is_edible:
-								best_dist = d
-								target_food = ent
-							elif thirst > 0.5 and ent.is_drink and target_food == null:
-								best_dist = d
-								target_drink = ent
-
-	# Buscar en el suelo (siempre, independientemente de stockpiles)
+	# Buscar comida o bebida libre o almacenada en el mundo (priorizando alcohol para bebidas)
 	for ent_1754 in world.entities:
 		if ent_1754 is DFItem:
 			if ent_1754.is_decayed:
@@ -1974,12 +1992,16 @@ func _satisfy_needs(world) -> bool:
 			var d_1758 = abs(ent_1754.tile_pos.x - tile_pos.x) + abs(ent_1754.tile_pos.z - tile_pos.z) + abs(ent_1754.tile_pos.y - tile_pos.y) * 2
 			if d_1758 > max_search_radius:
 				continue
-			if d_1758 < best_dist:
-				if hunger > 0.5 and ent_1754.is_edible:
-					best_dist = d_1758
-					target_food = ent_1754
-				elif thirst > 0.5 and ent_1754.is_drink and target_food == null:
-					best_dist = d_1758
+			if hunger > 0.4 and ent_1754.is_edible and d_1758 < best_dist_food:
+				best_dist_food = d_1758
+				target_food = ent_1754
+			elif thirst > 0.4 and ent_1754.is_drink:
+				var iname_lower = ent_1754.name.to_lower()
+				var is_alc = ("ale" in iname_lower or "cerveza" in iname_lower or "vino" in iname_lower or "beer" in iname_lower or "wine" in iname_lower or "hidromiel" in iname_lower or "mead" in iname_lower)
+				# Priorizar alcohol sobre agua simple reduciendo la distancia percibida
+				var effective_dist = d_1758 if is_alc else d_1758 + 10
+				if effective_dist < best_dist_drink:
+					best_dist_drink = effective_dist
 					target_drink = ent_1754
 
 	var target = target_food if target_food != null else target_drink
@@ -1991,7 +2013,7 @@ func _satisfy_needs(world) -> bool:
 			needs_display_update = true
 			return false
 		else:
-			current_task = "Buscando comida"
+			current_task = "Buscando comida" if target == target_food else "Buscando bebida"
 			_move_toward(world, target.tile_pos)
 			return true
 
@@ -2395,10 +2417,10 @@ func _execute_job(world) -> void:
 		add_thought("Completó satisfactoriamente un trabajo.", 0.03)
 		current_task = "idle"
 	elif current_job != null:
-		if current_job.state != DFJob.JobState.IN_PROGRESS:
-			current_job.state = DFJob.JobState.CANCELLED
-			current_job = null
-			current_task = "idle"
+		current_job.state = DFJob.JobState.CANCELLED
+		current_job = null
+		current_task = "idle"
+		task_progress = 0.0
 
 func _pick_up_job(world, jobs: Array) -> void:
 	var best_job: DFJob = null
@@ -2419,29 +2441,16 @@ func _pick_up_job(world, jobs: Array) -> void:
 		if j.state != DFJob.JobState.UNASSIGNED:
 			continue
 			
-		# Restricción estricta de profesión
-		if j.job_type == DFJob.JobType.CHOP_TREE and profession != Profession.WOODCUTTER:
-			continue
-		if j.job_type == DFJob.JobType.DIG and profession != Profession.MINER:
-			continue
-		if j.job_type == DFJob.JobType.HUNT and profession != Profession.HUNTER:
-			continue
-		if j.job_type == DFJob.JobType.FISH and profession != Profession.FISHER and profession != Profession.COOK and profession != Profession.FARMER and profession != Profession.HUNTER:
-			continue
-		if j.job_type == DFJob.JobType.COOK_FOOD and profession != Profession.COOK:
-			continue
-		if j.job_type == DFJob.JobType.BREW_DRINK and profession != Profession.COOK and profession != Profession.BREWER:
-			continue
-		if j.job_type == DFJob.JobType.SMELT_ORE and profession != Profession.SMITH:
-			continue
-		if j.job_type == DFJob.JobType.MAKE_CHARCOAL and profession != Profession.SMITH and profession != Profession.WOODCUTTER:
-			continue
-		if j.job_type == DFJob.JobType.PROCESS_PLANT and profession != Profession.FARMER:
-			continue
-		if j.job_type == DFJob.JobType.TAN_HIDE and profession != Profession.HUNTER and profession != Profession.COOK and profession != Profession.CARPENTER:
-			continue
-		if j.job_type == DFJob.JobType.SPIN_THREAD and profession != Profession.FARMER and profession != Profession.CRAFTSMAN:
-			continue
+		# Restricción preferencial de profesión con bonificación de puntuación
+		var profession_bonus = 20 if (
+			(j.job_type == DFJob.JobType.DIG and profession == Profession.MINER) or
+			(j.job_type == DFJob.JobType.CHOP_TREE and profession == Profession.WOODCUTTER) or
+			(j.job_type == DFJob.JobType.COOK_FOOD and profession == Profession.COOK) or
+			(j.job_type == DFJob.JobType.BREW_DRINK and (profession == Profession.COOK or profession == Profession.BREWER)) or
+			(j.job_type == DFJob.JobType.HUNT and profession == Profession.HUNTER) or
+			(j.job_type == DFJob.JobType.FISH and profession == Profession.FISHER)
+		) else 0
+
 		if j.job_type == DFJob.JobType.STORE_IN_CONTAINER:
 			pass  # Todos pueden guardar comida en almacenes
 			
@@ -2451,8 +2460,8 @@ func _pick_up_job(world, jobs: Array) -> void:
 
 		# Verificar si tenemos la herramienta requerida para el trabajo
 		if not _has_tool_for_job(j.job_type):
-			var tool_substring = "Pickaxe" if j.job_type == DFJob.JobType.DIG else "Axe" if j.job_type == DFJob.JobType.CHOP_TREE else "Caña" if j.job_type == DFJob.JobType.FISH else "Sword"
-			var target_tool = _find_nearest_item_on_ground_matching(world, tool_substring)
+			var tool_tokens = ["pickaxe", "pico"] if j.job_type == DFJob.JobType.DIG else ["axe", "hacha"] if j.job_type == DFJob.JobType.CHOP_TREE else ["caña", "fishing", "fish"] if j.job_type == DFJob.JobType.FISH else ["sword", "espada", "weapon", "arma"]
+			var target_tool = _find_nearest_item_on_ground_matching(world, tool_tokens)
 			if target_tool != null:
 				# Ir a recoger la herramienta primero
 				_move_toward(world, target_tool.tile_pos)
@@ -2471,7 +2480,7 @@ func _pick_up_job(world, jobs: Array) -> void:
 		var skill_level = get_skill_level(j.get_required_skill())
 		var skill_bonus = skill_level * 5
 		var dist_penalty = int(dist)
-		var score = skill_bonus - dist_penalty
+		var score = skill_bonus + profession_bonus - dist_penalty
 		if score > best_score:
 			best_score = score
 			best_job = j
@@ -2499,6 +2508,12 @@ func _move_toward(world, target: Vector3i) -> void:
 		if current_job != null:
 			current_job.state = DFJob.JobState.CANCELLED
 			current_job = null
+		if not autonomous_plan.is_empty():
+			autonomous_plan = {}
+			autonomous_goal = ""
+			autonomous_reason = ""
+			autonomous_target = Vector3i(-1, -1, -1)
+			autonomous_plan_cooldown = 15
 		current_task = "idle"
 		path.clear()
 		path_index = 0
@@ -2534,17 +2549,14 @@ func _move_toward(world, target: Vector3i) -> void:
 			return
 
 	if next_step != tile_pos:
-		# Entity collision avoidance: check if another entity is on the target tile
+		# Entity collision avoidance using spatial hash O(1)
 		var blocked_by_entity = false
-		for e in world.entities:
-			if e == self: continue
-			if e is DFItem: continue
-			var is_alive_check = e.get("is_alive")
-			if is_alive_check == null: is_alive_check = true
-			if is_alive_check == false: continue
-			if e.tile_pos == next_step:
+		var occupant = world.get_entity_at(next_step)
+		if occupant != null and occupant != self and not (occupant is DFItem):
+			var is_alive_check = occupant.get("is_alive")
+			if is_alive_check == null or is_alive_check == true:
 				blocked_by_entity = true
-				break
+
 		if blocked_by_entity:
 			# Try to find adjacent free tile instead
 			var dirs = [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1),
@@ -2556,17 +2568,8 @@ func _move_toward(world, target: Vector3i) -> void:
 				if alt.x < 0 or alt.x >= world.width or alt.z < 0 or alt.z >= world.depth:
 					continue
 				if world.is_blocked(alt): continue
-				var alt_blocked = false
-				for e_2341 in world.entities:
-					if e_2341 == self: continue
-					if e_2341 is DFItem: continue
-					var is_alive_check2 = e_2341.get("is_alive")
-					if is_alive_check2 == null: is_alive_check2 = true
-					if is_alive_check2 == false: continue
-					if e_2341.tile_pos == alt:
-						alt_blocked = true
-						break
-				if not alt_blocked:
+				var alt_occ = world.get_entity_at(alt)
+				if alt_occ == null or alt_occ == self or alt_occ is DFItem:
 					tile_pos = alt
 					found_alt = true
 					break
@@ -3189,41 +3192,55 @@ func tick_autonomous_survival(world) -> void:
 
 
 func _has_tool_for_job(job_type: int) -> bool:
+	var eq_w = str(equipped_weapon).to_lower()
 	if job_type == DFJob.JobType.DIG:
-		if "pickaxe" in equipped_weapon.to_lower():
+		if "pickaxe" in eq_w or "pico" in eq_w:
 			return true
 		for item in inventory:
-			if "Pickaxe" in item.name:
+			var iname = str(item.name).to_lower() if "name" in item else ""
+			var itype = str(item.item_type).to_lower() if "item_type" in item else ""
+			if "pickaxe" in iname or "pico" in iname or "pickaxe" in itype or "pico" in itype:
 				return true
 		return false
 	elif job_type == DFJob.JobType.CHOP_TREE:
-		if "axe" in equipped_weapon.to_lower():
+		if "axe" in eq_w or "hacha" in eq_w:
 			return true
-		for item_2978 in inventory:
-			if "Axe" in item_2978.name:
+		for item2 in inventory:
+			var iname2 = str(item2.name).to_lower() if "name" in item2 else ""
+			var itype2 = str(item2.item_type).to_lower() if "item_type" in item2 else ""
+			if "axe" in iname2 or "hacha" in iname2 or "axe" in itype2 or "hacha" in itype2:
 				return true
 		return false
 	elif job_type == DFJob.JobType.HUNT:
 		if equipped_weapon != "" and equipped_weapon != "none":
 			return true
-		for item_2985 in inventory:
-			var iname = item_2985.name.to_lower()
-			if "sword" in iname or "axe" in iname or "spear" in iname or "bow" in iname or "crossbow" in iname or "mace" in iname or "knife" in iname or "dagger" in iname or "pickaxe" in iname:
+		for item3 in inventory:
+			var iname3 = str(item3.name).to_lower() if "name" in item3 else ""
+			if "sword" in iname3 or "espada" in iname3 or "axe" in iname3 or "hacha" in iname3 or "spear" in iname3 or "lanza" in iname3 or "bow" in iname3 or "arco" in iname3 or "crossbow" in iname3 or "ballesta" in iname3 or "mace" in iname3 or "maza" in iname3 or "knife" in iname3 or "cuchillo" in iname3 or "dagger" in iname3 or "daga" in iname3 or "pickaxe" in iname3 or "pico" in iname3:
 				return true
 		return false
 	elif job_type == DFJob.JobType.FISH:
 		return true
 	return true
 
-func _find_nearest_item_on_ground_matching(world, item_substring: String):
+func _find_nearest_item_on_ground_matching(world, tokens: Array):
 	var nearest_item = null
 	var nearest_dist = 9999.0
 	for e in world.entities:
-		if e is DFItem and item_substring in e.name:
-			var d = abs(tile_pos.x - e.tile_pos.x) + abs(tile_pos.z - e.tile_pos.z)
-			if d < nearest_dist:
-				nearest_dist = d
-				nearest_item = e
+		if e is DFItem:
+			var ename = str(e.name).to_lower()
+			var etype = str(e.item_type).to_lower()
+			var matched = false
+			for tok in tokens:
+				var ltok = str(tok).to_lower()
+				if ltok in ename or ltok in etype:
+					matched = true
+					break
+			if matched:
+				var d = abs(tile_pos.x - e.tile_pos.x) + abs(tile_pos.z - e.tile_pos.z) + abs(tile_pos.y - e.tile_pos.y) * 2
+				if d < nearest_dist:
+					nearest_dist = d
+					nearest_item = e
 	return nearest_item
 
 
@@ -4005,13 +4022,13 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 			if ent is DFItem and ent.item_type == item_type_to_collect and not ent.is_inside_container:
 				# Verificar que no este ya en un stockpile
 				var already_in_sp = false
-				for sp in world.stockpiles:
-					if sp.has_tile(ent.tile_pos):
+				for sp_chk in world.stockpiles:
+					if sp_chk.has_tile(ent.tile_pos):
 						already_in_sp = true
 						break
 				if already_in_sp:
 					continue
-				var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z)
+				var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
 				if d < best_d:
 					best_d = d
 					target_item = ent
@@ -4022,7 +4039,7 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 			current_task = "idle"
 			return false
 			
-		var dist = abs(tile_pos.x - target_item.tile_pos.x) + abs(tile_pos.z - target_item.tile_pos.z)
+		var dist = abs(tile_pos.x - target_item.tile_pos.x) + abs(tile_pos.z - target_item.tile_pos.z) + abs(tile_pos.y - target_item.tile_pos.y) * 2
 		if dist > 1:
 			_move_toward(world, target_item.tile_pos)
 			current_task = "Yendo a recoger " + target_item.name
@@ -4042,12 +4059,12 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 	var best_sp_pos = Vector3i(-1, -1, -1)
 	var best_sp_dist = 999999
 	for sp_3794 in world.stockpiles:
-		var free_pos = sp_3794.get_free_tile(world)
-		if free_pos.y != -1:
-			var d_3797 = abs(free_pos.x - tile_pos.x) + abs(free_pos.z - tile_pos.z)
+		var free_pos2 = sp_3794.get_free_tile(world)
+		if free_pos2.y != -1:
+			var d_3797 = abs(free_pos2.x - tile_pos.x) + abs(free_pos2.z - tile_pos.z)
 			if d_3797 < best_sp_dist:
 				best_sp_dist = d_3797
-				best_sp_pos = free_pos
+				best_sp_pos = free_pos2
 				best_sp = sp_3794
 
 	var target_drop_pos = best_sp_pos
@@ -4055,9 +4072,9 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 	
 	if best_sp == null or best_sp_pos.y == -1:
 		if item_type_to_collect == "wood":
-			var ext_pos = _find_house_exterior_storage_pos(world)
-			if ext_pos != Vector3i(-1, -1, -1):
-				target_drop_pos = ext_pos
+			var ext_pos2 = _find_house_exterior_storage_pos(world)
+			if ext_pos2 != Vector3i(-1, -1, -1):
+				target_drop_pos = ext_pos2
 				is_exterior_drop = true
 
 	if target_drop_pos.y == -1:
@@ -4065,6 +4082,10 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 		carried_item.tile_pos = tile_pos
 		world.add_entity(carried_item)
 		inventory.erase(carried_item)
+		if current_job != null:
+			current_job.state = DFJob.JobState.CANCELLED
+			current_job = null
+		current_task = "idle"
 		add_thought("Dejo " + carried_item.name + " en el suelo por falta de espacio.", -0.01)
 		return true
 

@@ -72,7 +72,7 @@ var config_rainfall: float = 1.0
 var config_river_density: float = 1.15
 var config_site_density: float = 1.0
 var config_world_chunk_size: int = 64
-var config_local_map_size: int = 256
+var config_local_map_size: int = 512
 
 func _init(seed_value: int = -1) -> void:
 	rng = RandomNumberGenerator.new()

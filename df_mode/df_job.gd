@@ -21,7 +21,9 @@ enum JobType {
 	LAY_NEST_BOX, COLLECT_EGGS, SHEAR_CREATURE,
 	MILK_CREATURE, MAKE_CHEESE, MAKE_LYE, MAKE_POTASH,
 	MAKE_PEARLASH, POTTERY, GLAZING, GLASS_MAKING,
-	BOOK_BINDING, SCROLL_WRITING, STORE_IN_CONTAINER, DECONSTRUCT
+	BOOK_BINDING, SCROLL_WRITING, STORE_IN_CONTAINER, DECONSTRUCT,
+	DIG_GRAVE, BURY_CORPSE, HAUL_CORPSE, BUILD_MEMORIAL,
+	ARREST_DWARF, ESCORT_PRISONER, GUARD_PRISON, RELEASE_PRISONER, ADMINISTER_PUNISHMENT
 }
 
 enum JobState { UNASSIGNED, ASSIGNED, IN_PROGRESS, COMPLETED, CANCELLED, SUSPENDED }
@@ -91,8 +93,16 @@ const JOB_LABOR_MAP = {
 	JobType.BUILD_BRIDGE: LaborCategory.ENGINEERING, JobType.BUILD_ROAD: LaborCategory.HAULING,
 	JobType.PULL_LEVER: LaborCategory.ENGINEERING, JobType.CLEAN: LaborCategory.HAULING,
 	JobType.FEED_WAR_ANIMAL: LaborCategory.MILITARY,
-	JobType.BUILD_WORKSHOP: LaborCategory.STONECRAFT, JobType.CONSTRUCT_BUILDING: LaborCategory.ENGINEERING,
-	JobType.DECONSTRUCT: LaborCategory.STONECRAFT
+	JobType.BUILD_WORKSHOP: LaborCategory.STONECRAFT, JobType.CONSTRUCT_BUILDING: LaborCategory.ENGINEERING,		JobType.DECONSTRUCT: LaborCategory.STONECRAFT,
+		JobType.DIG_GRAVE: LaborCategory.MINING,
+		JobType.BURY_CORPSE: LaborCategory.HAULING,
+		JobType.HAUL_CORPSE: LaborCategory.HAULING,
+		JobType.BUILD_MEMORIAL: LaborCategory.STONECRAFT,
+		JobType.ARREST_DWARF: LaborCategory.MILITARY,
+		JobType.ESCORT_PRISONER: LaborCategory.MILITARY,
+		JobType.GUARD_PRISON: LaborCategory.MILITARY,
+		JobType.RELEASE_PRISONER: LaborCategory.MILITARY,
+		JobType.ADMINISTER_PUNISHMENT: LaborCategory.MILITARY
 }
 
 const LABOR_NAMES = {
@@ -203,7 +213,16 @@ func get_description_spanish() -> String:
 		JobType.MAKE_POTASH: "Hacer Potasa", JobType.MAKE_PEARLASH: "Hacer Sosa",
 		JobType.BOOK_BINDING: "Encuadernar", JobType.SCROLL_WRITING: "Escribir Pergamino",
 		JobType.STORE_IN_CONTAINER: "Guardar en Almacén de Comida",
-		JobType.DECONSTRUCT: "Desmantelar"
+		JobType.DECONSTRUCT: "Desmantelar",
+		JobType.DIG_GRAVE: "Cavar Tumba",
+		JobType.BURY_CORPSE: "Enterrar Cadáver",
+		JobType.HAUL_CORPSE: "Transportar Cadáver",
+		JobType.BUILD_MEMORIAL: "Construir Memorial",
+		JobType.ARREST_DWARF: "Arrestar Enano",
+		JobType.ESCORT_PRISONER: "Escoltar Prisionero",
+		JobType.GUARD_PRISON: "Vigilar Prision",
+		JobType.RELEASE_PRISONER: "Liberar Prisionero",
+		JobType.ADMINISTER_PUNISHMENT: "Administrar Castigo"
 	}
 	return names.get(job_type, "Desconocido")
 
@@ -269,6 +288,15 @@ func get_required_skill() -> int:
 		JobType.BOOK_BINDING: return DFDwarf.Skill.MECHANICS
 		JobType.SCROLL_WRITING: return DFDwarf.Skill.WRITING
 		JobType.RECOVER: return DFDwarf.Skill.DRESSING_WOUNDS
+		JobType.DIG_GRAVE: return DFDwarf.Skill.MINING
+		JobType.BURY_CORPSE: return DFDwarf.Skill.COOKING
+		JobType.HAUL_CORPSE: return DFDwarf.Skill.COOKING
+		JobType.BUILD_MEMORIAL: return DFDwarf.Skill.MASONRY
+		JobType.ARREST_DWARF: return DFDwarf.Skill.MILITARY_TACTICS
+		JobType.ESCORT_PRISONER: return DFDwarf.Skill.MILITARY_TACTICS
+		JobType.GUARD_PRISON: return DFDwarf.Skill.MILITARY_TACTICS
+		JobType.RELEASE_PRISONER: return DFDwarf.Skill.ORGANIZING
+		JobType.ADMINISTER_PUNISHMENT: return DFDwarf.Skill.LEADERSHIP
 		_: return DFDwarf.Skill.MINING
 
 func get_labor_category() -> int:
@@ -384,6 +412,10 @@ func get_display_char() -> String:
 		JobType.BUILD_WORKSHOP: return "W"
 		JobType.STORE_IN_CONTAINER: return "S"
 		JobType.DECONSTRUCT: return "x"
+		JobType.DIG_GRAVE: return "T"
+		JobType.BURY_CORPSE: return "b"
+		JobType.HAUL_CORPSE: return "C"
+		JobType.BUILD_MEMORIAL: return "M"
 		_: return "?"
 
 func get_display_color() -> Color:
@@ -410,4 +442,8 @@ func get_display_color() -> Color:
 		JobType.SURGERY: return Color("#FF4444")
 		JobType.STORE_IN_CONTAINER: return Color("#BB8844")
 		JobType.DECONSTRUCT: return Color("#FF3333")
+		JobType.DIG_GRAVE: return Color("#886644")
+		JobType.BURY_CORPSE: return Color("#664488")
+		JobType.HAUL_CORPSE: return Color("#AA6644")
+		JobType.BUILD_MEMORIAL: return Color("#CC8844")
 		_: return get_priority_color()

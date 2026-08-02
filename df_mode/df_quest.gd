@@ -483,8 +483,8 @@ func export_state() -> Dictionary:
 	for quest in active_quests:
 		active_data.append(_quest_to_dict(quest))
 	var completed_data: Array = []
-	for quest in completed_quests:
-		completed_data.append(_quest_to_dict(quest))
+	for quest2 in completed_quests:
+		completed_data.append(_quest_to_dict(quest2))
 	return {
 		"active_quests": active_data,
 		"completed_quests": completed_data,
@@ -500,9 +500,9 @@ func import_state(data: Dictionary) -> void:
 	for quest_data in data.get("active_quests", []):
 		if quest_data is Dictionary:
 			active_quests.append(_dict_to_quest(quest_data))
-	for quest_data in data.get("completed_quests", []):
-		if quest_data is Dictionary:
-			completed_quests.append(_dict_to_quest(quest_data))
+	for qdata in data.get("completed_quests", []):
+		if qdata is Dictionary:
+			completed_quests.append(_dict_to_quest(qdata))
 	generation_cooldown = int(data.get("generation_cooldown", 0))
 	total_quests_generated = int(data.get("total_quests_generated", 0))
 	notification_queue = data.get("notification_queue", []).duplicate(true)

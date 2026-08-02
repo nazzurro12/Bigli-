@@ -12,10 +12,10 @@ var events: Array = []
 var next_event_id: int = 1
 var social_cursor: int = 0
 
-func _init(p_world = null) -> void:
+func _init(p_world: Object = null) -> void:
 	world = p_world
 
-func record_action(actor, action_type: String, data: Dictionary = {}) -> Dictionary:
+func record_action(actor: Object, action_type: String, data: Dictionary = {}) -> Dictionary:
 	if actor == null:
 		return {}
 	var position: Vector3i = data.get("position", actor.tile_pos)
@@ -60,7 +60,7 @@ func tick_social_simulation(absolute_minute: int) -> Array:
 	social_cursor = (social_cursor + processed) % world.dwarves.size()
 	return results
 
-func record_possession_started(actor) -> Dictionary:
+func record_possession_started(actor: Object) -> Dictionary:
 	actor.possession_count += 1
 	return record_action(actor, "possession_started", {
 		"tags": ["possession", "identity"],
@@ -71,7 +71,7 @@ func record_possession_started(actor) -> Dictionary:
 		"possession_origin": true
 	})
 
-func record_possession_ended(actor) -> Dictionary:
+func record_possession_ended(actor: Object) -> Dictionary:
 	var event: Dictionary = record_action(actor, "possession_ended", {
 		"tags": ["possession", "identity", "continuity"],
 		"severity": 0.2,
@@ -83,7 +83,7 @@ func record_possession_ended(actor) -> Dictionary:
 	actor.last_possession_event_id = int(event.get("id", -1))
 	return event
 
-func _apply_consequences(actor, witnesses: Array, event: Dictionary) -> void:
+func _apply_consequences(actor: Object, witnesses: Array, event: Dictionary) -> void:
 	var tags: Array = event.get("tags", [])
 	var severity: float = float(event.get("severity", 0.25))
 	_append_personal_event(actor, event)
@@ -99,7 +99,7 @@ func _apply_consequences(actor, witnesses: Array, event: Dictionary) -> void:
 	_apply_law(actor, witnesses, event)
 	_evaluate_opportunities(actor, witnesses, event)
 
-func _apply_reputation(actor, tags: Array, severity: float) -> void:
+func _apply_reputation(actor: Object, tags: Array, severity: float) -> void:
 	var changes: Dictionary = {
 		"rescue": {"valor": 0.45, "proteccion": 0.55, "confianza": 0.25},
 		"defense": {"valor": 0.35, "proteccion": 0.40},
@@ -116,7 +116,7 @@ func _apply_reputation(actor, tags: Array, severity: float) -> void:
 			var current: float = float(actor.reputation.get(dimension, 0.0))
 			actor.reputation[dimension] = clampf(current + float(dimensions[dimension]) * severity, -1.0, 1.0)
 
-func _evaluate_opportunities(actor, witnesses: Array, event: Dictionary) -> void:
+func _evaluate_opportunities(actor: Object, witnesses: Array, event: Dictionary) -> void:
 	var tags: Array = event.get("tags", [])
 	if "rescue" not in tags or "defense" not in tags:
 		return
@@ -146,7 +146,7 @@ func _evaluate_opportunities(actor, witnesses: Array, event: Dictionary) -> void
 	actor.career_offers.append(offer)
 	actor.add_memory("opportunity", "%s recomienda a %s para la guardia." % [authority_witness.name, actor.name], 0.8)
 
-func _update_witness_knowledge(observer, actor, event: Dictionary, confidence: float) -> void:
+func _update_witness_knowledge(observer: Object, actor: Object, event: Dictionary, confidence: float) -> void:
 	var actor_knowledge: Dictionary = observer.known_reputations.get(actor.id, {
 		"valor": 0.0, "proteccion": 0.0, "confianza": 0.0,
 		"delito": 0.0, "violencia": 0.0, "confidence": 0.0

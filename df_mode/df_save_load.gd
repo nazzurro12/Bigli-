@@ -357,6 +357,12 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"known_reputations": dwarf.known_reputations.duplicate(true),
 		"rumors": dwarf.rumors.duplicate(true),
 		"legal_record": dwarf.legal_record.duplicate(true),
+		"is_arrested": dwarf.is_arrested,
+		"is_imprisoned": dwarf.is_imprisoned,
+		"prison_cell": [dwarf.prison_cell.x, dwarf.prison_cell.y, dwarf.prison_cell.z],
+		"sentence_remaining": dwarf.sentence_remaining,
+		"sentence_type": dwarf.sentence_type,
+		"crimes_convicted": dwarf.crimes_convicted,
 		"life_decisions": dwarf.life_decisions.duplicate(true),
 		"possession_count": dwarf.possession_count,
 		"last_possession_event_id": dwarf.last_possession_event_id,
@@ -395,6 +401,12 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"preferred_stone": dwarf.preferred_stone,
 		"learning_counter": dwarf.learning_counter,
 		"knowledge": dwarf.knowledge.duplicate(),
+		"is_teacher": dwarf.is_teacher,
+		"teacher_id": dwarf.teacher_id,
+		"student_count": dwarf.student_count,
+		"taught_skill": dwarf.taught_skill,
+		"lessons_completed": dwarf.lessons_completed,
+		"total_students_taught": dwarf.total_students_taught,
 		"pain_threshold": dwarf.pain_threshold,
 		"current_pain": dwarf.current_pain,
 		"is_in_pain": dwarf.is_in_pain,
@@ -528,6 +540,14 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.known_reputations = _restore_int_keys(d.get("known_reputations", {}), df.known_reputations)
 	df.rumors = d.get("rumors", []).duplicate(true)
 	df.legal_record = d.get("legal_record", []).duplicate(true)
+	df.is_arrested = d.get("is_arrested", false)
+	df.is_imprisoned = d.get("is_imprisoned", false)
+	var pc = d.get("prison_cell", [])
+	if pc is Array and pc.size() >= 3:
+		df.prison_cell = Vector3i(int(pc[0]), int(pc[1]), int(pc[2]))
+	df.sentence_remaining = d.get("sentence_remaining", 0)
+	df.sentence_type = d.get("sentence_type", "")
+	df.crimes_convicted = d.get("crimes_convicted", 0)
 	df.life_decisions = d.get("life_decisions", []).duplicate(true)
 	df.possession_count = d.get("possession_count", 0)
 	df.last_possession_event_id = d.get("last_possession_event_id", -1)
@@ -566,6 +586,12 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.preferred_stone = d.get("preferred_stone", "granite")
 	df.learning_counter = d.get("learning_counter", 0.0)
 	df.knowledge = d.get("knowledge", {}).duplicate()
+	df.is_teacher = d.get("is_teacher", false)
+	df.teacher_id = d.get("teacher_id", -1)
+	df.student_count = d.get("student_count", 0)
+	df.taught_skill = d.get("taught_skill", -1)
+	df.lessons_completed = d.get("lessons_completed", 0)
+	df.total_students_taught = d.get("total_students_taught", 0)
 	df.pain_threshold = d.get("pain_threshold", 50.0)
 	df.current_pain = d.get("current_pain", 0.0)
 	df.is_in_pain = d.get("is_in_pain", false)
@@ -1374,7 +1400,7 @@ static func save_game(main) -> bool:
 	else:
 		data["designation"] = {}
 
-	var json_str = JSON.stringify(data, "", true)
+	var json_str = JSON.stringify(data)
 	var file = FileAccess.open(get_save_path(0), FileAccess.WRITE)
 	if file == null:
 		return false
@@ -1609,7 +1635,7 @@ static func save_game_slot(main, slot: int) -> bool:
 	if main.world == null:
 		return false
 	var data = _build_save_data(main)
-	var json_str = JSON.stringify(data, "", true)
+	var json_str = JSON.stringify(data)
 	var file = FileAccess.open(get_save_path(slot), FileAccess.WRITE)
 	if file == null:
 		return false

@@ -118,6 +118,12 @@ func tick(minute_ticked: bool, game_minute: int, game_hour: int, game_day: int,
 					events.append("! " + caravan.civ_name + " ha llegado! (" + caravan.merchant_name + ")")
 			
 			CaravanState.ARRIVED:
+				caravan.state = CaravanState.TRADING
+				events.append("! " + caravan.civ_name + " ha montado el puesto de comercio!")
+				_populate_caravan_inventory(caravan)
+
+			CaravanState.TRADING:
+				_execute_trading_tick(caravan, events, entities)
 				var wait_days = game_day - caravan.arrival_day
 				if wait_days >= caravan.stay_duration:
 					caravan.state = CaravanState.DEPARTING
@@ -131,6 +137,8 @@ func tick(minute_ticked: bool, game_minute: int, game_hour: int, game_day: int,
 					caravan.state = CaravanState.GONE
 					var profit = caravan.total_sold - caravan.total_bought
 					var profit_str = "ganancia" if profit >= 0 else "perdida"
+					total_trades += 1
+					total_wealth_traded += caravan.total_sold + caravan.total_bought
 					events.append("Caravana de " + caravan.civ_name + " partio (" + profit_str + ": " + str(abs(profit)) + " oro)")
 	
 	# Limpiar caravanas GONE
@@ -188,6 +196,33 @@ func _try_spawn_caravan(season: String, dwarves_count: int, fortress_wealth: flo
 
 func _approach_tick(caravan: Dictionary) -> void:
 	caravan.progress += 0.01 + rng.randf() * 0.005
+
+func _populate_caravan_inventory(caravan: Dictionary) -> void:
+	caravan["inventory"] = []
+	var civ_info = CIVILIZATIONS.get(caravan.id, {})
+	var available_goods = civ_info.get("goods", ["food", "drink"])
+	for i in range(10 + rng.randi() % 10):
+		var g_type = available_goods[rng.randi() % available_goods.size()]
+		var g_info = TRADE_GOODS.get(g_type, {"base_price": 5, "name": "Mercancía"})
+		caravan["inventory"].append({
+			"type": g_type,
+			"name": g_info.name,
+			"price": g_info.base_price,
+			"quantity": 1 + rng.randi() % 5
+		})
+
+func _execute_trading_tick(caravan: Dictionary, events: Array, entities: Array) -> void:
+	if rng.randf() > 0.1:
+		return
+
+	# Simular transacción de compra/venta entre colonia y caravana
+	if not caravan["inventory"].is_empty():
+		var item_idx = rng.randi() % caravan["inventory"].size()
+		var trade_item = caravan["inventory"][item_idx]
+		var cost = trade_item.price * trade_item.quantity
+		caravan.total_sold += cost
+		caravan["inventory"].remove_at(item_idx)
+		events.append("Comercio: Colonia adquirió %s x%d por %d oro (%s)" % [trade_item.name, trade_item.quantity, cost, caravan.civ_name])
 
 func get_caravans_for_sidebar() -> Array:
 	var result: Array = []

@@ -6,6 +6,7 @@ const DFWorld = preload("res://df_mode/df_world.gd")
 const DFDesignation = preload("res://df_mode/df_designation.gd")
 const DFTileset = preload("res://df_mode/df_tileset.gd")
 const DFJob = preload("res://df_mode/df_job.gd")
+const DFCorpse = preload("res://df_mode/df_corpse.gd")
 const UI = preload("res://df_mode/df_ui_theme.gd")
 const SUBSTANCE_COLORS: Dictionary = {
 	"blood":    Color(0.55, 0.0,  0.0,  1.0),
@@ -66,6 +67,9 @@ var _designation_mode_name: String = "View"
 var _designation_mode_color: Color = Color.WHITE
 var _job_pending: int = 0
 var _job_active: int = 0
+var _teacher_count: int = 0
+var _student_count: int = 0
+var _school_count: int = 0
 var _highlighted_tile: Vector3i = Vector3i(-1, -1, -1)
 var _world_curse: String = ""
 var _world_curse_desc: String = ""
@@ -94,11 +98,13 @@ var _dialogue_greeting: String = ""
 var _dialogue_target_name: String = ""
 
 # ---- FAST TRAVEL STATE ----
+var _mode_switch_open: bool = false
 var _fast_travel_active: bool = false
 var _fast_travel_phase: int = 0
 var _fast_travel_distance: int = 0
 var _fast_travel_progress: float = 0.0
 var _fast_travel_current_message: String = ""
+var _dwarf_stats_open: bool = false
 var _fast_travel_biome: String = ""
 var _fast_travel_dest_x: int = 0
 var _fast_travel_dest_z: int = 0
@@ -109,6 +115,13 @@ var _quest_completed_count: int = 0
 var _quest_active_count: int = 0
 var _quest_notification: String = ""
 var _quest_selected: int = 0
+
+# ---- RECIPE SELECTOR STATE ----
+var _recipe_selector_active: bool = false
+var _recipe_workshop_name: String = ""
+var _recipe_list: Array = []
+var _recipe_sel_idx: int = 0
+var _recipe_qty: int = 1
 
 var _weather_name: String = "Despejado"
 var _weather_color: Color = Color("#87CEEB")
@@ -163,7 +176,7 @@ func _world_biome_color(biome: String) -> Color:
 		"lake": return Color("#367fc6")
 		"beach": return Color("#d7c47b")
 		"glacier": return Color("#e5f5f5")
-		"mountain": return Color("#777777")
+		"mountain": return Color("7d7a47ff")
 		"mountain_forest": return Color("#355f43")
 		"alpine_meadow": return Color("#7f9c62")
 		"tundra": return Color("#aab9b8")
@@ -261,6 +274,7 @@ func _nearest_world_civilizations(world_gen: Object, position: Vector2i, limit: 
 
 # ---- ENTITY CACHE (spatial hash para performance) ----
 var _entity_cache: Dictionary = {}
+var _item_metadata_cache: Dictionary = {}  # tile_pos → {is_precious: bool, is_fresh_corpse: bool}
 var _dwarf_animation_tick: int = 0
 var _animation_phase: bool = false
 
@@ -354,9 +368,13 @@ func _ready() -> void:
 	legend_btn.add_theme_stylebox_override("hover", legend_button_hover)
 
 func _apply_night_lighting(color: Color) -> Color:
-	# Sin filtro global de noche. La hora sigue visible en el HUD, pero los
-	# colores del mapa permanecen nítidos y con su brillo original.
-	return color
+	# Iluminación nocturna sutil. Los colores se oscurecen gradualmente
+	# según la hora del día, pero el mapa sigue siendo perfectamente legible.
+	if _is_daytime:
+		return color
+	# Noche: oscurecer ligeramente los colores exteriores
+	var night_factor: float = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.0005)  # Parpadeo suave de estrellas
+	return Color(color.r * night_factor, color.g * night_factor, color.b * night_factor, color.a)
 
 func _draw_classic_frame(rect: Rect2, title: String, active: bool = true) -> Rect2:
 	# Four-line bevel used by Windows Classic controls.
@@ -417,15 +435,18 @@ func _draw_tile(pos: Vector2, char_str: String, fg: Color, bg: Color) -> void:
 	fg = _apply_night_lighting(fg)
 	bg = _apply_night_lighting(bg)
 	
-	if bg != Color.BLACK and bg.a > 0.01:
+	if bg.a > 0.01 and (bg.r > 0.01 or bg.g > 0.01 or bg.b > 0.01):
 		var bg_rect = Rect2(pos.x, pos.y, _char_size.x, _char_size.y)
 		draw_rect(bg_rect, bg, true)
 
-	if char_str != " " and _tileset != null and _tileset.texture != null:
-		var region = _tileset.get_tile_region(char_str)
-		if region.size.x > 0:
-			var mod = Color(fg.r, fg.g, fg.b, 1.0)
-			draw_texture_rect_region(_tileset.texture, Rect2(pos, _char_size), region, mod)
+	if char_str != " " and char_str != "":
+		if _tileset != null and _tileset.texture != null:
+			var region = _tileset.get_tile_region(char_str)
+			if region.size.x > 0:
+				var mod = Color(fg.r, fg.g, fg.b, 1.0)
+				draw_texture_rect_region(_tileset.texture, Rect2(pos, _char_size), region, mod)
+		elif _font != null:
+			draw_string(_font, pos + Vector2(0, _char_size.y * 0.8), char_str, HORIZONTAL_ALIGNMENT_LEFT, -1, int(_char_size.y), fg)
 
 
 func _apply_game_zoom() -> void:
@@ -439,15 +460,7 @@ func adjust_game_zoom(direction: int) -> void:
 	_apply_game_zoom()
 
 func _process(delta: float) -> void:
-	# El estado lógico sigue actualizándose cada frame, pero el mapa se redibuja
-	# como máximo a 30 Hz. El mapa ASCII no gana legibilidad a 60 redibujados y
-	# cada actualización implica miles de tiles, paneles y consultas de color.
-	# materializar aldeas con muchas casas, muebles y residentes.
-	_map_redraw_accumulator += delta
-	_renderer_logic_accumulator += delta
-	if _map_redraw_accumulator >= MAP_REDRAW_INTERVAL:
-		_map_redraw_accumulator = fmod(_map_redraw_accumulator, MAP_REDRAW_INTERVAL)
-		queue_redraw()
+	queue_redraw()
 	
 	if _renderer_logic_accumulator < RENDERER_LOGIC_SYNC_INTERVAL:
 		return
@@ -514,7 +527,7 @@ func add_message(msg: String) -> void:
 
 func _draw() -> void:
 	if _tileset == null:
-		return
+		_tileset = DFTileset.new()
 	var effect_time_ms: float = float(Time.get_ticks_msec())
 
 	var main_node = get_parent()
@@ -680,10 +693,19 @@ func _draw() -> void:
 						else:
 							fg = world.get_tile_color(pos)
 							bg = world.get_tile_bg_color(pos)
+							# Colores por altura REAL usando elevación del mundo
+							# Las zonas más altas se ven más claras y cálidas; las bajas más oscuras y frías
+							if tile_type in [DFWorld.TileType.FLOOR, DFWorld.TileType.GRASS, DFWorld.TileType.DIRT, DFWorld.TileType.SOIL, DFWorld.TileType.STONE_FLOOR, DFWorld.TileType.CONSTRUCTED_FLOOR]:
+								var elev: int = world.get_surface_height(wx, wz)
+								var elev_factor: float = clampf(float(elev) / 8.0, 0.0, 1.0)
+								if elev_factor > 0.5:
+									fg = fg.lightened((elev_factor - 0.5) * 0.25)
+								else:
+									fg = fg.darkened((0.5 - elev_factor) * 0.35)
 					else:
 						var found = false
 						var scan_start = max(cam_y - 1, 0)
-						var scan_end = -1
+						var scan_end = max(-1, cam_y - 2)
 						for check_y in range(scan_start, scan_end, -1):
 							var check_pos = Vector3i(wx, check_y, wz)
 							var c = world.get_tile_char(check_pos)
@@ -757,6 +779,28 @@ func _draw() -> void:
 					ch = entity_data[0]
 					fg = entity_data[1]
 
+				# === RESALTADO DE ITEMS EN EL SUELO ===
+				# Brillo sutil en items valiosos (artefactos, gemas, tesoros)
+				# === RESALTADO DE ITEMS (cache espacial, O(1)) ===
+				var item_meta: Dictionary = _item_metadata_cache.get(pos, {})
+				if not item_meta.is_empty():
+					if item_meta.get("precious", false) and _is_daytime:
+						var sparkle: float = 0.08 + 0.06 * sin(effect_time_ms * 0.005 + pos.x * 3.0 + pos.z * 7.0)
+						var glow_color: Color = Color(1.0, 0.85, 0.3, sparkle)
+						draw_rect(Rect2(char_pos.x - 1, char_pos.y - 1, _char_size.x + 2, _char_size.y + 2), glow_color, false, 1.0)
+					if item_meta.get("corpse", false):
+						var decay_pulse: float = 0.04 + 0.04 * sin(effect_time_ms * 0.002 + pos.x)
+						draw_rect(Rect2(char_pos.x, char_pos.y, _char_size.x, _char_size.y), Color(0.0, 1.0, 0.0, decay_pulse), false, 1.0)
+					if item_meta.get("ghost_glow", 0.0) > 0.0:
+						var ghost_glow_intensity: float = item_meta.get("ghost_glow", 0.0)
+						# Bruma espectral pulsante alrededor del fantasma
+						var ghost_glow_color: Color = Color(0.6, 0.6, 1.0, ghost_glow_intensity * 0.5)
+						draw_rect(Rect2(char_pos.x - 2, char_pos.y - 2, _char_size.x + 4, _char_size.y + 4), ghost_glow_color, false, 2.0)
+						# Circulo luminiscente difuso detras del fantasma
+						if performance_effects_enabled:
+							var ghost_aura: float = 0.08 + 0.06 * sin(effect_time_ms * 0.003 + pos.x * 1.7 + pos.z * 2.3)
+							draw_circle(char_pos + _char_size / 2.0, _char_size.x * 0.8, Color(0.5, 0.5, 1.0, ghost_aura))
+
 				if show_job_overlay and designation != null:
 					var job_overlay = _get_job_overlay_at(wx, cam_y, wz)
 					if job_overlay[0] != "":
@@ -777,18 +821,16 @@ func _draw() -> void:
 				char_pos = Vector2(border_x + x * _char_size.x, z * _char_size.y)
 				_draw_tile(char_pos, ch, fg, bg)
 
-				if performance_effects_enabled:
-					# Draw ambient occlusion (3D wall shadows) on floor tiles next to walls
-					if wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth and not world.is_blocked(pos):
-						var cell_rect = Rect2(char_pos.x, char_pos.y, _char_size.x, _char_size.y)
-						if wz > 0 and world.is_blocked(Vector3i(wx, cam_y, wz - 1)):
-							draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.position.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
-						if wz < world.depth - 1 and world.is_blocked(Vector3i(wx, cam_y, wz + 1)):
-							draw_line(Vector2(cell_rect.position.x, cell_rect.end.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
-						if wx > 0 and world.is_blocked(Vector3i(wx - 1, cam_y, wz)):
-							draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.position.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
-						if wx < world.width - 1 and world.is_blocked(Vector3i(wx + 1, cam_y, wz)):
-							draw_line(Vector2(cell_rect.end.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
+				# === SOMBRAS AMBIENTALES (Solo si performance_effects_enabled) ===
+				if performance_effects_enabled and wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth and not world.is_blocked(pos):
+					var cell_rect = Rect2(char_pos.x, char_pos.y, _char_size.x, _char_size.y)
+					var shadow_alpha: float = 0.3 if _is_daytime else 0.5
+					if wz > 0 and world.is_blocked(Vector3i(wx, cam_y, wz - 1)):
+						draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.position.y), Color(0.0, 0.0, 0.0, shadow_alpha), 1.0)
+					if wz < world.depth - 1 and world.is_blocked(Vector3i(wx, cam_y, wz + 1)):
+						draw_line(Vector2(cell_rect.position.x, cell_rect.end.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, shadow_alpha * 0.7), 1.0)
+					if wx > 0 and world.is_blocked(Vector3i(wx - 1, cam_y, wz)):
+						draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.position.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, shadow_alpha * 0.5), 1.0)
 
 				if performance_effects_enabled:
 					# Draw pulsating miasma gas cloud particles on top
@@ -822,6 +864,14 @@ func _draw() -> void:
 	_draw_quest_notification()
 	if _quest_log_open:
 		_draw_quest_log_overlay()
+	if _recipe_selector_active:
+		_draw_recipe_selector_overlay()
+	if _mode_switch_open:
+		_draw_mode_switch_menu()
+		return
+	if _dwarf_stats_open:
+		_draw_dwarf_stats_overlay()
+		return
 	if _fast_travel_active:
 		_draw_fast_travel_overlay()
 	if show_help:
@@ -874,52 +924,100 @@ func _get_entity_at(wx: int, wy: int, wz: int) -> Array:
 
 func _rebuild_entity_cache(cam_x: int, cam_z: int, vw: int, vh: int, cam_y: int) -> Array:
 	_entity_cache.clear()
+	_item_metadata_cache.clear()
 	var visible_entities: Array = []
 	if world == null:
 		return visible_entities
-	var min_x: int = cam_x - 2
-	var max_x: int = cam_x + vw + 2
-	var min_z: int = cam_z - 2
-	var max_z: int = cam_z + vh + 2
-	for e in world.entities:
-		var is_alive: Variant = e.get("is_alive")
-		if is_alive != null and is_alive == false:
-			continue
-		var pos: Vector3i = e.tile_pos
-		if pos.x < min_x or pos.x > max_x or pos.z < min_z or pos.z > max_z:
-			continue
-		if absi(pos.y - cam_y) > 1:
-			continue
-		visible_entities.append(e)
-		if not _entity_cache.has(pos):
-			var ch: String = e.get_display_char()
-			var col: Color = e.get_display_color()
-			# Animación básica solo para lo que realmente aparece en pantalla.
-			if e.get("creature_type") == "dwarf":
-				if _animation_phase:
-					ch = "☻"
-					col = col.lightened(0.1)
-				else:
-					ch = "☺"
-			elif e is DFItem:
-				if e.is_food:
-					ch = "%" if not _animation_phase else "§"
-				elif e.is_drink:
-					ch = "~" if not _animation_phase else "≈"
-				elif e.is_weapon:
-					ch = "/" if not _animation_phase else "↑"
-				elif e.is_armor:
-					ch = "[" if not _animation_phase else "]"
-				elif e.is_corpse:
-					ch = "%"
-				elif e.get("is_artifact") == true:
-					ch = "✦" if _animation_phase else "◆"
-					var art_pulse: float = 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.005)
-					col = Color(1.0, 0.85, 0.3, 1.0).lerp(Color(1.0, 1.0, 0.6, 1.0), art_pulse)
-				elif _animation_phase:
-					ch = "•"
-					col = col.lightened(0.2)
-			_entity_cache[pos] = [ch, col]
+	var min_x: int = max(0, cam_x - 2)
+	var max_x: int = min(world.width - 1, cam_x + vw + 2)
+	var min_z: int = max(0, cam_z - 2)
+	var max_z: int = min(world.depth - 1, cam_z + vh + 2)
+	var min_y: int = max(0, cam_y - 1)
+	var max_y: int = min(world.height - 1, cam_y + 1)
+
+	for y in range(min_y, max_y + 1):
+		for z in range(min_z, max_z + 1):
+			for x in range(min_x, max_x + 1):
+				var pos = Vector3i(x, y, z)
+				var at_pos = world._entity_grid.get(pos)
+				if at_pos == null: continue
+				for e in at_pos:
+					var is_alive: Variant = e.get("is_alive")
+					if is_alive != null and is_alive == false:
+						continue
+					var is_creature = (e.get("creature_type") == "dwarf" or e.get("creature_type") == "ghost" or (is_alive != null and is_alive == true and not (e is DFItem) and not (e is DFCorpse)))
+					var should_render = not _entity_cache.has(pos) or is_creature
+					if should_render:
+						var ch: String = e.get_display_char()
+						var col: Color = e.get_display_color()
+						# Animación básica solo para lo que realmente aparece en pantalla.
+						if e.get("creature_type") == "ghost":
+							# === FANTASMA: glifo espectral parpadeante y semitransparente ===
+							ch = "♱" if _animation_phase else "†"
+							var ghost_alpha: float = 0.45 + 0.25 * sin(Time.get_ticks_msec() * 0.003 + pos.x * 1.3 + pos.z * 2.7)
+							col = Color(0.7, 0.7, 1.0, ghost_alpha)
+							# Pulso de luz espectral alrededor del fantasma
+							var glow_intensity: float = 0.15 + 0.12 * sin(Time.get_ticks_msec() * 0.004 + pos.x * 0.7 + pos.z * 1.1)
+							if _animation_phase:
+								_item_metadata_cache[pos] = {"ghost_glow": glow_intensity}
+						elif e.get("creature_type") == "dwarf":
+							if _animation_phase:
+								ch = "☻"
+								col = col.lightened(0.1)
+							else:
+								ch = "☺"
+						elif e is DFCorpse:
+							# === CADÁVER DE ENANO ===
+							ch = e.get_display_char()
+							col = e.get_display_color()
+							if _animation_phase and e.state < DFCorpse.CorpseState.SKELETON:
+								# Animación de pulso para cadáveres frescos
+								col = col.lightened(0.1)
+							if e.has_miasma():
+								# Efecto de miasma: tinte verdoso pulsante
+								var miasma_pulse: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.002)
+								col = Color(0.3, 0.7, 0.2, 1.0).lerp(col, miasma_pulse)
+							# Cache para metadata del hover
+							if e.tile_pos.y == cam_y and not e.is_skeleton():
+								_item_metadata_cache[pos] = {"corpse": true}
+						elif e is DFItem:
+							# === GLIFOS DIFERENCIADOS POR TIPO DE ITEM ===
+							# Cada categoría tiene un glifo único para identificación visual rápida
+							if e.is_corpse:
+								ch = "☠" if _animation_phase else "%"
+								col = col.lightened(0.1)
+							elif e.is_meat:
+								ch = "¤" if not _animation_phase else "¥"
+							elif e.is_food:
+								ch = "%" if not _animation_phase else "§"
+							elif e.is_drink:
+								ch = "~" if not _animation_phase else "≈"
+							elif e.is_tool:
+								ch = "⛏" if not _animation_phase else "⚒"
+							elif e.is_weapon:
+								ch = "↑" if not _animation_phase else "†"
+							elif e.is_armor:
+								ch = "[" if not _animation_phase else "]"
+							elif e.is_container:
+								ch = "◘" if not _animation_phase else "O"
+							elif e.get("is_artifact") == true:
+								ch = "✦" if _animation_phase else "◆"
+								var art_pulse: float = 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.005)
+								col = Color(1.0, 0.85, 0.3, 1.0).lerp(Color(1.0, 1.0, 0.6, 1.0), art_pulse)
+							elif e.total_value > 50:
+								# Items de valor medio-alto: brillo dorado tenue
+								ch = "♦" if _animation_phase else "♢"
+								col = Color(1.0, 0.8, 0.2, 1.0)
+							elif _animation_phase:
+								ch = "•"
+								col = col.lightened(0.2)
+						# Item metadata cache for ground highlighting (evita O(n²) en el loop de dibujo)
+						if e is DFItem and e.tile_pos.y == cam_y:
+							var is_precious: bool = e.get("is_artifact") == true or e.total_value > 100
+							var is_fresh_corpse: bool = e.is_corpse and e.get("is_decayed") == false
+							if is_precious or is_fresh_corpse:
+								_item_metadata_cache[pos] = {"precious": is_precious, "corpse": is_fresh_corpse}
+						_entity_cache[pos] = [ch, col]
 	return visible_entities
 
 func _get_job_overlay_at(wx: int, wy: int, wz: int) -> Array:
@@ -1008,6 +1106,9 @@ func _draw_sidebar(side_x: int) -> void:
 		"  %s  Año %d" % [_season_name, game_year],
 		HORIZONTAL_ALIGNMENT_LEFT, mw, 9, s_col)
 	y += lh
+
+
+
 	var schedule_name: String = "Sueño"
 	var schedule_end: int = 6
 	var schedule_color: Color = Color(0.55, 0.65, 1.0)
@@ -1073,6 +1174,23 @@ func _draw_sidebar(side_x: int) -> void:
 		"  Act: %d   Cola: %d" % [_job_active, _job_pending],
 		HORIZONTAL_ALIGNMENT_LEFT, mw, 9, jcol)
 	y += int(lh * 1.6)
+
+	# ═══════════════════════════════════════════════
+	# 7. EDUCATION
+	# ═══════════════════════════════════════════════
+	if _teacher_count > 0 or _school_count > 0:
+		draw_string(_font, Vector2(x, y + lh), "EDUCACIÓN", HORIZONTAL_ALIGNMENT_LEFT, mw, 10, Color(0.45,0.65,0.85))
+		draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.22,0.35,0.50), 1.0)
+		y += int(lh * 1.3)
+		if _school_count > 0:
+			draw_string(_font, Vector2(x + 4, y + lh),
+				"  Escuelas: %d" % _school_count,
+				HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(0.55,0.75,0.95))
+			y += lh
+		draw_string(_font, Vector2(x + 4, y + lh),
+			"  Maestros: %d   Alumnos: %d" % [_teacher_count, _student_count],
+			HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(0.50,0.70,0.90))
+		y += int(lh * 1.4)
 
 	# ═══════════════════════════════════════════════
 	# 7. TILE UNDER CURSOR
@@ -1512,6 +1630,107 @@ func _draw_message_log(start_y: int) -> void:
 		y += int(lh * 1.25)
 
 
+func _draw_recipe_selector_overlay() -> void:
+	"""Dibuja el selector de recetas para talleres."""
+	if _recipe_list.is_empty() or world == null:
+		return
+	var vw = view_width
+	var vh = view_height
+	var border_x = _draw_border(vw, vh)
+
+	# Ventana centrada, tamano fijo
+	var box_w = 520
+	var box_h = 380
+	var box_x = int((size.x - box_w) / 2)
+	var box_y = int((size.y - box_h) / 2)
+
+	# Sombra
+	draw_rect(Rect2(box_x + 4, box_y + 4, box_w, box_h), Color(0.0, 0.0, 0.0, 0.5), true)
+
+	# Fondo principal
+	draw_rect(Rect2(box_x, box_y, box_w, box_h), UI_BG, true)
+	draw_rect(Rect2(box_x, box_y, box_w, box_h), UI_BORDER, false, 1.0)
+
+	# Barra de titulo
+	var title_bar = Rect2(box_x, box_y, box_w, 24)
+	draw_rect(title_bar, WIN_TITLE_START, true)
+	draw_string(_font, Vector2(box_x + 8, box_y + 16), "SELECTOR DE RECETAS: %s" % _recipe_workshop_name,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+
+	# Sub-header: controles
+	var header_y = box_y + 30
+	draw_string(_font, Vector2(box_x + 8, header_y + 10),
+		"UP/DOWN: Seleccionar | LEFT/RIGHT: Cantidad [%d] | ENTER: Encolar | R/ESC: Cerrar" % _recipe_qty,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 9, UI_TEXT_MUTED)
+
+	# Separador
+	draw_line(Vector2(box_x + 4, header_y + 16), Vector2(box_x + box_w - 4, header_y + 16), UI_BORDER_SOFT, 1.0)
+
+	# Lista de recetas
+	var list_y = header_y + 22
+	var item_h = 30
+	var visible_count = mini(_recipe_list.size(), int((box_h - 80) / item_h))
+	var max_visible = int((box_h - 80) / item_h)
+	var scroll_offset = 0
+	if _recipe_sel_idx >= max_visible:
+		scroll_offset = _recipe_sel_idx - max_visible + 1
+
+	for ri in range(visible_count):
+		var r = _recipe_list[ri + scroll_offset]
+		if not (r is Dictionary):
+			continue
+		var is_selected = (ri + scroll_offset) == _recipe_sel_idx
+		var ry = list_y + ri * item_h
+
+		# Fondo del item
+		if is_selected:
+			draw_rect(Rect2(box_x + 4, ry, box_w - 8, item_h - 2), UI_ACCENT, true)
+			draw_rect(Rect2(box_x + 4, ry, box_w - 8, item_h - 2), Color(1.0, 1.0, 1.0, 0.15), false, 1.0)
+		elif ri % 2 == 0:
+			draw_rect(Rect2(box_x + 4, ry, box_w - 8, item_h - 2), UI_BG_RAISED, true)
+
+		# Icono / glifo de la receta
+		var recipe_char = str(r.get("glyph", r.get("char", "?")))
+		var recipe_color = Color(r.get("color", r.get("fg", "#FFFFFF"))) if r.has("color") or r.has("fg") else UI_GOLD
+		var rname = str(r.get("name", r.get("id", "Receta")))
+		var rtime = float(r.get("time", 5.0))
+		var rskill = int(r.get("skill_req", 0))
+
+		# Nombre
+		var name_color = Color.WHITE if not is_selected else Color(1.0, 1.0, 1.0, 1.0)
+		draw_string(_font, Vector2(box_x + 12, ry + 12), recipe_char, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, recipe_color if not is_selected else Color(1.0, 0.9, 0.4, 1.0))
+		draw_string(_font, Vector2(box_x + 32, ry + 12), rname, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, name_color)
+
+		# Info: tiempo, skill requerido
+		var info = "T:%.1fs" % rtime
+		if rskill > 0:
+			info += " Skill:%d" % rskill
+		var inputs = r.get("inputs", [])
+		if inputs.size() > 0:
+			info += " [%d insumos]" % inputs.size()
+		var output = r.get("outputs", [])
+		if output.size() > 0 and output[0] is Dictionary:
+			info += " -> %s" % str(output[0].get("name", ""))
+		draw_string(_font, Vector2(box_x + 32, ry + 24), info, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UI_TEXT_MUTED if not is_selected else Color(0.9, 0.9, 0.9, 0.9))
+
+		# Indicador de seleccion
+		if is_selected:
+			# Flecha de seleccion
+			draw_string(_font, Vector2(box_x - 14, ry + 12), ">", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.9, 0.4, 1.0))
+			# Cantidad a producir
+			draw_string(_font, Vector2(box_x + box_w - 60, ry + 12), "x%d" % _recipe_qty, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.9, 0.4, 1.0))
+
+	# Footer: estado del taller seleccionado
+	var footer_y = list_y + visible_count * item_h + 4
+	if _recipe_sel_idx >= 0 and _recipe_sel_idx < _recipe_list.size():
+		var selected_recipe = _recipe_list[_recipe_sel_idx]
+		if selected_recipe is Dictionary:
+			var desc = str(selected_recipe.get("description", ""))
+			if not desc.is_empty():
+				draw_rect(Rect2(box_x + 4, footer_y, box_w - 8, 50), UI_BG_RAISED, true)
+				draw_string(_font, Vector2(box_x + 12, footer_y + 14), desc, HORIZONTAL_ALIGNMENT_LEFT, box_w - 24, 9, UI_TEXT_MUTED)
+
+
 func _draw_help_overlay() -> void:
 	var vw = view_width
 	var vh = view_height
@@ -1530,49 +1749,43 @@ func _draw_help_overlay() -> void:
 		draw_rect(Rect2(box_x - 5, box_y - 3, box_w + 10, 3), Color(0.4, 0.4, 0.6, 0.8), true)
 
 	var lines = [
-		["== WORLD CREATION BIGLI - HELP ==", Color.GOLD],
+		["== GUÍA DE CONTROLES Y MANDOS DE BIGLIWORLD ==", Color.GOLD],
 		["", Color.WHITE],
-		["MOVEMENT", Color.CYAN],
-		["  Arrow keys    Move camera", Color.WHITE],
-		["  [ / ]         Z-level down/up", Color.WHITE],
-		["  Home          Center on surface", Color.WHITE],
+		["NAVEGACIÓN Y CÁMARA", Color.CYAN],
+		["  Flechas / WASD   Mover cámara por el mapa", Color.WHITE],
+		["  [ / ]             Bajar / Subir de nivel Z", Color.WHITE],
+		["  Home              Centrar cámara en la superficie", Color.WHITE],
+		["  F                 Seguir a un enano (ciclo entre colonos)", Color.WHITE],
 		["", Color.WHITE],
-		["GAME CONTROLS", Color.CYAN],
-		["  Space         Pause/Resume", Color.WHITE],
-		["  1-9           Speed (1=slow, 9=insane)", Color.WHITE],
-		["  F             Follow dwarf (cycle)", Color.WHITE],
-		["  G             Generate new world", Color.WHITE],
+		["CONTROLES DE JUEGO Y MODOS", Color.CYAN],
+		["  Espacio           Pausar / Reanudar simulación", Color.WHITE],
+		["  1 - 9             Ajustar velocidad del juego (1=lenta, 9=ultrarrápida)", Color.WHITE],
+		["  U                 Panel de inspección del enano / inventario", Color.WHITE],
+		["  M                 Menú de cambio de modo (Fortaleza / Aventura / Leyendas)", Color.WHITE],
+		["  Q                 Diario de misiones procedurales", Color.WHITE],
+		["  H / F1 / ?        Abrir / Cerrar esta guía de ayuda", Color.WHITE],
 		["", Color.WHITE],
-		["DESIGNATION MODE", Color.CYAN],
-		["  1             Dig mode (Excavar)", Color.WHITE],
-		["  2             Chop tree mode (Talar)", Color.WHITE],
-		["  3             Smooth stone mode (Alisar)", Color.WHITE],
-		["  4             Build wall mode (Muro)", Color.WHITE],
-		["  5             Build floor mode (Suelo)", Color.WHITE],
-		["  6             Deconstruct mode (Desmantelar)", Color.WHITE],
-		["  Enter         Confirm selection", Color.WHITE],
-		["  Esc           Cancel / exit mode", Color.WHITE],
-		["  Mouse click   Start/end selection", Color.WHITE],
+		["DESIGNACIÓN Y CONSTRUCCIÓN", Color.CYAN],
+		["  D                 Activar modo de designación", Color.WHITE],
+		["  1                 Modo Excavar pared (Dig)", Color.WHITE],
+		["  2                 Modo Talar árboles (Chop Tree)", Color.WHITE],
+		["  3                 Modo Alisar piedra (Smooth)", Color.WHITE],
+		["  4                 Modo Construir muro (Build Wall)", Color.WHITE],
+		["  5                 Modo Construir suelo (Build Floor)", Color.WHITE],
+		["  6                 Modo Desmantelar (Deconstruct)", Color.WHITE],
+		["  Enter / Clic      Confirmar área o selección", Color.WHITE],
+		["  Esc               Cancelar selección / Cerrar paneles", Color.WHITE],
 		["", Color.WHITE],
-		["SAVE / LOAD", Color.CYAN],
-		["  F5            Save slot 0", Color.WHITE],
-		["  F6            Save slot 1", Color.WHITE],
-		["  F7            Save slot 2", Color.WHITE],
-		["  F9            Load slot 0", Color.WHITE],
-		["  F10           Load slot 1", Color.WHITE],
-		["  F11           Load slot 2", Color.WHITE],
+		["GUARDADO Y CARGA", Color.CYAN],
+		["  F5 / F6 / F7      Guardar partida en Ranuras 0, 1 y 2", Color.WHITE],
+		["  F9 / F10 / F11    Cargar partida desde Ranuras 0, 1 y 2", Color.WHITE],
 		["", Color.WHITE],
-		["MISCELLANEOUS", Color.CYAN],
-		["  H / ?         Toggle this help", Color.WHITE],
-		["  Esc*2         Return to Amphibia", Color.WHITE],
+		["CONSEJOS DE SUPERVIVENCIA Y COLONIA", Color.GREEN],
+		["  1. Fabrica/Consigue Cerveza/Vino: El alcohol mantiene veloces y alegres a los enanos.", Color(0.8, 0.8, 0.8)],
+		["  2. Si un enano muere, construye una Tumba/Ataúd para evitar miasma y fantasmas.", Color(0.8, 0.8, 0.8)],
+		["  3. Enanos inspirados pueden entrar en Modo Extraño y forjar Artefactos Legendarios.", Color(0.8, 0.8, 0.8)],
 		["", Color.WHITE],
-		["TIPS", Color.GREEN],
-		["  1. Pause the game (Space) before designating", Color(0.7, 0.7, 0.7)],
-		["  2. Press D, then click to mark tiles for digging", Color(0.7, 0.7, 0.7)],
-		["  3. Unpause and dwarves will do the work", Color(0.7, 0.7, 0.7)],
-		["  4. Use [ and ] to see different Z-levels", Color(0.7, 0.7, 0.7)],
-		["", Color.WHITE],
-		["Press H or ? to close", Color.GRAY],
+		["Presiona F1, H, ? o Esc para cerrar esta guía", Color.GRAY],
 	]
 
 	var y = box_y + 8
@@ -2624,11 +2837,31 @@ func _draw_embark_map_select() -> void:
 			var inside_embark: bool = absi(wx - cursor.x) <= 1 and absi(wz - cursor.y) <= 1
 			var flash: bool = int(main_node.embark_flash_timer * 3.0) % 2 == 0
 			var draw_pos := Vector2(start_x + grid_x * _char_size.x, start_y + grid_z * _char_size.y)
+			
+			# Elevation shading: higher terrain is brighter, lower terrain is darker
+			var elev_val: float = 0.0
+			if main_node.world_gen.elevation_map != null and not main_node.world_gen.elevation_map.is_empty() and wx >= 0 and wz >= 0 and wz < main_node.world_gen.elevation_map.size() and wx < main_node.world_gen.elevation_map[0].size():
+				elev_val = float(main_node.world_gen.elevation_map[wz][wx])
+			var elev_factor: float = 0.55 + 0.45 * clamp(elev_val / 200.0, 0.0, 1.0)
+			var shaded_fg: Color = Color(
+				clamp(fg.r * elev_factor, 0.0, 1.0),
+				clamp(fg.g * elev_factor, 0.0, 1.0),
+				clamp(fg.b * elev_factor, 0.0, 1.0)
+			)
+			# Background fill with slightly darker terrain color
+			var bg_color: Color = Color(
+				clampf(fg.r * elev_factor * 0.15, 0.0, 0.25),
+				clampf(fg.g * elev_factor * 0.15, 0.0, 0.25),
+				clampf(fg.b * elev_factor * 0.15, 0.0, 0.25),
+				0.6
+			)
+			draw_rect(Rect2(draw_pos, _char_size), bg_color, true)
+			
 			if inside_embark and flash:
 				draw_rect(Rect2(draw_pos, _char_size), Color(0.12, 0.45, 0.12, 0.75), true)
 				draw_string(_font, draw_pos + Vector2(0, _char_size.y * 0.8), ch, HORIZONTAL_ALIGNMENT_CENTER, _char_size.x, 11, Color.WHITE)
 			else:
-				draw_string(_font, draw_pos + Vector2(0, _char_size.y * 0.8), ch, HORIZONTAL_ALIGNMENT_CENTER, _char_size.x, 11, fg)
+				draw_string(_font, draw_pos + Vector2(0, _char_size.y * 0.8), ch, HORIZONTAL_ALIGNMENT_CENTER, _char_size.x, 11, shaded_fg)
 
 	draw_string(_font, Vector2(size.x / 2.0, start_y - 28), "=== SELECCIONA EL SITIO DE EMBARQUE ===", HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.GOLD)
 
@@ -2733,6 +2966,41 @@ func _draw_embark_map_select() -> void:
 	var cur_px_y: float = minimap_y + float(cursor.y) / maxf(1.0, float(map_h - 1)) * minimap_size
 	var pulse: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
 	draw_rect(Rect2(cur_px_x - 2, cur_px_y - 2, 5, 5), Color(1.0, 1.0, 1.0, pulse), true)
+
+	# Draw elevation bar (left side of map)
+	var legend_x: int = start_x - 40
+	var legend_y: int = start_y + int(map_grid_h * _char_size.y) - 100
+	_draw_rounded_rect(Rect2(legend_x - 4, legend_y - 4, 34, 108), Color(0.0, 0.0, 0.0, 0.5), 4)
+	draw_rect(Rect2(legend_x, legend_y, 14, 100), Color(0.15, 0.12, 0.08, 0.6), true)
+	for lev in range(10):
+		var bar_y: float = legend_y + 100 - float(lev + 1) * 10.0
+		var bar_factor: float = 0.55 + 0.45 * (float(lev) / 9.0)
+		var bar_color: Color = Color(bar_factor * 0.5, bar_factor * 0.4, bar_factor * 0.2, 0.8)
+		draw_rect(Rect2(legend_x, bar_y, 14, 10), bar_color, true)
+	draw_string(_font, Vector2(legend_x + 16, legend_y + 105), "Bajo", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.5, 0.5, 0.5))
+	draw_string(_font, Vector2(legend_x + 16, legend_y + 15), "Alto", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.5, 0.5, 0.5))
+	draw_string(_font, Vector2(legend_x + 16, legend_y + 60), "Elev.", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.6, 0.6, 0.6))
+	
+	# Leyenda de biomas (dentro del panel de info, no se superpone)
+	var leg_x: int = panel_x + 12
+	var leg_y: int = panel_y + int(map_grid_h * _char_size.y) + 55
+	var legend_entries: Array = [
+		["ocean_deep", "~", Color("#3154a4")],
+		["grassland", ".", Color("#73b359")],
+		["temperate_forest", "♣", Color("#3a8c4d")],
+		["mountain", "^", Color("#8c8c8c")],
+		["desert", "·", Color("#eedc82")],
+		["swamp", "s", Color("#718a58")],
+		["beach", "·", Color("#dfcb83")],
+		["tundra", "·", Color("#b9c8c8")],
+		["taiga", "♣", Color("#3d7661")],
+	]
+	for le_idx in range(legend_entries.size()):
+		var le: Array = legend_entries[le_idx]
+		var lx: int = leg_x + (le_idx % 3) * 130
+		var ly: int = leg_y + int(le_idx / 3) * int(_char_size.y * 1.0)
+		draw_string(_font, Vector2(lx, ly), str(le[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, le[2])
+		draw_string(_font, Vector2(lx + _char_size.x + 2, ly), _world_label(str(le[0])), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.5, 0.5, 0.5))
 
 	draw_string(_font, Vector2(size.x / 2.0, start_y + total_h + 24), "Flechas: 1 región  |  SHIFT+Flechas: 16 regiones  |  Click minimapa: salto  |  ENTER: embarcar  |  ESC: volver", HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.5, 0.45, 0.6))
 
@@ -2877,6 +3145,143 @@ func tick_tutorial(delta: float) -> void:
 		_tutorial_timer = 0.0
 		_tutorial_step += 1
 
+func _draw_dwarf_stats_overlay() -> void:
+	_draw_premium_background(size)
+	var main_node = get_parent()
+	if main_node == null:
+		return
+	var dwarf = main_node.possessed_dwarf
+	if dwarf == null:
+		return
+	
+	var cx: int = int(size.x / 2.0)
+	var cy: int = int(size.y / 2.0)
+	var pw: int = 620
+	var ph: int = 460
+	var px: int = cx - pw / 2
+	var py: int = cy - ph / 2
+
+	# Panel background
+	_draw_rounded_rect(Rect2(px - 2, py - 2, pw + 4, ph + 4), Color(0.0, 0.0, 0.0, 0.7), 8)
+	_draw_rounded_rect(Rect2(px, py, pw, ph), Color(0.04, 0.03, 0.10, 0.95), 8)
+	_draw_rounded_rect(Rect2(px, py, pw, ph), Color(0.40, 0.30, 0.70), 8, false, 2.0)
+	draw_rect(Rect2(px, py + 2, pw, 3), Color(0.50, 0.35, 0.80, 0.7), true)
+
+	# Title
+	draw_string(_font, Vector2(cx, py + 30), dwarf.name.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.GOLD)
+	var prof_list = ["MINERO", "LENADOR", "AGRICULTOR", "ARTESANO", "GUERRERO", "CAZADOR", "MEDICO", "NOBLE", "ALDEANO"]
+	var prof_name = prof_list[dwarf.profession] if dwarf.profession >= 0 and dwarf.profession < prof_list.size() else "ALDEANO"
+	draw_string(_font, Vector2(cx, py + 48), prof_name, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.6, 0.6, 0.8))
+
+	# Left column: Stats
+	var col1_x: int = px + 20
+	var stat_y: int = py + 70
+	var line_h: int = 16
+
+	draw_string(_font, Vector2(col1_x, stat_y), "== ESTADíSTICAS ==", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
+	stat_y += line_h + 4
+
+	# Health bar
+	var hp_pct: float = clamp(dwarf.health, 0.0, 1.0)
+	var hp_color: Color = Color(0.2, 0.8, 0.2) if hp_pct > 0.5 else Color(0.8, 0.6, 0.2) if hp_pct > 0.25 else Color(0.8, 0.2, 0.2)
+	draw_string(_font, Vector2(col1_x, stat_y), "Salud:", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
+	draw_rect(Rect2(col1_x + 55, stat_y - 8, 100, 10), Color(0.15, 0.1, 0.2), true)
+	draw_rect(Rect2(col1_x + 55, stat_y - 8, int(100 * hp_pct), 10), hp_color, true)
+	draw_string(_font, Vector2(col1_x + 160, stat_y), "%d%%" % int(hp_pct * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
+	stat_y += line_h + 2
+
+	# Stats list
+	var stat_list: Array = [
+		["Fuerza", dwarf.strength], ["Agilidad", dwarf.agility], ["Resistencia", dwarf.toughness],
+		["Combate", dwarf.combat_skill], ["Arma", dwarf.weapon_skill], ["Escudo", dwarf.shield_skill],
+		["Esquiva", dwarf.dodge_skill], ["Armadura", dwarf.armor_value]
+	]
+	for stat_entry in stat_list:
+		draw_string(_font, Vector2(col1_x, stat_y), str(stat_entry[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
+		draw_string(_font, Vector2(col1_x + 120, stat_y), "%.1f" % float(stat_entry[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
+		stat_y += line_h
+
+	# Needs
+	stat_y += 4
+	draw_string(_font, Vector2(col1_x, stat_y), "== NECESIDADES ==", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
+	stat_y += line_h + 2
+	var needs_list: Array = [
+		["Hambre", dwarf.hunger], ["Sed", dwarf.thirst], ["Felicidad", dwarf.happiness]
+	]
+	for need_entry in needs_list:
+		var need_val: float = clamp(float(need_entry[1]), 0.0, 1.0)
+		var need_color: Color = Color(0.2, 0.8, 0.2) if need_val > 0.5 else Color(0.8, 0.6, 0.2) if need_val > 0.25 else Color(0.8, 0.2, 0.2)
+		draw_string(_font, Vector2(col1_x, stat_y), str(need_entry[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
+		draw_rect(Rect2(col1_x + 70, stat_y - 8, 80, 8), Color(0.15, 0.1, 0.2), true)
+		draw_rect(Rect2(col1_x + 70, stat_y - 8, int(80 * need_val), 8), need_color, true)
+		stat_y += line_h
+
+	# Right column: Equipment
+	var col2_x: int = px + 300
+	var eq_y: int = py + 70
+
+	draw_string(_font, Vector2(col2_x, eq_y), "== EQUIPO ==", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
+	eq_y += line_h + 4
+
+	var eq_list: Array = [
+		["Arma", dwarf.equipped_weapon],
+		["Armadura", dwarf.equipped_armor],
+		["Escudo", dwarf.equipped_shield if dwarf.has_shield else "Ninguno"],
+		["Casco", dwarf.equipped_helmet if not dwarf.equipped_helmet.is_empty() else "Ninguno"]
+	]
+	for eq_entry in eq_list:
+		draw_string(_font, Vector2(col2_x, eq_y), str(eq_entry[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
+		draw_string(_font, Vector2(col2_x + 90, eq_y), str(eq_entry[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
+		eq_y += line_h
+
+	# Combat stats
+	eq_y += 4
+	draw_string(_font, Vector2(col2_x, eq_y), "== COMBATE ==", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
+	eq_y += line_h + 2
+	var combat_data: Array = [
+		["Asesinatos", dwarf.kill_count],
+		["Dano infligido", int(dwarf.stats_tracker.get("damage_dealt", 0))],
+		["Dano recibido", int(dwarf.stats_tracker.get("damage_taken", 0))],
+		["Batallas", dwarf.stats_tracker.get("battles_fought", 0)]
+	]
+	for c_entry in combat_data:
+		draw_string(_font, Vector2(col2_x, eq_y), str(c_entry[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
+		draw_string(_font, Vector2(col2_x + 120, eq_y), str(c_entry[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
+		eq_y += line_h
+
+	# Inventory list (full width at bottom)
+	var inv_y: int = py + 280
+	draw_string(_font, Vector2(px + 20, inv_y), "== INVENTARIO (%d items) ==" % dwarf.inventory.size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
+	inv_y += line_h + 4
+
+	var equip_slots: Dictionary = {
+		0: "(mano derecha)", 1: "(mano izquierda)", 2: "(cabeza)", 3: "(torso)"
+	}
+	var max_vis: int = mini(dwarf.inventory.size(), 8)
+	for inv_i in range(max_vis):
+		var item = dwarf.inventory[inv_i]
+		var selected: bool = (main_node._dwarf_stats_inv_idx == inv_i + 1)
+		var item_name: String = item.name if item is DFItem else "Item"
+		var item_type_info: String = ""
+		if item is DFItem:
+			if item.is_weapon or "weapon" in item.item_type: item_type_info = " [ARMA]"
+			elif item.is_armor or "armor" in item.item_type: item_type_info = " [ARMADURA]"
+			elif "tool" in item.item_type: item_type_info = " [HERRAMIENTA]"
+			elif "food" in item.item_type or "drink" in item.item_type: item_type_info = " [CONSUMIBLE]"
+
+		var sel_mark: String = "> " if selected else "  "
+		var txt_color: Color = Color(0.6, 0.9, 0.6) if selected else Color.WHITE
+		draw_string(_font, Vector2(px + 24, inv_y), sel_mark + item_name + item_type_info, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, txt_color)
+		inv_y += line_h
+
+	if dwarf.inventory.size() > max_vis:
+		draw_string(_font, Vector2(px + 24, inv_y), "... y %d items mas" % (dwarf.inventory.size() - max_vis), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.5, 0.5, 0.5))
+
+	# Footer
+	var foot_y: int = py + ph - 22
+	draw_line(Vector2(px + 16, foot_y - 4), Vector2(px + pw - 16, foot_y - 4), Color(0.4, 0.3, 0.6, 0.5), 1.0)
+	draw_string(_font, Vector2(cx, foot_y + 6), "FLECHAs: item  |  E: equipar  |  D: soltar  |  U/ESC: cerrar", HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(0.5, 0.45, 0.6))
+
 func _draw_tutorial_overlay() -> void:
 	if _tutorial_step < 0 or _tutorial_step >= TUTORIAL_STEPS.size():
 		return
@@ -2968,9 +3373,9 @@ func _draw_context_bar() -> void:
 						talk_nearby = true
 						break
 		if talk_nearby:
-			controls = [["Flechas", "Cámara"], ["T", "Hablar"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
+			controls = [["Flechas", "Cámara"], ["T", "Hablar"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["F1/H", "Ayuda"]]
 		else:
-			controls = [["Flechas", "Cámara"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"], ["ESC", "Menú"]]
+			controls = [["Flechas", "Cámara"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["F1/H", "Ayuda"], ["ESC", "Menú"]]
 
 	var cx = 6
 	for ctrl in controls:
@@ -2987,6 +3392,44 @@ func _draw_context_bar() -> void:
 		draw_string(_font, Vector2(cx, bar_y + bar_h - 6), ctrl[1],
 			HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
 		cx += int(ctrl[1].length() * 5.5 + 16)
+
+	# === MODO INDICATOR ===
+	# Draw current game mode at the right side of the context bar
+	var main_node = get_parent()
+	var is_legends: bool = main_node != null and main_node.legends_mode
+	var is_adventure: bool = main_node != null and main_node.possessed_dwarf != null and not is_legends
+
+	var mode_name: String = "FORTALEZA"
+	var mode_color: Color = Color("#73b359")
+	var mode_shortcut: String = "[M] Cambiar"
+	if is_legends:
+		mode_name = "LEYENDAS"
+		mode_color = Color("#e2c67d")
+		mode_shortcut = "[L]"
+	elif is_adventure:
+		mode_name = "AVENTURA"
+		mode_color = Color("#58b5eb")
+		mode_shortcut = "[P] Soltar"
+
+	var mode_text: String = "MODO: %s  %s" % [mode_name, mode_shortcut]
+	var mode_text_width: int = int(mode_text.length() * 5.5 + 20)
+	var mode_label_x: int = int(vp.x - mode_text_width - 8)
+	var mode_label_y: int = bar_y + bar_h - 6
+
+	# Background pill for mode indicator
+	var mode_bg := Rect2(mode_label_x - 4, bar_y + 4, mode_text_width + 8, bar_h - 8)
+	draw_rect(mode_bg, Color(0.08, 0.06, 0.15, 0.8), true)
+	draw_rect(mode_bg, mode_color, false, 1.0)
+
+	# Draw mode name in color
+	draw_string(_font, Vector2(mode_label_x, mode_label_y), "MODO: ",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
+	var mode_name_width: int = int("MODO: ".length() * 5.5)
+	draw_string(_font, Vector2(mode_label_x + mode_name_width, mode_label_y), mode_name,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, mode_color)
+	var after_name: int = int(("MODO: " + mode_name).length() * 5.5 + 6)
+	draw_string(_font, Vector2(mode_label_x + after_name, mode_label_y), mode_shortcut,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
 
 func _draw_loading_playing_screen() -> void:
 	var main_node = get_parent()
@@ -3124,6 +3567,80 @@ func _wrap_text(text: String, max_chars: int) -> Array:
 		lines.append(current_line)
 	return lines
 
+
+func _draw_mode_switch_menu() -> void:
+	_draw_premium_background(size)
+	var cx: int = int(size.x / 2.0)
+	var cy: int = int(size.y / 2.0)
+	var menu_w: int = 500
+	var menu_h: int = 340
+	var menu_rect := Rect2(cx - menu_w / 2, cy - menu_h / 2, menu_w, menu_h)
+	var main_node = get_parent()
+
+	# Fondo del menu
+	_draw_rounded_rect(Rect2(cx - menu_w / 2 - 2, cy - menu_h / 2 - 2, menu_w + 4, menu_h + 4), Color(0.0, 0.0, 0.0, 0.7), 8)
+	_draw_rounded_rect(menu_rect, Color(0.04, 0.03, 0.10, 0.95), 8)
+	_draw_rounded_rect(menu_rect, Color(0.40, 0.30, 0.70), 8, false, 2.0)
+	draw_rect(Rect2(menu_rect.position.x, menu_rect.position.y + 2, menu_rect.size.x, 3), Color(0.50, 0.35, 0.80, 0.7), true)
+
+	# Titulo
+	var title_y: int = int(menu_rect.position.y + 40)
+	draw_string(_font, Vector2(cx, title_y), "=== CAMBIAR MODO DE JUEGO ===", HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.GOLD)
+	draw_string(_font, Vector2(cx, title_y + 20), "El mundo y tu colonia se conservan al cambiar de modo.", HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(0.6, 0.55, 0.7))
+
+	# Opciones
+	var options: Array = [
+		{
+			"name": "FORTALEZA",
+			"desc": "Gestiona tu colonia enana. Construye, designa trabajos, defiende tu fortaleza.",
+			"keys": "WASD/FLECHAS: mover camara | 1-6: designaciones | ESPACIO: pausa",
+			"color": Color("#73b359")
+		},
+		{
+			"name": "AVENTURA",
+			"desc": "Controla un enano directamente. Explora el mundo, combatelo y descubre secretos.",
+			"keys": "WASD: mover enano | P: poseer/liberar | V: viaje rapido | Q: salir",
+			"color": Color("#58b5eb")
+		},
+		{
+			"name": "LEYENDAS",
+			"desc": "Explora la historia del mundo: figuras historicas, artefactos, guerras y dinastias.",
+			"keys": "PgUp/PgDn: navegar | 0-9: categorias | L/ESC: cerrar",
+			"color": Color("#e2c67d")
+		}
+	]
+
+	var opt_y: int = title_y + 50
+	var opt_h: int = 72
+
+	for opt_idx in range(options.size()):
+		var opt: Dictionary = options[opt_idx]
+		var selected: bool = (main_node != null and main_node._mode_switch_selected_idx == opt_idx) if main_node != null else (opt_idx == 0)
+		var opt_rect := Rect2(menu_rect.position.x + 20, opt_y, menu_rect.size.x - 40, opt_h)
+
+		# Fondo de la opcion
+		var bg: Color = Color(0.12, 0.10, 0.20, 0.8) if not selected else Color(0.20, 0.15, 0.35, 0.9)
+		_draw_rounded_rect(opt_rect, bg, 6)
+		if selected:
+			_draw_rounded_rect(opt_rect, opt["color"], 6, false, 2.0)
+
+		# Nombre del modo
+		var opt_x: int = int(opt_rect.position.x + 16)
+		draw_string(_font, Vector2(opt_x, opt_rect.position.y + 22), "> " if selected else "  ", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, opt["color"] if selected else Color(0.5, 0.5, 0.5))
+		draw_string(_font, Vector2(opt_x + 16, opt_rect.position.y + 22), opt["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, opt["color"])
+
+		# Descripcion
+		draw_string(_font, Vector2(opt_x + 16, opt_rect.position.y + 40), opt["desc"], HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.7, 0.7, 0.8))
+
+		# Teclas
+		draw_string(_font, Vector2(opt_x + 16, opt_rect.position.y + 56), opt["keys"], HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.5, 0.5, 0.6))
+
+		opt_y += opt_h + 10
+
+	# Pie
+	var foot_y: int = int(menu_rect.position.y + menu_rect.size.y - 24)
+	draw_line(Vector2(menu_rect.position.x + 20, foot_y - 4), Vector2(menu_rect.position.x + menu_rect.size.x - 20, foot_y - 4), Color(0.4, 0.3, 0.6, 0.5), 1.0)
+	draw_string(_font, Vector2(cx, foot_y + 6), "FLECHA ARRIBA/ABAJO: navegar  |  ENTER: cambiar  |  M/ESC: cancelar", HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(0.5, 0.45, 0.6))
 
 func _draw_fast_travel_overlay() -> void:
 	if not _fast_travel_active:
