@@ -37,7 +37,10 @@ class MaterialEconomyContracts(unittest.TestCase):
         self.assertIn("item.reserve_for(operator_id", main)
         self.assertIn('recipe["_reserved_inputs"]', main)
         self.assertIn("func _find_recipe_item", main)
-        self.assertTrue(\n            "item.stack_size -= amount" in main\n            or "consumed_item.stack_size -= consumed_amount" in main\n        )
+        self.assertTrue(
+            "item.stack_size -= amount" in main
+            or "consumed_item.stack_size -= consumed_amount" in main
+        )
         self.assertIn("world_ref.entities.erase(item)", main)
 
     def test_reservations_are_released_when_assignment_breaks(self) -> None:
