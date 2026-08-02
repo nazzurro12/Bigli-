@@ -2446,6 +2446,9 @@ func _draw_settings_menu() -> void:
 	draw_string(_font, Vector2(left_margin, title_y + 96.0),
 		"Cada fortaleza deja una historia que el mundo recordará.",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_MD, UI.TEXT_MUTED)
+	draw_string(_font, Vector2(left_margin, title_y + 122.0),
+		"Planetario (771²) · 197.376 casillas por eje",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_SM, UI.TEXT_MUTED)
 
 	var panel_width := UI.content_width(viewport, 640.0 * scale, 24.0)
 	var panel_height := UI.snap(minf(480.0 * scale, viewport.y - top_margin - 88.0))
