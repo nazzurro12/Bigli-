@@ -1,0 +1,43 @@
+name: Godot Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: godot-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  headless-tests:
+    name: Godot 4.7.1 headless
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.1
+          use-dotnet: false
+          include-templates: false
+
+      - name: Verify Godot
+        run: godot --version
+
+      - name: Import project and validate scripts
+        run: godot --headless --editor --path . --quit
+
+      - name: Test fortress jobs and save-load round trip
+        run: godot --headless --path . test_df_jobs.tscn
+
+      - name: Test possession consequences
+        run: godot --headless --path . test_df_consequences.tscn

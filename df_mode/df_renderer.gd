@@ -6,6 +6,7 @@ const DFWorld = preload("res://df_mode/df_world.gd")
 const DFDesignation = preload("res://df_mode/df_designation.gd")
 const DFTileset = preload("res://df_mode/df_tileset.gd")
 const DFJob = preload("res://df_mode/df_job.gd")
+const UI = preload("res://df_mode/df_ui_theme.gd")
 const UI_CLASSIC_FACE := Color("#ECE9D8")
 const UI_CLASSIC_LIGHT := Color("#FFFFFF")
 const UI_CLASSIC_MID := Color("#ACA899")
@@ -2339,230 +2340,371 @@ func _translate_race_fast(race: String) -> String:
 		"megabeast": return "Bestia"
 	return race
 
+func _draw_classic_frame(rect: Rect2, title: String, active: bool = true) -> Rect2:
+	# Four-line bevel used by Windows Classic controls.
+	draw_rect(rect, UI.WIN_FACE, true)
+	draw_line(rect.position, Vector2(rect.end.x, rect.position.y), UI.WIN_LIGHT, 1.0)
+	draw_line(rect.position, Vector2(rect.position.x, rect.end.y), UI.WIN_LIGHT, 1.0)
+	draw_line(Vector2(rect.position.x, rect.end.y - 1), rect.end - Vector2(0, 1), UI.WIN_DARK_SHADOW, 1.0)
+	draw_line(Vector2(rect.end.x - 1, rect.position.y), rect.end - Vector2(1, 0), UI.WIN_DARK_SHADOW, 1.0)
+	draw_line(rect.position + Vector2(1, 1), Vector2(rect.end.x - 2, rect.position.y + 1), Color("#dfdfdf"), 1.0)
+	draw_line(rect.position + Vector2(1, 1), Vector2(rect.position.x + 1, rect.end.y - 2), Color("#dfdfdf"), 1.0)
+	var title_rect := Rect2(rect.position + Vector2(3, 3), Vector2(rect.size.x - 6, 21))
+	var title_color := UI.WIN_TITLE_START if active else UI.WIN_SHADOW
+	draw_rect(title_rect, title_color, true)
+	# Subtle period-correct title gradient.
+	var gradient_steps := 18
+	for step in range(gradient_steps):
+		var ratio := float(step) / float(gradient_steps - 1)
+		var strip_x := title_rect.position.x + title_rect.size.x * ratio
+		draw_line(
+			Vector2(strip_x, title_rect.position.y),
+			Vector2(strip_x, title_rect.end.y),
+			title_color.lerp(UI.WIN_TITLE_END, ratio),
+			maxf(1.0, title_rect.size.x / float(gradient_steps))
+		)
+	draw_string(_font, title_rect.position + Vector2(6, 15), title,
+		HORIZONTAL_ALIGNMENT_LEFT, title_rect.size.x - 70, 11, Color.WHITE)
+	for button_index in range(3):
+		var button_rect := Rect2(
+			title_rect.end.x - 17.0 * float(3 - button_index),
+			title_rect.position.y + 3,
+			15,
+			15
+		)
+		draw_rect(button_rect, UI.WIN_FACE, true)
+		draw_line(button_rect.position, Vector2(button_rect.end.x, button_rect.position.y), UI.WIN_LIGHT, 1.0)
+		draw_line(button_rect.position, Vector2(button_rect.position.x, button_rect.end.y), UI.WIN_LIGHT, 1.0)
+		draw_line(Vector2(button_rect.position.x, button_rect.end.y - 1), button_rect.end - Vector2(0, 1), UI.WIN_DARK_SHADOW, 1.0)
+		draw_line(Vector2(button_rect.end.x - 1, button_rect.position.y), button_rect.end - Vector2(1, 0), UI.WIN_DARK_SHADOW, 1.0)
+	var close_center := Vector2(title_rect.end.x - 9.5, title_rect.position.y + 10.5)
+	draw_line(close_center - Vector2(3, 3), close_center + Vector2(3, 3), Color.BLACK, 1.0)
+	draw_line(close_center + Vector2(3, -3), close_center + Vector2(-3, 3), Color.BLACK, 1.0)
+	return Rect2(rect.position + Vector2(3, 27), rect.size - Vector2(6, 30))
+
+func _draw_menu_backdrop(viewport: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, viewport), UI.MENU_SKY_TOP, true)
+	var bands := 28
+	for band in range(bands):
+		var t := float(band) / float(bands - 1)
+		var band_y := viewport.y * t
+		draw_rect(
+			Rect2(0, band_y, viewport.x, viewport.y / float(bands) + 1.0),
+			UI.MENU_SKY_TOP.lerp(UI.MENU_SKY_BOTTOM, t),
+			true
+		)
+	var horizon := viewport.y * 0.58
+	var seed_value := 23841
+	for ridge in range(4):
+		var segment_width := maxf(32.0, viewport.x / 24.0)
+		var ridge_color := Color("#152635").darkened(float(3 - ridge) * 0.08)
+		for segment in range(24):
+			var px_a := float(segment) * segment_width
+			var px_b := float(segment + 1) * segment_width
+			var noise_a := sin(float(segment * 17 + ridge * 31 + seed_value) * 0.21)
+			var noise_b := sin(float((segment + 1) * 17 + ridge * 31 + seed_value) * 0.21)
+			var py_a := horizon - float(ridge) * 34.0 - noise_a * (24.0 + ridge * 10.0)
+			var py_b := horizon - float(ridge) * 34.0 - noise_b * (24.0 + ridge * 10.0)
+			var quad := PackedVector2Array([
+				Vector2(px_a, viewport.y),
+				Vector2(px_a, py_a),
+				Vector2(px_b, py_b),
+				Vector2(px_b, viewport.y)
+			])
+			draw_colored_polygon(quad, ridge_color)
+	draw_rect(Rect2(0, viewport.y - 44, viewport.x, 44), Color("#090E14"), true)
+	draw_line(Vector2(0, viewport.y - 44), Vector2(viewport.x, viewport.y - 44), UI.GOLD.darkened(0.25), 1.0)
+
+func _draw_classic_button(rect: Rect2, label: String, selected: bool = false, primary: bool = false) -> void:
+	var snapped := UI.snapped_rect(rect)
+	var face := UI.WIN_FACE_WARM if not selected else UI.WIN_TITLE_START
+	if primary and not selected:
+		face = Color("#DCE8F5")
+	draw_rect(snapped, face, true)
+	var light := UI.WIN_LIGHT if not selected else UI.WIN_TITLE_END
+	var shadow := UI.WIN_DARK_SHADOW if not selected else Color("#041B4D")
+	draw_line(snapped.position, Vector2(snapped.end.x, snapped.position.y), light, 1.0)
+	draw_line(snapped.position, Vector2(snapped.position.x, snapped.end.y), light, 1.0)
+	draw_line(Vector2(snapped.position.x, snapped.end.y - 1), snapped.end - Vector2(0, 1), shadow, 1.0)
+	draw_line(Vector2(snapped.end.x - 1, snapped.position.y), snapped.end - Vector2(1, 0), shadow, 1.0)
+	if selected:
+		draw_rect(snapped.grow(-3), Color(1, 1, 1, 0.18), false, 1.0)
+	var text_color := Color.WHITE if selected else Color("#17202A")
+	draw_string(_font, Vector2(snapped.position.x + 8.0, snapped.position.y + snapped.size.y * 0.66),
+		label, HORIZONTAL_ALIGNMENT_CENTER, snapped.size.x - 16.0, UI.FONT_MD, text_color)
+
+func _draw_keycap(position: Vector2, key_text: String, description: String) -> float:
+	var key_width := maxf(32.0, float(key_text.length()) * 7.0 + 16.0)
+	var key_rect := Rect2(position, Vector2(key_width, 24.0))
+	_draw_classic_button(key_rect, key_text)
+	draw_string(_font, position + Vector2(key_width + 8.0, 16.0), description,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_SM, UI.TEXT_MUTED)
+	return key_width + 8.0 + float(description.length()) * 6.0 + 20.0
+
+func get_settings_menu_hit_regions() -> Dictionary:
+	var viewport := size
+	var scale := UI.responsive_scale(viewport)
+	var left_margin := UI.snap(maxf(32.0, viewport.x * 0.065))
+	var top_margin := UI.snap(maxf(28.0, viewport.y * 0.07))
+	var panel_width := UI.content_width(viewport, 640.0 * scale, 24.0)
+	var panel_height := UI.snap(minf(480.0 * scale, viewport.y - top_margin - 88.0))
+	var panel_x := UI.snap(viewport.x - panel_width - left_margin)
+	var content := Rect2(
+		panel_x + 3.0,
+		top_margin + 27.0,
+		panel_width - 6.0,
+		panel_height - 30.0
+	)
+	var inner_x := content.position.x + UI.SPACE_LG
+	var inner_width := content.size.x - UI.SPACE_LG * 2.0
+	var row_y := content.position.y + UI.SPACE_LG + 28.0
+	var rows: Array[Rect2] = []
+	for option_index in range(4):
+		rows.append(Rect2(inner_x, row_y + option_index * UI.ROW_HEIGHT, inner_width, UI.ROW_HEIGHT))
+	var action_y := content.end.y - UI.BUTTON_HEIGHT - UI.SPACE_LG
+	var gap := UI.SPACE_SM
+	var button_width := (inner_width - gap) / 2.0
+	return {
+		"rows": rows,
+		"quick_start": Rect2(inner_x, action_y, button_width, UI.BUTTON_HEIGHT),
+		"create_world": Rect2(inner_x + button_width + gap, action_y, button_width, UI.BUTTON_HEIGHT),
+	}
+
 func _draw_settings_menu() -> void:
-	var main_node = get_parent()
-	if main_node == null: return
-
-	var line_h = _char_size.y
-	var center_x = size.x / 2
-	var vp = size
-
-	# ---- Premium background ----
-	_draw_premium_background(vp)
-
-	# Subtle top gradient bar
-	draw_rect(Rect2(0, 0, vp.x, 6), Color(0.15, 0.10, 0.30, 0.8), true)
-	draw_rect(Rect2(0, vp.y - 6, vp.x, 6), Color(0.15, 0.10, 0.30, 0.8), true)
-
-	# ---- ASCII LOGO (centered near top) ----
-	var logo_lines = [
-		"██████╗ ██╗ ██████╗ ██╗     ██╗",
-		"██╔══██╗██║██╔════╝ ██║     ██║",
-		"██████╔╝██║██║  ███╗██║     ██║",
-		"██╔══██╗██║██║   ██║██║     ██║",
-		"██████╔╝██║╚██████╔╝███████╗██║",
-		"╚═════╝ ╚═╝ ╚═════╝ ╚══════╝╚═╝"
-	]
-	var logo_y = 30
-	for logo_line in logo_lines:
-		draw_string(_font, Vector2(center_x, logo_y), logo_line,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(0.55, 0.35, 0.90))
-		logo_y += int(line_h * 1.1)
-
-	# Subtitle
-	logo_y += 4
-	draw_string(_font, Vector2(center_x, logo_y), "Un simulador de mundo vivo — inspirado en Dwarf Fortress",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.60, 0.55, 0.75))
-	logo_y += int(line_h * 0.9)
-	draw_string(_font, Vector2(center_x, logo_y), "~ Donde cada historia emerge de la simulación, no del guión ~",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(0.40, 0.38, 0.55))
-
-	# Horizontal divider
-	logo_y += int(line_h * 1.2)
-	draw_line(Vector2(center_x - 260, logo_y), Vector2(center_x + 260, logo_y), Color(0.30, 0.25, 0.55), 1.0)
-
-	# ---- QUICK START BOX (prominent) ----
-	var qs_y = logo_y + 14
-	var qs_w = 380
-	var qs_h = 64
-	var qs_x = center_x - qs_w / 2
-	_draw_rounded_rect(Rect2(qs_x - 2, qs_y - 2, qs_w + 4, qs_h + 4), Color(0.0, 0.0, 0.0, 0.2), 6)
-	_draw_rounded_rect(Rect2(qs_x, qs_y, qs_w, qs_h), Color(0.08, 0.05, 0.18), 6)
-	_draw_rounded_rect(Rect2(qs_x, qs_y, qs_w, qs_h), Color(0.55, 0.40, 0.90), 6, false, 2.0)
-	draw_string(_font, Vector2(center_x, qs_y + 18), "▶  INICIO RÁPIDO  ◀",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 15, Color(0.90, 0.80, 1.0))
-	draw_string(_font, Vector2(center_x, qs_y + 40), "Presiona  Q  o Haz Click para jugar ahora mismo",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.65, 0.60, 0.80))
-
-	# ---- CONFIG SECTION ----
-	var cfg_y = qs_y + qs_h + 18
-	draw_string(_font, Vector2(center_x, cfg_y), "── CONFIGURACIÓN DEL MUNDO ──",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.50, 0.45, 0.65))
-	cfg_y += int(line_h * 1.4)
-
-	var box_w = 520
-	var box_h = 145
-	var box_x = center_x - box_w / 2
-	_draw_rounded_rect(Rect2(box_x, cfg_y, box_w, box_h), Color(0.03, 0.03, 0.08, 0.9), 6)
-	_draw_rounded_rect(Rect2(box_x, cfg_y, box_w, box_h), Color(0.25, 0.20, 0.45), 6, false, 1.5)
-
-	var options = [
-		["Semilla del Mundo",     "%s" % ("Aleatoria" if main_node.generation_seed == -1 else str(main_node.generation_seed))],
-		["Tamaño del Continente", ["Pequeño (128²)", "Estándar (256²)", "Grande (512²)", "Planetario (771²)"][clampi(main_node.setting_size, 0, 3)]],
-		["Duración de Historia",  "%d años" % main_node.setting_history_options[main_node.setting_history_idx]],
-		["Civilizaciones",        ["Baja", "Media", "Alta"][main_node.setting_civ_density]],
-		["Megabestias",           ["Pocas", "Moderadas", "Abundantes"][main_node.setting_beast_density]],
-	]
-
-	var opt_y = cfg_y + 10
-	for i in range(options.size()):
-		var is_sel = (main_node.setting_selected_index == i)
-		var key_col  = Color(0.80, 0.78, 0.90) if is_sel else Color(0.55, 0.52, 0.65)
-		var val_col  = Color(1.0, 0.90, 0.40) if is_sel else Color(0.75, 0.70, 0.85)
-		var arrow    = "▸ " if is_sel else "  "
-		
-		if is_sel:
-			_draw_rounded_rect(Rect2(box_x + 10, opt_y - 2, box_w - 20, 18), Color(0.20, 0.15, 0.40, 0.4), 4)
-
-		draw_string(_font, Vector2(box_x + 22, opt_y + 10), arrow + options[i][0],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 10, key_col)
-		draw_string(_font, Vector2(box_x + box_w - 22, opt_y + 10), options[i][1],
-			HORIZONTAL_ALIGNMENT_RIGHT, -1, 10, val_col)
-		opt_y += int(line_h * 1.25)
-
-	# ---- DESCRIPTION OF SELECTED SETTING ----
-	var s_desc_y = cfg_y + box_h + 8
-	var s_desc_w = 520
-	var s_desc_h = 38
-	var s_desc_x = center_x - s_desc_w / 2
-	_draw_rounded_rect(Rect2(s_desc_x, s_desc_y, s_desc_w, s_desc_h), Color(0.02, 0.02, 0.05, 0.85), 5)
-	_draw_rounded_rect(Rect2(s_desc_x, s_desc_y, s_desc_w, s_desc_h), Color(0.20, 0.16, 0.35, 0.6), 5, false, 1.0)
-	
-	var s_desc = ""
-	match main_node.setting_selected_index:
-		0: s_desc = "Semilla del Mundo: Establece el valor inicial generador. Si es aleatorio, cada partida generará un continente totalmente diferente."
-		1: s_desc = "Tamaño del Continente: Planetario contiene 594.441 regiones transmitidas y 197.376 casillas por eje, equivalente al mundo Large de DF. Solo materializa en detalle la zona jugada."
-		2: s_desc = "Duración de Historia: Años simulados antes de jugar. A mayor historia, habrá más ruinas, reyes muertos, reliquias y megabestias."
-		3: s_desc = "Civilizaciones: Determina la densidad de reinos de enanos, elfos, humanos y goblins en el continente."
-		4: s_desc = "Megabestias: Cantidad de dragones y monstruos gigantescos iniciales. Afecta los ataques históricos a aldeas."
-	
-	var s_desc_lines = _wrap_text(s_desc, 65)
-	var s_dy = s_desc_y + 14
-	for s_line in s_desc_lines:
-		draw_string(_font, Vector2(center_x, s_dy), s_line, HORIZONTAL_ALIGNMENT_CENTER, s_desc_w - 20, 8, Color(0.70, 0.68, 0.80))
-		s_dy += int(line_h * 1.05)
-
-	# ---- Footer help bar ----
-	var foot_y = s_desc_y + s_desc_h + 20
-	var help_items = [
-		["↑↓", "Seleccionar"],
-		["←→", "Cambiar valor"],
-		["R", "Semilla aleatoria"],
-		["ENTER", "Crear Mundo"],
-		["Q", "Inicio Rápido"],
-	]
-	var help_x = center_x - 300
-	for hi in help_items:
-		_draw_rounded_rect(Rect2(help_x, foot_y - 10, 42, 16), Color(0.18, 0.15, 0.32), 3)
-		_draw_rounded_rect(Rect2(help_x, foot_y - 10, 42, 16), Color(0.40, 0.35, 0.65), 3, false, 1.0)
-		draw_string(_font, Vector2(help_x + 21, foot_y), hi[0],
-			HORIZONTAL_ALIGNMENT_CENTER, 42, 9, Color(0.90, 0.88, 1.0))
-		draw_string(_font, Vector2(help_x + 48, foot_y), hi[1],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.55, 0.52, 0.65))
-		help_x += 120
-
-	# Version tag
-	draw_string(_font, Vector2(vp.x - 10, vp.y - 10), "BIGLI alpha v0.1",
-		HORIZONTAL_ALIGNMENT_RIGHT, -1, 8, Color(0.25, 0.22, 0.38))
-
-
-
-func _draw_generating_screen() -> void:
-	_draw_premium_background(size)
-
 	var main_node = get_parent()
 	if main_node == null:
 		return
+	var viewport := size
+	var scale := UI.responsive_scale(viewport)
+	_draw_menu_backdrop(viewport)
 
-	var line_h: int = int(_char_size.y)
-	var center_x: float = size.x / 2.0
-	var box_w: int = 680
-	var box_h: int = 470
-	var box_x: float = center_x - float(box_w) / 2.0
-	var box_y: float = (size.y - float(box_h)) / 2.0
-	var building_terrain: bool = int(main_node.gen_year) <= 0 and float(main_node.load_progress) < 0.18
+	var left_margin := UI.snap(maxf(32.0, viewport.x * 0.065))
+	var top_margin := UI.snap(maxf(28.0, viewport.y * 0.07))
+	var title_y := top_margin
+	draw_string(_font, Vector2(left_margin, title_y + 34.0), "BIGLI",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(UI.FONT_XL, int(30.0 * scale)), UI.TEXT)
+	draw_string(_font, Vector2(left_margin + 4.0, title_y + 60.0), "WORLD SIMULATION",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(UI.FONT_MD, int(14.0 * scale)), UI.GOLD)
+	draw_line(Vector2(left_margin, title_y + 72.0), Vector2(left_margin + 340.0 * scale, title_y + 72.0), UI.GOLD, 2.0)
+	draw_string(_font, Vector2(left_margin, title_y + 96.0),
+		"Cada fortaleza deja una historia que el mundo recordará.",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_MD, UI.TEXT_MUTED)
+	draw_string(_font, Vector2(left_margin, title_y + 122.0),
+		"Planetario (771²) · 197.376 casillas por eje",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_SM, UI.TEXT_MUTED)
 
-	_draw_classic_bevel(Rect2(box_x, box_y, box_w, box_h), UI_CLASSIC_FACE, false)
-	_draw_classic_titlebar(Rect2(box_x + 3, box_y + 3, box_w - 6, 24), "Generación de mundo")
+	var panel_width := UI.content_width(viewport, 640.0 * scale, 24.0)
+	var panel_height := UI.snap(minf(480.0 * scale, viewport.y - top_margin - 88.0))
+	var panel_x := UI.snap(viewport.x - panel_width - left_margin)
+	var panel_y := top_margin
+	var content := _draw_classic_frame(Rect2(panel_x, panel_y, panel_width, panel_height), "Crear un mundo nuevo")
+	draw_rect(content, UI.MENU_PANEL, true)
 
-	var y: float = box_y + 35.0
-	var pulse: float = 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.005)
-	var phase_title: String = "GENERANDO MUNDO FÍSICO" if building_terrain else "SIMULANDO HISTORIA Y CIVILIZACIONES"
-	draw_string(_font, Vector2(center_x, y), "%s: %s" % [phase_title, str(main_node.world_name).to_upper()], HORIZONTAL_ALIGNMENT_CENTER, -1, 14, UI_CLASSIC_TITLE_LIGHT.lightened(0.15 * pulse))
-	y += float(line_h) * 2.0
+	var inner_x := content.position.x + UI.SPACE_LG
+	var inner_width := content.size.x - UI.SPACE_LG * 2.0
+	var row_y := content.position.y + UI.SPACE_LG
+	draw_string(_font, Vector2(inner_x, row_y + 14.0), "CONFIGURACIÓN DEL MUNDO",
+		HORIZONTAL_ALIGNMENT_LEFT, inner_width, UI.FONT_MD, UI.GOLD)
+	row_y += 28.0
 
-	var pct: float = clampf(float(main_node.load_progress), 0.0, 1.0)
-	if not building_terrain and int(main_node.gen_max_years) > 0:
-		pct = maxf(pct, 0.18 + (float(main_node.gen_year) / float(main_node.gen_max_years)) * 0.70)
-	var bar_w: int = 520
-	var bar_h: int = 18
-	var bar_x: float = center_x - float(bar_w) / 2.0
-	_draw_classic_bevel(Rect2(bar_x, y, bar_w, bar_h), Color.WHITE, true)
-	if pct > 0.0:
-		draw_rect(Rect2(bar_x + 2.0, y + 2.0, float(bar_w - 4) * pct, bar_h - 4), UI_CLASSIC_TITLE_LIGHT, true)
-	var pct_str: String = "%d%%" % int(pct * 100.0)
-	draw_string(_font, Vector2(center_x, y + 14.0), pct_str, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color.WHITE if pct > 0.5 else UI_CLASSIC_TEXT)
-	y += float(line_h) * 2.1
-
-	var status_text: String = str(main_node.load_status)
-	draw_string(_font, Vector2(center_x, y), status_text, HORIZONTAL_ALIGNMENT_CENTER, box_w - 70, 10, UI_CLASSIC_TEXT)
-	y += float(line_h) * 1.8
-
-	var world_width: int = 0
-	var world_depth: int = 0
-	if main_node.world_gen != null:
-		world_width = int(main_node.world_gen.world_width)
-		world_depth = int(main_node.world_gen.world_depth)
-	var stats: Array = [
-		["MAPA GLOBAL:", "%d × %d" % [world_width, world_depth]],
-		["REGIONES:", "%s" % _format_world_region_count(world_width * world_depth)],
-		["AÑO HISTÓRICO:", "%d / %d" % [main_node.gen_year, main_node.gen_max_years]],
-		["ERA ACTUAL:", str(main_node.gen_current_age).to_upper()],
-		["PERSONAJES:", "%d" % main_node.gen_historical_figures],
-		["ASENTAMIENTOS:", "%d" % main_node.gen_active_sites],
-		["CONFLICTOS:", "%d" % main_node.gen_active_wars],
-		["BESTIAS VIVAS:", "%d" % main_node.gen_beasts_alive]
+	var options = [
+		["Semilla", "Aleatoria" if main_node.generation_seed == -1 else str(main_node.generation_seed)],
+		["Historia", "%d años" % main_node.setting_history_options[main_node.setting_history_idx]],
+		["Civilizaciones", ["Baja", "Media", "Alta"][main_node.setting_civ_density]],
+		["Megabestias", ["Pocas", "Moderadas", "Abundantes"][main_node.setting_beast_density]],
 	]
+	for option_index in range(options.size()):
+		var selected: bool = int(main_node.setting_selected_index) == option_index
+		var row_rect := Rect2(inner_x, row_y, inner_width, UI.ROW_HEIGHT)
+		if selected:
+			draw_rect(row_rect, UI.WIN_TITLE_START, true)
+			draw_rect(row_rect.grow(-2), Color(1, 1, 1, 0.14), false, 1.0)
+		elif option_index % 2 == 1:
+			draw_rect(row_rect, Color(1, 1, 1, 0.025), true)
+		var row_color := Color.WHITE if selected else UI.TEXT
+		draw_string(_font, Vector2(inner_x + 12.0, row_y + 16.0), str(options[option_index][0]),
+			HORIZONTAL_ALIGNMENT_LEFT, inner_width * 0.55, UI.FONT_SM, row_color)
+		var value_text := "<  %s  >" % str(options[option_index][1])
+		draw_string(_font, Vector2(inner_x + inner_width * 0.50, row_y + 16.0), value_text,
+			HORIZONTAL_ALIGNMENT_RIGHT, inner_width * 0.48, UI.FONT_SM, UI.GOLD if not selected else Color.WHITE)
+		row_y += UI.ROW_HEIGHT
 
-	var col_x1: float = box_x + 40.0
-	var col_x2: float = box_x + float(box_w) / 2.0 + 20.0
-	var col_w: float = float(box_w) / 2.0 - 60.0
-	for stat_index in range(stats.size()):
-		var stat: Array = stats[stat_index]
-		var sx: float = col_x1 if stat_index % 2 == 0 else col_x2
-		var sy: float = y + float(int(stat_index / 2)) * float(line_h) * 1.5
-		draw_string(_font, Vector2(sx, sy), str(stat[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UI_CLASSIC_SHADOW)
-		draw_string(_font, Vector2(sx + col_w, sy), str(stat[1]), HORIZONTAL_ALIGNMENT_RIGHT, -1, 10, UI_CLASSIC_DARK)
-	y += float(int((stats.size() + 1) / 2) + 1) * float(line_h) * 1.5
+	row_y += UI.SPACE_MD
+	var description_rect := Rect2(inner_x, row_y, inner_width, 72.0)
+	draw_rect(description_rect, UI.SURFACE_0, true)
+	draw_rect(description_rect, UI.BORDER_SOFT, false, 1.0)
+	var descriptions := [
+		"Determina la identidad reproducible del planeta.",
+		"Simula reinos, guerras, migraciones, ruinas y linajes antes del desembarco.",
+		"Controla cuántas culturas compiten por territorio y recursos.",
+		"Regula la presencia histórica de dragones y criaturas legendarias.",
+	]
+	var description_lines := _wrap_text(descriptions[clampi(main_node.setting_selected_index, 0, 3)], int((inner_width - 24.0) / 7.0))
+	var description_y := description_rect.position.y + 20.0
+	for description_line in description_lines:
+		draw_string(_font, Vector2(description_rect.position.x + 12.0, description_y), description_line,
+			HORIZONTAL_ALIGNMENT_LEFT, description_rect.size.x - 24.0, UI.FONT_SM, UI.TEXT_MUTED)
+		description_y += 16.0
 
-	draw_string(_font, Vector2(box_x + 40.0, y), "CRÓNICA CAUSAL DEL MUNDO:", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UI_CLASSIC_DARK)
-	y += float(line_h) * 1.2
-	var ev_box_h: int = 105
-	_draw_classic_bevel(Rect2(box_x + 40.0, y, box_w - 80, ev_box_h), Color.WHITE, true)
-	var ev_y: float = y + 18.0
+	var action_y := content.end.y - UI.BUTTON_HEIGHT - UI.SPACE_LG
+	var gap := UI.SPACE_SM
+	var button_width := (inner_width - gap) / 2.0
+	_draw_classic_button(Rect2(inner_x, action_y, button_width, UI.BUTTON_HEIGHT), "INICIO RÁPIDO · Q")
+	_draw_classic_button(Rect2(inner_x + button_width + gap, action_y, button_width, UI.BUTTON_HEIGHT), "CREAR MUNDO · ENTER", true, true)
+
+	var footer_y := viewport.y - 32.0
+	var footer_x := left_margin
+	for footer_item in [["↑↓", "Seleccionar"], ["←→", "Cambiar"], ["R", "Nueva semilla"]]:
+		footer_x += _draw_keycap(Vector2(footer_x, footer_y - 12.0), footer_item[0], footer_item[1])
+	draw_string(_font, Vector2(viewport.x - left_margin, footer_y + 4.0), "BIGLI · PRE-ALPHA",
+		HORIZONTAL_ALIGNMENT_RIGHT, -1, UI.FONT_XS, UI.TEXT_DISABLED)
+
+func _draw_generating_screen() -> void:
+	var main_node = get_parent()
+	if main_node == null:
+		return
+	var viewport: Vector2 = size
+	_draw_menu_backdrop(viewport)
+	var scale: float = UI.responsive_scale(viewport)
+	var outer_margin: float = maxf(28.0, 56.0 * scale)
+	var content_width: float = minf(1420.0 * scale, viewport.x - outer_margin * 2.0)
+	var content_height: float = minf(760.0 * scale, viewport.y - outer_margin * 2.0)
+	var origin := Vector2(
+		UI.snap((viewport.x - content_width) * 0.5),
+		UI.snap((viewport.y - content_height) * 0.5)
+	)
+	var building_terrain: bool = int(main_node.gen_year) <= 0 and float(main_node.load_progress) < 0.18
+	var progress: float = clampf(float(main_node.load_progress), 0.0, 1.0)
+	if not building_terrain and int(main_node.gen_max_years) > 0:
+		progress = maxf(progress, 0.18 + float(main_node.gen_year) / float(main_node.gen_max_years) * 0.70)
+
+	# Encabezado editorial: sin barra de ventana ni botones falsos.
+	draw_string(_font, origin + Vector2(0.0, 24.0), "BIGLI · GÉNESIS",
+		HORIZONTAL_ALIGNMENT_LEFT, content_width, UI.FONT_MD, UI.GOLD)
+	draw_string(_font, origin + Vector2(0.0, 66.0), str(main_node.world_name).to_upper(),
+		HORIZONTAL_ALIGNMENT_LEFT, content_width, UI.FONT_XL, UI.TEXT)
+	var phase_title: String = "FORMANDO TIERRAS, MARES Y CLIMAS" if building_terrain else "DEJANDO QUE LA HISTORIA COBRE VIDA"
+	draw_string(_font, origin + Vector2(0.0, 92.0), phase_title,
+		HORIZONTAL_ALIGNMENT_LEFT, content_width, UI.FONT_MD, UI.TEXT_MUTED)
+	draw_string(_font, origin + Vector2(content_width - 150.0, 66.0), "%02d%%" % roundi(progress * 100.0),
+		HORIZONTAL_ALIGNMENT_RIGHT, 150.0, UI.FONT_XL, UI.GOLD)
+
+	var body_y: float = origin.y + 124.0
+	var gap: float = 20.0 * scale
+	var right_width: float = maxf(300.0, content_width * 0.32)
+	var left_width: float = content_width - right_width - gap
+	var body_height: float = content_height - 154.0
+	var left_rect := Rect2(origin.x, body_y, left_width, body_height)
+	var right_rect := Rect2(origin.x + left_width + gap, body_y, right_width, body_height)
+
+	_draw_rounded_rect(left_rect, Color(0.035, 0.065, 0.095, 0.94), 10.0)
+	_draw_rounded_rect(left_rect, Color(0.20, 0.32, 0.42, 0.9), 10.0, false, 1.0)
+	_draw_rounded_rect(right_rect, Color(0.035, 0.065, 0.095, 0.94), 10.0)
+	_draw_rounded_rect(right_rect, Color(0.20, 0.32, 0.42, 0.9), 10.0, false, 1.0)
+
+	var inset: float = 24.0 * scale
+	var lx: float = left_rect.position.x + inset
+	var ly: float = left_rect.position.y + inset
+	var inner_left_width: float = left_rect.size.x - inset * 2.0
+	draw_string(_font, Vector2(lx, ly + 16.0), "PROGRESO DEL MUNDO",
+		HORIZONTAL_ALIGNMENT_LEFT, inner_left_width, UI.FONT_MD, UI.TEXT)
+	ly += 34.0
+
+	# Barra continua oscura, sin el rectángulo blanco del estilo clásico.
+	var progress_rect := Rect2(lx, ly, inner_left_width, 12.0 * scale)
+	_draw_rounded_rect(progress_rect, Color("#172534"), 6.0)
+	var fill_width: float = maxf(10.0, progress_rect.size.x * progress)
+	_draw_rounded_rect(Rect2(progress_rect.position, Vector2(fill_width, progress_rect.size.y)), UI.GOLD, 6.0)
+	ly += 30.0
+	draw_string(_font, Vector2(lx, ly), str(main_node.load_status),
+		HORIZONTAL_ALIGNMENT_LEFT, inner_left_width, UI.FONT_SM, UI.TEXT_MUTED)
+
+	var stages: Array = [
+		["01", "GEOGRAFÍA", 0.18],
+		["02", "VIDA", 0.34],
+		["03", "PUEBLOS", 0.58],
+		["04", "HISTORIA", 0.88],
+		["05", "DESPERTAR", 1.0],
+	]
+	ly += 34.0
+	var stage_width: float = inner_left_width / float(stages.size())
+	for stage_index: int in range(stages.size()):
+		var stage: Array = stages[stage_index]
+		var threshold: float = float(stage[2])
+		var active: bool = progress >= threshold or (stage_index == 0 and progress > 0.0)
+		var current: bool = progress < threshold and (stage_index == 0 or progress >= float(stages[stage_index - 1][2]))
+		var stage_color: Color = UI.GOLD if active else (UI.TEXT if current else UI.TEXT_DISABLED)
+		var stage_x: float = lx + float(stage_index) * stage_width
+		draw_string(_font, Vector2(stage_x, ly), str(stage[0]),
+			HORIZONTAL_ALIGNMENT_LEFT, stage_width, UI.FONT_XS, stage_color)
+		draw_string(_font, Vector2(stage_x, ly + 18.0), str(stage[1]),
+			HORIZONTAL_ALIGNMENT_LEFT, stage_width - 4.0, UI.FONT_SM, stage_color)
+	ly += 60.0
+
+	draw_string(_font, Vector2(lx, ly), "CRÓNICA DEL NACIMIENTO",
+		HORIZONTAL_ALIGNMENT_LEFT, inner_left_width, UI.FONT_MD, UI.GOLD)
+	ly += 24.0
+	var event_rect := Rect2(lx, ly, inner_left_width, maxf(120.0, left_rect.end.y - ly - inset))
+	_draw_rounded_rect(event_rect, Color("#0A121B"), 7.0)
+	_draw_rounded_rect(event_rect, UI.BORDER_SOFT, 7.0, false, 1.0)
+	var event_y: float = event_rect.position.y + 24.0
 	if main_node.gen_rolling_events.is_empty():
-		draw_string(_font, Vector2(box_x + 50.0, ev_y), "Preparando topografía, cuencas y civilizaciones...", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, UI_CLASSIC_TEXT)
+		draw_string(_font, Vector2(event_rect.position.x + 18.0, event_y), "Preparando topografía, cuencas y primeras semillas de vida…",
+			HORIZONTAL_ALIGNMENT_LEFT, event_rect.size.x - 36.0, UI.FONT_SM, UI.TEXT_MUTED)
 	else:
-		for event_variant in main_node.gen_rolling_events:
-			var event_text: String = str(event_variant)
-			var display_event: String = event_text if event_text.length() <= 72 else event_text.substr(0, 69) + "..."
-			draw_string(_font, Vector2(box_x + 50.0, ev_y), "• " + display_event, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, UI_CLASSIC_TEXT)
-			ev_y += float(line_h) * 0.82
+		var visible_events: int = mini(
+			int(main_node.gen_rolling_events.size()),
+			maxi(1, int((event_rect.size.y - 28.0) / 23.0))
+		)
+		for event_index in range(visible_events):
+			var source_index: int = int(main_node.gen_rolling_events.size()) - visible_events + event_index
+			var event_text: String = str(main_node.gen_rolling_events[source_index])
+			var shown: String = event_text if event_text.length() <= 112 else event_text.substr(0, 109) + "…"
+			var event_color: Color = UI.TEXT if event_index == visible_events - 1 else UI.TEXT_MUTED
+			draw_circle(Vector2(event_rect.position.x + 19.0, event_y - 4.0), 2.5, UI.GOLD)
+			draw_string(_font, Vector2(event_rect.position.x + 32.0, event_y), shown,
+				HORIZONTAL_ALIGNMENT_LEFT, event_rect.size.x - 48.0, UI.FONT_SM, event_color)
+			event_y += 23.0
 
-	var spinner: String = ["|", "/", "-", "\\"][int(Time.get_ticks_msec() / 150) % 4]
-	y = box_y + float(box_h) - 24.0
-	var footer: String = "PROCESANDO REGIONES... %s" % spinner if building_terrain else "SIMULANDO CRONOLOGÍA... %s  [ENTER: terminar en el año actual]" % spinner
-	draw_string(_font, Vector2(center_x, y), footer, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.0, 1.5, 0.0, 0.7))
+	# Columna derecha: magnitudes principales en tarjetas legibles.
+	var world_width: int = int(main_node.world_gen.world_width) if main_node.world_gen != null else 0
+	var world_depth: int = int(main_node.world_gen.world_depth) if main_node.world_gen != null else 0
+	var rx: float = right_rect.position.x + inset
+	var ry: float = right_rect.position.y + inset
+	var inner_right_width: float = right_rect.size.x - inset * 2.0
+	draw_string(_font, Vector2(rx, ry + 16.0), "EL MUNDO AHORA",
+		HORIZONTAL_ALIGNMENT_LEFT, inner_right_width, UI.FONT_MD, UI.TEXT)
+	ry += 42.0
+	var headline_stats: Array = [
+		["REGIONES", _format_world_region_count(world_width * world_depth)],
+		["AÑO", "%d / %d" % [main_node.gen_year, main_node.gen_max_years]],
+		["ERA", str(main_node.gen_current_age).capitalize()],
+	]
+	for headline: Array in headline_stats:
+		draw_string(_font, Vector2(rx, ry), str(headline[0]),
+			HORIZONTAL_ALIGNMENT_LEFT, inner_right_width, UI.FONT_XS, UI.TEXT_MUTED)
+		draw_string(_font, Vector2(rx, ry + 28.0), str(headline[1]),
+			HORIZONTAL_ALIGNMENT_LEFT, inner_right_width, UI.FONT_LG, UI.GOLD)
+		ry += 64.0
+
+	draw_line(Vector2(rx, ry), Vector2(rx + inner_right_width, ry), UI.BORDER_SOFT, 1.0)
+	ry += 28.0
+	var living_stats: Array = [
+		["Personajes históricos", str(main_node.gen_historical_figures)],
+		["Asentamientos activos", str(main_node.gen_active_sites)],
+		["Conflictos abiertos", str(main_node.gen_active_wars)],
+		["Bestias legendarias", str(main_node.gen_beasts_alive)],
+	]
+	for living_stat: Array in living_stats:
+		draw_string(_font, Vector2(rx, ry), str(living_stat[0]),
+			HORIZONTAL_ALIGNMENT_LEFT, inner_right_width * 0.68, UI.FONT_SM, UI.TEXT_MUTED)
+		draw_string(_font, Vector2(rx + inner_right_width * 0.68, ry), str(living_stat[1]),
+			HORIZONTAL_ALIGNMENT_RIGHT, inner_right_width * 0.32, UI.FONT_MD, UI.TEXT)
+		ry += 34.0
+
+	var footer: String = "CREANDO GEOGRAFÍA PERSISTENTE" if building_terrain else "ENTER · FINALIZAR HISTORIA Y ENTRAR"
+	draw_string(_font, Vector2(right_rect.position.x + inset, right_rect.end.y - inset),
+		footer, HORIZONTAL_ALIGNMENT_LEFT, inner_right_width, UI.FONT_XS, UI.TEXT_MUTED)
 
 func _format_world_region_count(region_count: int) -> String:
 	if region_count >= 1000000:
@@ -2725,11 +2867,31 @@ func _draw_embark_map_select() -> void:
 			var inside_embark: bool = absi(wx - cursor.x) <= 1 and absi(wz - cursor.y) <= 1
 			var flash: bool = int(main_node.embark_flash_timer * 3.0) % 2 == 0
 			var draw_pos := Vector2(start_x + grid_x * _char_size.x, start_y + grid_z * _char_size.y)
+			
+			# Elevation shading: higher terrain is brighter, lower terrain is darker
+			var elev_val: float = 0.0
+			if main_node.world_gen.elevation_map != null and not main_node.world_gen.elevation_map.is_empty() and wx >= 0 and wz >= 0 and wz < main_node.world_gen.elevation_map.size() and wx < main_node.world_gen.elevation_map[0].size():
+				elev_val = float(main_node.world_gen.elevation_map[wz][wx])
+			var elev_factor: float = 0.55 + 0.45 * clamp(elev_val / 200.0, 0.0, 1.0)
+			var shaded_fg: Color = Color(
+				clamp(fg.r * elev_factor, 0.0, 1.0),
+				clamp(fg.g * elev_factor, 0.0, 1.0),
+				clamp(fg.b * elev_factor, 0.0, 1.0)
+			)
+			# Background fill with slightly darker terrain color
+			var bg_color: Color = Color(
+				clampf(fg.r * elev_factor * 0.15, 0.0, 0.25),
+				clampf(fg.g * elev_factor * 0.15, 0.0, 0.25),
+				clampf(fg.b * elev_factor * 0.15, 0.0, 0.25),
+				0.6
+			)
+			draw_rect(Rect2(draw_pos, _char_size), bg_color, true)
+			
 			if inside_embark and flash:
 				draw_rect(Rect2(draw_pos, _char_size), Color(0.12, 0.45, 0.12, 0.75), true)
 				draw_string(_font, draw_pos + Vector2(0, _char_size.y * 0.8), ch, HORIZONTAL_ALIGNMENT_CENTER, _char_size.x, 11, Color.WHITE)
 			else:
-				draw_string(_font, draw_pos + Vector2(0, _char_size.y * 0.8), ch, HORIZONTAL_ALIGNMENT_CENTER, _char_size.x, 11, fg)
+				draw_string(_font, draw_pos + Vector2(0, _char_size.y * 0.8), ch, HORIZONTAL_ALIGNMENT_CENTER, _char_size.x, 11, shaded_fg)
 
 	draw_string(_font, Vector2(size.x / 2.0, start_y - 28), "=== SELECCIONA EL SITIO DE EMBARQUE ===", HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.GOLD)
 
@@ -2834,6 +2996,41 @@ func _draw_embark_map_select() -> void:
 	var cur_px_y: float = minimap_y + float(cursor.y) / maxf(1.0, float(map_h - 1)) * minimap_size
 	var pulse: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
 	draw_rect(Rect2(cur_px_x - 2, cur_px_y - 2, 5, 5), Color(1.0, 1.0, 1.0, pulse), true)
+
+	# Draw elevation bar (left side of map)
+	var legend_x: int = start_x - 40
+	var legend_y: int = start_y + int(map_grid_h * _char_size.y) - 100
+	_draw_rounded_rect(Rect2(legend_x - 4, legend_y - 4, 34, 108), Color(0.0, 0.0, 0.0, 0.5), 4)
+	draw_rect(Rect2(legend_x, legend_y, 14, 100), Color(0.15, 0.12, 0.08, 0.6), true)
+	for lev in range(10):
+		var bar_y: float = legend_y + 100 - float(lev + 1) * 10.0
+		var bar_factor: float = 0.55 + 0.45 * (float(lev) / 9.0)
+		var bar_color: Color = Color(bar_factor * 0.5, bar_factor * 0.4, bar_factor * 0.2, 0.8)
+		draw_rect(Rect2(legend_x, bar_y, 14, 10), bar_color, true)
+	draw_string(_font, Vector2(legend_x + 16, legend_y + 105), "Bajo", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.5, 0.5, 0.5))
+	draw_string(_font, Vector2(legend_x + 16, legend_y + 15), "Alto", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.5, 0.5, 0.5))
+	draw_string(_font, Vector2(legend_x + 16, legend_y + 60), "Elev.", HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.6, 0.6, 0.6))
+	
+	# Leyenda de biomas (dentro del panel de info, no se superpone)
+	var leg_x: int = panel_x + 12
+	var leg_y: int = panel_y + int(map_grid_h * _char_size.y) + 55
+	var legend_entries: Array = [
+		["ocean_deep", "~", Color("#3154a4")],
+		["grassland", ".", Color("#73b359")],
+		["temperate_forest", "♣", Color("#3a8c4d")],
+		["mountain", "^", Color("#8c8c8c")],
+		["desert", "·", Color("#eedc82")],
+		["swamp", "s", Color("#718a58")],
+		["beach", "·", Color("#dfcb83")],
+		["tundra", "·", Color("#b9c8c8")],
+		["taiga", "♣", Color("#3d7661")],
+	]
+	for le_idx in range(legend_entries.size()):
+		var le: Array = legend_entries[le_idx]
+		var lx: int = leg_x + (le_idx % 3) * 130
+		var ly: int = leg_y + int(le_idx / 3) * int(_char_size.y * 1.0)
+		draw_string(_font, Vector2(lx, ly), str(le[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, le[2])
+		draw_string(_font, Vector2(lx + _char_size.x + 2, ly), _world_label(str(le[0])), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.5, 0.5, 0.5))
 
 	draw_string(_font, Vector2(size.x / 2.0, start_y + total_h + 24), "Flechas: 1 región  |  SHIFT+Flechas: 16 regiones  |  Click minimapa: salto  |  ENTER: embarcar  |  ESC: volver", HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.5, 0.45, 0.6))
 

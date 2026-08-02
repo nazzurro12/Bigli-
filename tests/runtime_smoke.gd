@@ -1,11 +1,11 @@
 extends SceneTree
 
 const MAIN_SCENE_PATH: String = "res://df_mode/df_main.tscn"
-const EXCLUDED_DIRECTORIES: PackedStringArray = PackedStringArray([
+const EXCLUDED_DIRECTORIES: Array[String] = [
 	"res://.git",
 	"res://.godot",
 	"res://addons",
-])
+]
 
 var _failures: PackedStringArray = PackedStringArray()
 

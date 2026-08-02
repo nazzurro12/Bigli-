@@ -92,11 +92,9 @@ static func _find_path_internal(world, from: Vector3i, to: Vector3i, use_dwarf_r
 	var came_from: Dictionary = {}
 	var g_score: Dictionary = {}
 
-	var start_key = _key(from)
-	var goal_key = _key(to)
-	g_score[start_key] = 0
+	g_score[from] = 0
 	_heap_push(open_heap, from, _heuristic(from, to))
-	open_set[start_key] = true
+	open_set[from] = true
 
 	var iterations: int = 0
 	# Un destino cercano no necesita el mismo presupuesto que cruzar una región.
@@ -106,30 +104,31 @@ static func _find_path_internal(world, from: Vector3i, to: Vector3i, use_dwarf_r
 	var max_iter: int = clampi(256 + direct_distance * 48, 512, 4096)
 	while not open_heap.is_empty() and iterations < max_iter:
 		iterations += 1
-		var current = _heap_pop(open_heap)
-		var current_key = _key(current)
-		open_set.erase(current_key)
+		var current: Vector3i = _heap_pop(open_heap)
+		open_set.erase(current)
 
-		if current_key == goal_key:
+		if current == to:
 			return _reconstruct_path(came_from, current)
 
-		if closed_set.has(current_key):
+		if closed_set.has(current):
 			continue
-		closed_set[current_key] = true
+		closed_set[current] = true
 
 		var neighbors = _get_neighbors(world, current, use_dwarf_rules)
 		for next in neighbors:
-			var n_key = _key(next)
-			if closed_set.has(n_key):
+			if closed_set.has(next):
 				continue
-			var tentative_g = g_score.get(current_key, 999999) + 1
-			if tentative_g < g_score.get(n_key, 999999):
-				came_from[n_key] = current
-				g_score[n_key] = tentative_g
-				if not open_set.has(n_key):
+			var entity_penalty = 0
+			if world.has_method("count_entities_at") and world.count_entities_at(next) > 0:
+				entity_penalty = 10 * world.count_entities_at(next)
+			var tentative_g = g_score.get(current, 999999) + 1 + entity_penalty
+			if tentative_g < g_score.get(next, 999999):
+				came_from[next] = current
+				g_score[next] = tentative_g
+				if not open_set.has(next):
 					var f = tentative_g + _heuristic(next, to)
 					_heap_push(open_heap, next, f)
-					open_set[n_key] = true
+					open_set[next] = true
 
 	return []
 
@@ -160,6 +159,9 @@ static func _get_dwarf_neighbors(world, pos: Vector3i) -> Array:
 			result.append(down)
 	return result
 
+static func _get_dwarf_neighbors_with_congestion(world, pos: Vector3i) -> Array:
+	return _get_dwarf_neighbors(world, pos)
+
 static func _get_creature_neighbors(world, pos: Vector3i) -> Array:
 	var result = []
 	var dirs = [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1)]
@@ -184,15 +186,13 @@ static func _heuristic(a: Vector3i, b: Vector3i) -> float:
 
 static func _reconstruct_path(came_from: Dictionary, current: Vector3i) -> Array:
 	var p = [current]
-	var key = _key(current)
-	while came_from.has(key):
-		current = came_from[key]
+	while came_from.has(current):
+		current = came_from[current]
 		p.push_front(current)
-		key = _key(current)
 	return p
 
-static func _key(v: Vector3i) -> String:
-	return "%d,%d,%d" % [v.x, v.y, v.z]
+static func _key(v: Vector3i) -> Vector3i:
+	return v
 
 static func _heap_push(heap: Array, item: Variant, priority: float) -> void:
 	heap.append([item, priority])

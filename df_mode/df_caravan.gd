@@ -118,6 +118,12 @@ func tick(minute_ticked: bool, game_minute: int, game_hour: int, game_day: int,
 					events.append("! " + caravan.civ_name + " ha llegado! (" + caravan.merchant_name + ")")
 			
 			CaravanState.ARRIVED:
+				caravan.state = CaravanState.TRADING
+				events.append("! " + caravan.civ_name + " ha montado el puesto de comercio!")
+				_populate_caravan_inventory(caravan)
+
+			CaravanState.TRADING:
+				_execute_trading_tick(caravan, events, entities)
 				var wait_days = game_day - caravan.arrival_day
 				if wait_days >= caravan.stay_duration:
 					caravan.state = CaravanState.DEPARTING
@@ -131,6 +137,8 @@ func tick(minute_ticked: bool, game_minute: int, game_hour: int, game_day: int,
 					caravan.state = CaravanState.GONE
 					var profit = caravan.total_sold - caravan.total_bought
 					var profit_str = "ganancia" if profit >= 0 else "perdida"
+					total_trades += 1
+					total_wealth_traded += caravan.total_sold + caravan.total_bought
 					events.append("Caravana de " + caravan.civ_name + " partio (" + profit_str + ": " + str(abs(profit)) + " oro)")
 	
 	# Limpiar caravanas GONE
@@ -189,6 +197,33 @@ func _try_spawn_caravan(season: String, dwarves_count: int, fortress_wealth: flo
 func _approach_tick(caravan: Dictionary) -> void:
 	caravan.progress += 0.01 + rng.randf() * 0.005
 
+func _populate_caravan_inventory(caravan: Dictionary) -> void:
+	caravan["inventory"] = []
+	var civ_info = CIVILIZATIONS.get(caravan.id, {})
+	var available_goods = civ_info.get("goods", ["food", "drink"])
+	for i in range(10 + rng.randi() % 10):
+		var g_type = available_goods[rng.randi() % available_goods.size()]
+		var g_info = TRADE_GOODS.get(g_type, {"base_price": 5, "name": "Mercancía"})
+		caravan["inventory"].append({
+			"type": g_type,
+			"name": g_info.name,
+			"price": g_info.base_price,
+			"quantity": 1 + rng.randi() % 5
+		})
+
+func _execute_trading_tick(caravan: Dictionary, events: Array, entities: Array) -> void:
+	if rng.randf() > 0.1:
+		return
+
+	# Simular transacción de compra/venta entre colonia y caravana
+	if not caravan["inventory"].is_empty():
+		var item_idx = rng.randi() % caravan["inventory"].size()
+		var trade_item = caravan["inventory"][item_idx]
+		var cost = trade_item.price * trade_item.quantity
+		caravan.total_sold += cost
+		caravan["inventory"].remove_at(item_idx)
+		events.append("Comercio: Colonia adquirió %s x%d por %d oro (%s)" % [trade_item.name, trade_item.quantity, cost, caravan.civ_name])
+
 func get_caravans_for_sidebar() -> Array:
 	var result: Array = []
 	for c in caravans:
@@ -213,3 +248,49 @@ func get_trade_stats() -> Dictionary:
 		"active_caravans": caravans.size(),
 		"relations": relations
 	}
+
+func export_state() -> Dictionary:
+	var caravan_data: Array = []
+	for caravan in caravans:
+		var saved: Dictionary = caravan.duplicate(true)
+		var pos: Vector3i = caravan.get("tile_pos", Vector3i.ZERO)
+		var color: Color = caravan.get("civ_color", Color.WHITE)
+		saved["tile_pos"] = [pos.x, pos.y, pos.z]
+		saved["civ_color"] = [color.r, color.g, color.b, color.a]
+		caravan_data.append(saved)
+	return {
+		"seed": _seed,
+		"caravans": caravan_data,
+		"trade_history": trade_history.duplicate(true),
+		"total_trades": total_trades,
+		"total_wealth_traded": total_wealth_traded,
+		"relations": relations.duplicate(true),
+		"rng_state": rng.state,
+	}
+
+func import_state(data: Dictionary) -> void:
+	caravans.clear()
+	for saved_variant in data.get("caravans", []):
+		if not saved_variant is Dictionary:
+			continue
+		var saved: Dictionary = saved_variant.duplicate(true)
+		var pos_data: Array = saved.get("tile_pos", [10, 3, 10])
+		var color_data: Array = saved.get("civ_color", [1.0, 1.0, 1.0, 1.0])
+		saved["tile_pos"] = Vector3i(
+			int(pos_data[0]) if pos_data.size() > 0 else 10,
+			int(pos_data[1]) if pos_data.size() > 1 else 3,
+			int(pos_data[2]) if pos_data.size() > 2 else 10
+		)
+		saved["civ_color"] = Color(
+			float(color_data[0]) if color_data.size() > 0 else 1.0,
+			float(color_data[1]) if color_data.size() > 1 else 1.0,
+			float(color_data[2]) if color_data.size() > 2 else 1.0,
+			float(color_data[3]) if color_data.size() > 3 else 1.0
+		)
+		caravans.append(saved)
+	trade_history = data.get("trade_history", {}).duplicate(true)
+	total_trades = int(data.get("total_trades", 0))
+	total_wealth_traded = float(data.get("total_wealth_traded", 0.0))
+	relations = data.get("relations", {}).duplicate(true)
+	if data.has("rng_state"):
+		rng.state = int(data["rng_state"])

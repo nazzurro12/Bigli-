@@ -465,7 +465,7 @@ func _consume_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> bool:
 			consumed_item.stack_size -= consumed_amount
 			consumed_item.release_reservation(int(workshop.dwarf_assigned))
 		else:
-			world_ref.entities.erase(consumed_item)
+			world_ref.remove_entity(consumed_item)
 	recipe["_consumed_input_ids"] = consumed_ids
 	recipe.erase("_reserved_inputs")
 	return true

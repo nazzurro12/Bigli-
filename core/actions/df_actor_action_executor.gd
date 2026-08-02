@@ -22,30 +22,35 @@ enum ActionType {
 static func execute(actor, world, action_type: int, target: Vector3i = Vector3i.ZERO, _data: Dictionary = {}) -> Dictionary:
 	if actor == null or world == null:
 		return _result(false, "Acción inválida")
+	var result: Dictionary
 	match action_type:
 		ActionType.MOVE:
-			return _move(actor, world, target)
+			result = _move(actor, world, target)
 		ActionType.CHOP_TREE:
-			return _chop(actor, world, target)
+			result = _chop(actor, world, target)
 		ActionType.MINE:
-			return _mine(actor, world, target)
+			result = _mine(actor, world, target)
 		ActionType.PICK_UP:
-			return _pick_up(actor, world, target)
+			result = _pick_up(actor, world, target)
 		ActionType.DROP:
-			return _drop(actor, world, target)
+			result = _drop(actor, world, target)
 		ActionType.BUILD_WALL:
-			return _build(actor, world, target, true)
+			result = _build(actor, world, target, true)
 		ActionType.BUILD_FLOOR:
-			return _build(actor, world, target, false)
+			result = _build(actor, world, target, false)
 		ActionType.BUILD_STAIRS_UP:
-			return _stairs(actor, world, target, true)
+			result = _stairs(actor, world, target, true)
 		ActionType.BUILD_STAIRS_DOWN:
-			return _stairs(actor, world, target, false)
+			result = _stairs(actor, world, target, false)
 		ActionType.CLIMB_UP:
-			return _climb(actor, world, true)
+			result = _climb(actor, world, true)
 		ActionType.CLIMB_DOWN:
-			return _climb(actor, world, false)
-	return _result(false, "Acción desconocida")
+			result = _climb(actor, world, false)
+		_:
+			result = _result(false, "Acción desconocida")
+	if result.get("success", false):
+		_record_consequence(actor, world, action_type, target, result, _data)
+	return result
 
 static func contextual_action(actor, world, target: Vector3i) -> Dictionary:
 	var tile_type: int = world.get_tile(target)
@@ -97,6 +102,9 @@ static func _mine(actor, world, target: Vector3i) -> Dictionary:
 		return _result(false, "Necesita un pico")
 	if _distance(actor.tile_pos, target) > 1:
 		return _result(false, "La roca está demasiado lejos")
+	var tile_type: int = world.get_tile(target)
+	if tile_type in [world.TileType.STONE_FLOOR, world.TileType.CAVE_FLOOR, world.TileType.EMPTY, world.TileType.RAMP]:
+		return _result(true, "Casilla ya excavada")
 	if not world.is_wall(target):
 		return _result(false, "La casilla no es excavable")
 	var material: int = world.get_material(target)
@@ -120,6 +128,8 @@ static func _pick_up(actor, world, target: Vector3i) -> Dictionary:
 	if actor.inventory.size() >= 8:
 		return _result(false, "El inventario está lleno")
 	world.remove_entity(found)
+	found.carried_by_id = actor.id
+	found.release_reservation()
 	actor.inventory.append(found)
 	if "needs_display_update" in actor:
 		actor.needs_display_update = true
@@ -130,6 +140,8 @@ static func _drop(actor, world, target: Vector3i) -> Dictionary:
 		return _result(false, "No lleva ningún objeto")
 	var item: Variant = actor.inventory.pop_back()
 	item.tile_pos = target
+	item.carried_by_id = -1
+	item.release_reservation()
 	world.add_entity(item)
 	if "needs_display_update" in actor:
 		actor.needs_display_update = true
@@ -199,6 +211,40 @@ static func _find_build_material(actor) -> int:
 static func _gain_skill(actor, skill_id: int, amount: int) -> void:
 	if actor.has_method("add_skill_xp"):
 		actor.add_skill_xp(skill_id, amount)
+
+static func _record_consequence(actor, world, action_type: int, target: Vector3i, result: Dictionary, data: Dictionary) -> void:
+	if world.consequence_system == null:
+		return
+	# Caminar y subir escaleras son ruido de alta frecuencia, no hechos sociales.
+	if action_type in [ActionType.MOVE, ActionType.CLIMB_UP, ActionType.CLIMB_DOWN]:
+		return
+	var action_names: Dictionary = {
+		ActionType.MOVE: "move",
+		ActionType.CHOP_TREE: "chop_tree",
+		ActionType.MINE: "mine",
+		ActionType.PICK_UP: "pick_up",
+		ActionType.DROP: "drop",
+		ActionType.BUILD_WALL: "build_wall",
+		ActionType.BUILD_FLOOR: "build_floor",
+		ActionType.BUILD_STAIRS_UP: "build_stairs",
+		ActionType.BUILD_STAIRS_DOWN: "build_stairs",
+		ActionType.CLIMB_UP: "climb",
+		ActionType.CLIMB_DOWN: "climb"
+	}
+	var tags: Array = data.get("tags", []).duplicate()
+	if action_type in [ActionType.CHOP_TREE, ActionType.MINE, ActionType.BUILD_WALL, ActionType.BUILD_FLOOR, ActionType.BUILD_STAIRS_UP, ActionType.BUILD_STAIRS_DOWN]:
+		tags.append("work")
+	if action_type in [ActionType.BUILD_WALL, ActionType.BUILD_FLOOR, ActionType.BUILD_STAIRS_UP, ActionType.BUILD_STAIRS_DOWN]:
+		tags.append("craft")
+	world.consequence_system.record_action(actor, action_names.get(action_type, "action"), {
+		"position": target if target != Vector3i.ZERO else actor.tile_pos,
+		"tags": tags,
+		"target_ids": data.get("target_ids", []),
+		"witness_ids": data.get("witness_ids", []),
+		"severity": data.get("severity", 0.2),
+		"summary": result.get("message", ""),
+		"possession_origin": actor.is_possessed
+	})
 
 static func _distance(a: Vector3i, b: Vector3i) -> int:
 	return abs(a.x - b.x) + abs(a.z - b.z) + abs(a.y - b.y)

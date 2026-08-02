@@ -424,7 +424,7 @@ func _get_special_name(special: int) -> String:
 	}
 	return names.get(special, "ESPECIAL")
 
-func _apply_special_effect(special: int, attacker, defender, damage: float, body_part: int) -> void:
+func _apply_special_effect(special: int, attacker: Object, defender: Object, damage: float, body_part: int) -> void:
 	match special:
 		SpecialAttack.BLEEDING, SpecialAttack.BLEEDING_INTENSE:
 			var bleed_rate = damage * 0.05
@@ -474,7 +474,7 @@ func _apply_special_effect(special: int, attacker, defender, damage: float, body
 			_apply_damage(defender, ignore_armor, body_part, false)
 			_add_log("¡El ataque perforó la armadura de %s!" % _get_name(defender))
 
-func _apply_damage(entity, damage: float, body_part: int, is_critical: bool) -> bool:
+func _apply_damage(entity: Object, damage: float, body_part: int, is_critical: bool) -> bool:
 	if entity.has_method("take_damage"):
 		var fatal = entity.take_damage(damage, body_part, is_critical)
 		if damage > 10:
@@ -484,14 +484,13 @@ func _apply_damage(entity, damage: float, body_part: int, is_critical: bool) -> 
 		return fatal
 	return false
 
-func creature_attack(creature_ref, dwarf_ref) -> Dictionary:
+func creature_attack(creature_ref: Object, dwarf_ref: Object) -> Dictionary:
 	var sz_val = creature_ref.get("size")
 	var creature_size = sz_val if sz_val != null else "medium"
 	var base_damage = {"small": 3.0, "medium": 8.0, "large": 18.0, "megabeast": 40.0,
 		"tiny": 1.5, "giant": 65.0}.get(creature_size, 8.0)
 
 	var _eq_wep = creature_ref.get("equipped_weapon")
-	# var has_weapon = _eq_wep if _eq_wep != null else "fist"
 	var natural_skills = [WeaponSkill.SCRATCH, WeaponSkill.BITE]
 	var skill = natural_skills[randi() % natural_skills.size()]
 	var damage_type = DamageType.SLASH
@@ -528,7 +527,7 @@ func _get_creature_attack_type(creature_size: String) -> int:
 		_:
 			return AttackType.SWING
 
-func _get_attack_stats(entity) -> Dictionary:
+func _get_attack_stats(entity: Object) -> Dictionary:
 	if entity.has_method("get_combat_attack_stats"):
 		return entity.get_combat_attack_stats()
 	return {
@@ -543,7 +542,7 @@ func _get_attack_stats(entity) -> Dictionary:
 		"weapon_data": {"reach": REACH_TINY, "weight": WEIGHT_LIGHT, "material": "flesh"}
 	}
 
-func _get_defense_stats(entity) -> Dictionary:
+func _get_defense_stats(entity: Object) -> Dictionary:
 	if entity.has_method("get_combat_defense_stats"):
 		return entity.get_combat_defense_stats()
 	return {
@@ -557,7 +556,7 @@ func _get_defense_stats(entity) -> Dictionary:
 		"weapon_reach": REACH_TINY
 	}
 
-func _get_name(entity) -> String:
+func _get_name(entity: Object) -> String:
 	if entity.has_method("get_entity_name"):
 		return entity.get_entity_name()
 	var n_val = entity.get("name")
@@ -746,6 +745,10 @@ static func get_weapon_base_damage(weapon_name: String) -> Dictionary:
 		"dagger": {"damage": 4.0, "skill": WeaponSkill.DAGGER, "type": DamageType.PIERCE, "name": "Daga", "category": WeaponCategory.DAGGERS, "reach": REACH_TINY, "weight": WEIGHT_LIGHT, "material": "iron", "two_handed": false},
 		"club": {"damage": 6.0, "skill": WeaponSkill.MACE, "type": DamageType.BLUNT, "name": "Porra", "category": WeaponCategory.MACES, "reach": REACH_SHORT, "weight": WEIGHT_MEDIUM, "material": "wood", "two_handed": false},
 		"quarterstaff": {"damage": 5.0, "skill": WeaponSkill.MACE, "type": DamageType.BLUNT, "name": "Bastón", "category": WeaponCategory.IMPROVISED, "reach": REACH_MEDIUM, "weight": WEIGHT_MEDIUM, "material": "wood", "two_handed": true},
+		# === ARMAS DE ACERO (recetas de herrería avanzada) ===
+		"sword_steel": {"damage": 18.0, "skill": WeaponSkill.SWORD, "type": DamageType.SLASH, "name": "Espada de Acero", "category": WeaponCategory.SWORDS_LONG, "reach": REACH_MEDIUM, "weight": WEIGHT_MEDIUM, "material": "steel", "two_handed": false},
+		"axe_steel": {"damage": 20.0, "skill": WeaponSkill.AXE, "type": DamageType.SLASH, "name": "Hacha de Acero", "category": WeaponCategory.AXES_BATTLE, "reach": REACH_MEDIUM, "weight": WEIGHT_HEAVY, "material": "steel", "two_handed": false},
+		"tower_shield": {"damage": 6.0, "skill": WeaponSkill.MACE, "type": DamageType.BLUNT, "name": "Escudo Torre", "category": WeaponCategory.MACES, "reach": REACH_SHORT, "weight": WEIGHT_VERY_HEAVY, "material": "steel", "two_handed": false},
 	}
 	return weapons.get(weapon_name, weapons["fist"])
 
@@ -781,6 +784,11 @@ static func get_armor_protection(armor_name: String) -> float:
 		"shield_wood": 5.0,
 		"shield_metal": 8.0,
 		"buckler": 4.0,
+		# === ARMADURAS DE ACERO (recetas de herrería avanzada) ===
+		"plate_armor_steel": 14.0,
+		"tower_shield": 14.0,
+		"greaves_steel": 6.0,
+		"helmet_great": 7.0,
 	}
 	return armors.get(armor_name, 0.0)
 
@@ -795,7 +803,11 @@ static func get_armor_slot(armor_name: String) -> int:
 		"gauntlets": ArmorSlot.HANDS, "boots": ArmorSlot.FEET,
 		"high_boots": ArmorSlot.FEET, "shield_wood": ArmorSlot.SHIELD,
 		"shield_metal": ArmorSlot.SHIELD, "shield_steel": ArmorSlot.SHIELD,
-		"shield_iron": ArmorSlot.SHIELD
+		"shield_iron": ArmorSlot.SHIELD,
+		"tower_shield": ArmorSlot.SHIELD,
+		"plate_armor_steel": ArmorSlot.TORSO,
+		"greaves_steel": ArmorSlot.LEGS,
+		"helmet_great": ArmorSlot.HEAD
 	}
 	return slots.get(armor_name, ArmorSlot.OVERALL)
 

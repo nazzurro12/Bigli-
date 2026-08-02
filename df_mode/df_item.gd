@@ -81,6 +81,8 @@ static var _id_counter: int = 5000
 
 var is_food: bool = false
 var is_bed: bool = false
+var is_table: bool = false
+var is_chair: bool = false
 var is_drink: bool = false
 var is_meat: bool = false
 var is_corpse: bool = false
@@ -247,6 +249,40 @@ func _apply_name_defaults() -> void:
 			tool_tags.append("hunting")
 		elif "bistur" in lower_name or "venda" in lower_name or "medical" in lower_name:
 			tool_tags.append("medicine")
+
+	# == SOBRESCRIBIR ESTADÍSTICAS DE COMBATE POR NOMBRE DE ITEM ==
+	# Items de recetas de herrería avanzada obtienen stats específicos
+	if is_weapon:
+		if "acero" in lower_name or "steel" in lower_name:
+			weapon_damage = 18.0
+			if "espada" in lower_name or "sword" in lower_name:
+				weapon_type = DamageType.EDGE
+				weapon_damage = 18.0
+			elif "hacha" in lower_name or "axe" in lower_name:
+				weapon_type = DamageType.EDGE
+				weapon_damage = 20.0
+			elif "escudo" in lower_name or "shield" in lower_name:
+				weapon_type = DamageType.BLUNT
+				weapon_damage = 6.0
+		elif "acero" not in lower_name and "steel" not in lower_name and "metal" in lower_name:
+			# Escudo de metal (receta existente)
+			if "escudo" in lower_name or "shield" in lower_name:
+				weapon_damage = 4.0
+				weapon_type = DamageType.BLUNT
+	if is_armor:
+		if "acero" in lower_name or "steel" in lower_name:
+			armor_protection = 14.0
+			if "placa" in lower_name or "plate" in lower_name or "armadura" in lower_name:
+				armor_protection = 14.0
+			elif "greba" in lower_name or "greave" in lower_name:
+				armor_protection = 6.0
+			elif "casco" in lower_name or "helmet" in lower_name or "yelmo" in lower_name:
+				armor_protection = 7.0
+			elif "escudo" in lower_name or "tower shield" in lower_name:
+				armor_protection = 14.0
+		elif "placas" in lower_name or "plate" in lower_name:
+			# Armadura de Placas (receta de herrería avanzada)
+			armor_protection = 10.0
 
 	if is_armor:
 		equipment_slot = armor_slot if not armor_slot.is_empty() else "body"

@@ -12,7 +12,29 @@ var _char_map: Dictionary = {}
 
 func _init():
 	texture = load(TILESET_PATH) as Texture2D
+	_remove_legacy_magenta_background()
 	_build_char_map()
+
+
+# El atlas clásico usa #FF00FF como color de transparencia, pero PNG no lo
+# declara como canal alfa. Se limpia una sola vez al cargar para impedir que el
+# fondo magenta se mezcle con cada color del mundo.
+func _remove_legacy_magenta_background() -> void:
+	if texture == null:
+		return
+	var image: Image = texture.get_image()
+	if image == null or image.is_empty():
+		return
+	image.convert(Image.FORMAT_RGBA8)
+	var changed: bool = false
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			var pixel: Color = image.get_pixel(x, y)
+			if pixel.r > 0.95 and pixel.g < 0.05 and pixel.b > 0.95:
+				image.set_pixel(x, y, Color(1.0, 1.0, 1.0, 0.0))
+				changed = true
+	if changed:
+		texture = ImageTexture.create_from_image(image)
 
 # Builds a mapping from game Unicode characters to tileset grid positions.
 # Standard ASCII maps directly. Special Unicode chars are mapped to CP437 positions.

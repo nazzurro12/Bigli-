@@ -24,10 +24,11 @@ enum BuildingType {
 	BRIDGE,       # Puente levadizo
 	CAMPFIRE,     # Fogata
 	FOOD_STORE,   # Estante/Barrel/Caja que preserva comida
-	LATRINE,      # Servicio sanitario con capacidad física limitada
-	WATER_WELL    # Pozo/cisterna comunitaria con volumen y calidad
+	LATRINE,
+	WATER_WELL,
+	PRISON,
+	CHAIN
 }
-
 const BUILDING_NAMES = {
 	BuildingType.SMELTER: "Fundición",
 	BuildingType.WORKSHOP: "Taller",

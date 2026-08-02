@@ -18,6 +18,7 @@ enum WorkshopType {
 	JEWELER,     # Joyería - gemas + metales -> joyas
 	KILN,        # Horno - madera -> carbón, arcilla -> ladrillos
 	BUTCHER,     # Carnicería - animales -> carne, piel, huesos
+	POTTERY,     # Alfarería - arcilla -> vasijas, ladrillos, platos
 }
 
 # Nombre de talleres en español
@@ -34,6 +35,7 @@ const WORKSHOP_NAMES = {
 	WorkshopType.JEWELER: "Joyero",
 	WorkshopType.KILN: "Horno de Carbón",
 	WorkshopType.BUTCHER: "Carnicería",
+	WorkshopType.POTTERY: "Taller de Alfarería",
 }
 
 # Glifos para el mapa
@@ -50,6 +52,7 @@ const WORKSHOP_GLYPHS = {
 	WorkshopType.JEWELER: "j",
 	WorkshopType.KILN: "H",
 	WorkshopType.BUTCHER: "B",
+	WorkshopType.POTTERY: "P",
 }
 
 # Colores de los talleres
@@ -66,6 +69,7 @@ const WORKSHOP_COLORS = {
 	WorkshopType.JEWELER: Color("#44FFFF"),
 	WorkshopType.KILN: Color("#FF6600"),
 	WorkshopType.BUTCHER: Color("#CC3333"),
+	WorkshopType.POTTERY: Color("#CC8844"),
 }
 
 # RECETAS DE PRODUCCIÓN
@@ -288,6 +292,26 @@ static func get_recipes_for(ws_type: int) -> Array:
 					"skill_req": 4
 				},
 				{
+					"name": "Espada de Acero",
+					"id": "forge_steel_sword",
+					"time": 40,
+					"skill": "SMITHING",
+					"inputs": [{"type": "metal_bar", "count": 3, "specific": ["acero", "steel", "Lingote de Acero"]}, {"fuel": true, "count": 2}],
+					"outputs": [{"name": "Espada de Acero", "type": "weapon", "count": 1, "weapon": "sword_steel"}],
+					"value": 60,
+					"skill_req": 5
+				},
+				{
+					"name": "Hacha de Acero",
+					"id": "forge_steel_axe",
+					"time": 35,
+					"skill": "SMITHING",
+					"inputs": [{"type": "metal_bar", "count": 4, "specific": ["acero", "steel", "Lingote de Acero"]}, {"fuel": true, "count": 2}],
+					"outputs": [{"name": "Hacha de Acero", "type": "weapon", "count": 1, "weapon": "axe_steel"}],
+					"value": 55,
+					"skill_req": 5
+				},
+				{
 					"name": "Coraza",
 					"id": "forge_breastplate",
 					"time": 30,
@@ -306,6 +330,16 @@ static func get_recipes_for(ws_type: int) -> Array:
 					"value": 50
 				},
 				{
+					"name": "Armadura de Placas",
+					"id": "forge_plate_armor",
+					"time": 50,
+					"skill": "SMITHING",
+					"inputs": [{"type": "metal_bar", "count": 8}, {"fuel": true, "count": 4}],
+					"outputs": [{"name": "Armadura de Placas", "type": "armor", "count": 1, "armor": "plate_armor"}],
+					"value": 80,
+					"skill_req": 6
+				},
+				{
 					"name": "Yelmo",
 					"id": "forge_helmet",
 					"time": 20,
@@ -313,6 +347,36 @@ static func get_recipes_for(ws_type: int) -> Array:
 					"inputs": [{"type": "metal_bar", "count": 2}, {"fuel": true, "count": 1}],
 					"outputs": [{"name": "Yelmo de Metal", "type": "armor", "count": 1, "armor": "helmet"}],
 					"value": 22
+				},
+				{
+					"name": "Escudo de Metal",
+					"id": "forge_metal_shield",
+					"time": 25,
+					"skill": "SMITHING",
+					"inputs": [{"type": "metal_bar", "count": 3}, {"fuel": true, "count": 1}],
+					"outputs": [{"name": "Escudo de Metal", "type": "shield", "count": 1, "armor": "shield_metal"}],
+					"value": 35,
+					"skill_req": 3
+				},
+				{
+					"name": "Escudo Torre",
+					"id": "forge_tower_shield",
+					"time": 35,
+					"skill": "SMITHING",
+					"inputs": [{"type": "metal_bar", "count": 5}, {"fuel": true, "count": 2}],
+					"outputs": [{"name": "Escudo Torre", "type": "shield", "count": 1, "armor": "tower_shield"}],
+					"value": 50,
+					"skill_req": 5
+				},
+				{
+					"name": "Grebas",
+					"id": "forge_greaves",
+					"time": 25,
+					"skill": "SMITHING",
+					"inputs": [{"type": "metal_bar", "count": 3}, {"fuel": true, "count": 1}],
+					"outputs": [{"name": "Grebas de Metal", "type": "armor", "count": 1, "armor": "greaves"}],
+					"value": 28,
+					"skill_req": 3
 				},
 				{
 					"name": "Ballesta",
@@ -504,6 +568,55 @@ static func get_recipes_for(ws_type: int) -> Array:
 				},
 			]
 
+		WorkshopType.POTTERY:
+			return [
+				{
+					"name": "Vasija de Barro",
+					"id": "clay_pot",
+					"time": 12,
+					"skill": "MASONRY",
+					"inputs": [{"material": ["clay", "sand", "soil"], "count": 2}],
+					"outputs": [{"name": "Vasija de Barro", "type": "container", "count": 1}],
+					"value": 8
+				},
+				{
+					"name": "Ladrillos de Arcilla",
+					"id": "clay_bricks",
+					"time": 15,
+					"skill": "MASONRY",
+					"inputs": [{"material": ["clay", "sand", "soil"], "count": 3}],
+					"outputs": [{"name": "Ladrillos de Arcilla", "type": "construction", "count": 6}],
+					"value": 12
+				},
+				{
+					"name": "Plato de Cerámica",
+					"id": "clay_plate",
+					"time": 8,
+					"skill": "MASONRY",
+					"inputs": [{"material": ["clay", "sand"], "count": 1}],
+					"outputs": [{"name": "Plato de Cerámica", "type": "furniture", "count": 2}],
+					"value": 4
+				},
+				{
+					"name": "Jarra para Cerveza",
+					"id": "clay_mug",
+					"time": 10,
+					"skill": "MASONRY",
+					"inputs": [{"material": ["clay", "sand"], "count": 1}],
+					"outputs": [{"name": "Jarra de Cerámica", "type": "furniture", "count": 3}],
+					"value": 6
+				},
+				{
+					"name": "Azulejo Decorativo",
+					"id": "clay_tile",
+					"time": 15,
+					"skill": "MASONRY",
+					"inputs": [{"material": ["clay", "sand", "soil"], "count": 2}, {"type": "crafting", "count": 1, "optional": true}],
+					"outputs": [{"name": "Azulejo Decorativo", "type": "furniture", "count": 4}],
+					"value": 10
+				},
+			]
+
 	return _append_json_reactions(ws_type, [])
 
 static func _building_name_for_json(ws_type: int) -> String:
@@ -520,6 +633,7 @@ static func _building_name_for_json(ws_type: int) -> String:
 		WorkshopType.JEWELER: "JEWELER",
 		WorkshopType.KILN: "KILN",
 		WorkshopType.BUTCHER: "BUTCHER",
+		WorkshopType.POTTERY: "POTTERY",
 	}
 	return names.get(ws_type, "")
 
