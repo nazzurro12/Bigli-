@@ -5,6 +5,10 @@ class_name DFDwarf
 const DFActorActionExecutor = preload("res://core/actions/df_actor_action_executor.gd")
 const DFAutonomousPlan = preload("res://core/ai/df_autonomous_plan.gd")
 
+# Reparte únicamente los cálculos de rutas nuevas. Una ruta ya calculada continúa
+# moviéndose cada tick, por lo que esto reduce picos sin robotizar el movimiento.
+const PATH_REQUEST_BUCKETS: int = 4
+
 enum Skill {
 	MINING, CARPENTRY, MASONRY, SMITHING, COOKING, BREWING, FARMING, FISHING,
 	WOODCUTTING, ENGRAVING, MECHANICS, DOCTORING, ORGANIZING, MILITARY_TACTICS,
@@ -118,6 +122,7 @@ var path: Array = []
 var path_index: int = 0
 var last_pos: Vector3i = Vector3i(-1, -1, -1)
 var stuck_counter: int = 0
+var path_replan_count: int = 0
 var move_tick_counter: int = 0
 var speed: float = 1.0
 var has_moved_this_tick: bool = false
@@ -1081,7 +1086,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		if randi() % 5 == 0:
 			current_task = "¡PATALETA! (Destruyendo cosas)"
 			current_job = null
-			for other in world.entities:
+			for other in world.dwarves:
 				if other is DFDwarf and other != self and other.is_alive:
 					var d = abs(other.tile_pos.x - tile_pos.x) + abs(other.tile_pos.z - tile_pos.z)
 					if d <= 1:
@@ -1159,10 +1164,9 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		return
 
 	# --- SISTEMA DE COMPORTAMIENTO DIARIO, RELIGIÓN Y APRENDIZAJE ---
-	var hour: int = 12
-	var main_node = world.get_parent() if world.has_method("get_parent") else (world.parent if "parent" in world else null)
-	if main_node != null and "_game_hour" in main_node:
-		hour = main_node._game_hour
+	# DFWorld no pertenece al árbol de escenas: la hora se comparte como metadata
+	# autoritativa desde DFMain para que dormir, trabajar y recrearse coincidan.
+	var hour: int = int(world.get_meta("game_hour", 12))
 
 	var is_sleep_time = (hour >= 22 or hour < 6)
 	var is_recreation_time = (hour >= 14 and hour < 22)
@@ -1492,8 +1496,8 @@ func _has_tool_named(tokens: Array) -> bool:
 	for item in inventory:
 		var item_name: String = str(item.name).to_lower() if "name" in item else ""
 		var item_type: String = str(item.item_type).to_lower() if "item_type" in item else ""
-		for token in tokens:
-			var lowered: String = str(token).to_lower()
+		for inventory_token in tokens:
+			var lowered: String = str(inventory_token).to_lower()
 			if lowered in item_name or lowered in item_type:
 				return true
 	return false
@@ -1564,7 +1568,7 @@ func _find_nearest_ore_wall(world, radius: int) -> Vector3i:
 func _pick_up_nearby_item_by_types(world, accepted_types: Array) -> int:
 	var best_item: Variant = null
 	var best_distance: int = 999999
-	for entity in world.entities:
+	for entity in world.items:
 		if not "item_type" in entity or not "tile_pos" in entity:
 			continue
 		if str(entity.item_type) not in accepted_types:
@@ -1589,7 +1593,7 @@ func _find_nearby_master_for_skill(world, skill_id: int):
 	var best_master = null
 	var best_level = my_level
 	var nearest_dist = 15.0
-	for e in world.entities:
+	for e in world.dwarves:
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		var is_alive_check = e.get("is_alive")
 		if is_dwarf and e != self and (is_alive_check == null or is_alive_check == true):
@@ -1618,7 +1622,7 @@ func _find_nearby_building_type(world, b_type: int) -> Vector3i:
 
 func _try_socialize(world) -> bool:
 	var target = null
-	for e in world.entities:
+	for e in world.dwarves:
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		var is_alive_check = e.get("is_alive")
 		if is_dwarf and e != self and (is_alive_check == null or is_alive_check == true):
@@ -1674,7 +1678,7 @@ func _pick_up_items(world) -> void:
 
 	# First, pick up any items on our current tile (if not already stored in a stockpile)
 	var items_to_remove = []
-	for ent in world.entities:
+	for ent in world.get_items_at(tile_pos):
 		if ent is DFItem and ent.tile_pos == tile_pos:
 			if ent.is_food or ent.is_drink:
 				continue
@@ -1726,7 +1730,7 @@ func _pick_up_items(world) -> void:
 
 	var best_item = null
 	var best_dist = 999999
-	for ent_h in world.entities:
+	for ent_h in world.items:
 		if ent_h is DFItem:
 			var _decayed = ent_h.get("is_decayed")
 			if _decayed == null or _decayed:
@@ -1803,6 +1807,29 @@ func assign_job(job) -> void:
 	job.state = DFJob.JobState.ASSIGNED
 	job.assigned_dwarf_id = id
 
+func _job_requires_physical_progress(job_type: int) -> bool:
+	return job_type in [
+		DFJob.JobType.DIG,
+		DFJob.JobType.CHOP_TREE,
+		DFJob.JobType.BUILD_WALL,
+		DFJob.JobType.BUILD_FLOOR,
+		DFJob.JobType.BUILD_WORKSHOP,
+		DFJob.JobType.BUILD_STAIRS_UP,
+		DFJob.JobType.BUILD_STAIRS_DOWN,
+		DFJob.JobType.SMOOTH,
+	]
+
+func _cancel_current_job(reason: String) -> void:
+	if current_job == null:
+		return
+	current_job.cancel_reason = reason
+	current_job.state = DFJob.JobState.CANCELLED
+	current_job.assigned_dwarf_id = -1
+	current_job = null
+	task_progress = 0.0
+	current_task = "Trabajo cancelado: %s" % reason
+	needs_display_update = true
+
 func _work_on_job(world) -> void:
 	if is_possessed:
 		return
@@ -1813,7 +1840,10 @@ func _work_on_job(world) -> void:
 		current_job = null
 		current_task = "idle"
 		return
-	if current_job.state == DFJob.JobState.IN_PROGRESS:
+	if current_job.state == DFJob.JobState.IN_PROGRESS and not _job_requires_physical_progress(current_job.job_type):
+		# Transporte, almacenamiento y talleres son máquinas de estados: deben
+		# continuar su siguiente etapa cada tick. Los trabajos físicos, en cambio,
+		# pasan por la barra de progreso antes de modificar el mundo.
 		current_task = current_job.get_description()
 		_execute_job(world)
 		return
@@ -1828,17 +1858,25 @@ func _work_on_job(world) -> void:
 		if not has_material:
 			var best_item = null
 			var best_dist = 999999
-			for ent in world.entities:
-				if ent.get("item_type") == "stone" or ent.get("item_type") == "wood":
-					var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
-					if d < best_dist:
-						best_dist = d
-						best_item = ent
+			for ent in world.items:
+				if ent.item_type != "stone" and ent.item_type != "wood":
+					continue
+				if ent.is_decayed or ent.is_inside_container or ent.carried_by_id >= 0:
+					continue
+				if ent.is_reserved_for_other(id, simulation_minute):
+					continue
+				var d: int = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
+				if d < best_dist:
+					best_dist = d
+					best_item = ent
 
 			if best_item != null:
-				current_task = "Buscando material"
-				var dist_to_item = abs(tile_pos.x - best_item.tile_pos.x) + abs(tile_pos.z - best_item.tile_pos.z) + abs(tile_pos.y - best_item.tile_pos.y) * 2
+				best_item.reserve_for(id, simulation_minute + 30)
+				current_task = "Llevando material para %s" % current_job.get_description().to_lower()
+				var dist_to_item: int = abs(tile_pos.x - best_item.tile_pos.x) + abs(tile_pos.z - best_item.tile_pos.z) + abs(tile_pos.y - best_item.tile_pos.y) * 2
 				if dist_to_item <= 1:
+					best_item.release_reservation(id)
+					best_item.carried_by_id = id
 					world.remove_entity(best_item)
 					inventory.append(best_item)
 					needs_display_update = true
@@ -1846,7 +1884,7 @@ func _work_on_job(world) -> void:
 				else:
 					_move_toward(world, best_item.tile_pos)
 			else:
-				current_job.state = DFJob.JobState.CANCELLED
+				_cancel_current_job("no hay piedra o madera accesible")
 			return
 
 	var dist = abs(tile_pos.x - current_job.tile_pos.x) + abs(tile_pos.z - current_job.tile_pos.z)
@@ -2284,7 +2322,7 @@ func tick_social(world) -> void:
 	_decay_social_beliefs()
 	if current_task != "idle": return
 	if randi() % 30 != 0: return
-	for e in world.entities:
+	for e in world.dwarves:
 		if e == self: continue
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		var e_alive = e.get("is_alive")
@@ -2446,7 +2484,7 @@ func _social_compatibility_with(other) -> float:
 func tick_inspect(world) -> void:
 	if current_task != "idle": return
 	if randi() % 40 != 0: return
-	for e in world.entities:
+	for e in world.items:
 		if e == self: continue
 		if e is DFItem:
 			var dist = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z) + abs(e.tile_pos.y - tile_pos.y) * 2
@@ -2540,20 +2578,19 @@ func _satisfy_needs(world) -> bool:
 				if d > max_search_radius:
 					continue
 				# Buscar items en este tile del stockpile
-				for ent in world.entities:
-					if ent is DFItem and ent.tile_pos == stock_tile:
-						if ent.is_decayed:
-							continue
-						if d < best_dist:
-							if hunger > 0.5 and ent.is_edible:
-								best_dist = d
-								target_food = ent
-							elif thirst > 0.5 and ent.is_drink and target_food == null:
-								best_dist = d
-								target_drink = ent
+				for ent in world.get_items_at(stock_tile):
+					if ent.is_decayed:
+						continue
+					if d < best_dist:
+						if hunger > 0.5 and ent.is_edible:
+							best_dist = d
+							target_food = ent
+						elif thirst > 0.5 and ent.is_drink and target_food == null:
+							best_dist = d
+							target_drink = ent
 
 	# Buscar en el suelo (siempre, independientemente de stockpiles)
-	for ent_1754 in world.entities:
+	for ent_1754 in world.items:
 		if ent_1754 is DFItem:
 			if ent_1754.is_decayed:
 				continue
@@ -2807,7 +2844,7 @@ func _find_nearby_interesting_tile(world, radius: int) -> Vector3i:
 	var sy = tile_pos.y
 	
 	# Buscar items en el suelo
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem:
 			var dx = abs(e.tile_pos.x - tile_pos.x)
 			var dz = abs(e.tile_pos.z - tile_pos.z)
@@ -2832,7 +2869,7 @@ func _find_nearby_interesting_tile(world, radius: int) -> Vector3i:
 			candidates.append({"pos": w.tile_pos, "priority": 0})
 	
 	# Buscar otros enanos y caminar hacia ellos (efecto manada)
-	for e_1981 in world.entities:
+	for e_1981 in world.dwarves:
 		var is_dwarf = e_1981.get("creature_type") == "dwarf" and e_1981 != self
 		if is_dwarf and e_1981.get("is_alive") == true:
 			var dx_1984 = abs(e_1981.tile_pos.x - tile_pos.x)
@@ -2869,6 +2906,7 @@ func _execute_job(world) -> void:
 		DFJob.JobType.CHOP_TREE:
 			success = world.chop_tree(current_job.tile_pos, tile_pos)
 		DFJob.JobType.BUILD_WALL:
+			var wall_was_complete: bool = world.get_tile(current_job.tile_pos) == DFWorld.TileType.CONSTRUCTED_WALL
 			var mat_id = 11
 			var wall_material_index: int = -1
 			for i in range(inventory.size()):
@@ -2877,9 +2915,10 @@ func _execute_job(world) -> void:
 					wall_material_index = i
 					break
 			success = world.build_wall(current_job.tile_pos, mat_id)
-			if success and wall_material_index >= 0:
+			if success and not wall_was_complete and wall_material_index >= 0:
 				inventory.remove_at(wall_material_index)
 		DFJob.JobType.BUILD_FLOOR:
+			var floor_was_complete: bool = world.get_tile(current_job.tile_pos) == DFWorld.TileType.CONSTRUCTED_FLOOR
 			var mat_id_2026 = 11
 			var floor_material_index: int = -1
 			for i_2027 in range(inventory.size()):
@@ -2888,9 +2927,10 @@ func _execute_job(world) -> void:
 					floor_material_index = i_2027
 					break
 			success = world.build_floor(current_job.tile_pos, mat_id_2026)
-			if success and floor_material_index >= 0:
+			if success and not floor_was_complete and floor_material_index >= 0:
 				inventory.remove_at(floor_material_index)
 		DFJob.JobType.BUILD_WORKSHOP:
+			var workshop_was_complete: bool = world.get_workshop_at(current_job.tile_pos) != null
 			var mat_id_2034 = 11
 			var workshop_material_index: int = -1
 			for i_2035 in range(inventory.size()):
@@ -2898,25 +2938,26 @@ func _execute_job(world) -> void:
 					mat_id_2034 = inventory[i_2035].material
 					workshop_material_index = i_2035
 					break
-			for b in world.buildings:
-				if b.tile_pos == current_job.tile_pos and not b.is_constructed:
-					b.is_constructed = true
-					success = true
-					world.create_workshop(b.type, b.tile_pos)
-					break
-			if success and workshop_material_index >= 0:
+			if workshop_was_complete:
+				success = true
+			else:
+				for b in world.buildings:
+					if b.tile_pos == current_job.tile_pos and not b.is_constructed:
+						b.is_constructed = true
+						world.create_workshop(b.type, b.tile_pos)
+						success = true
+						break
+			if success and not workshop_was_complete and workshop_material_index >= 0:
 				inventory.remove_at(workshop_material_index)
 		DFJob.JobType.WORKSHOP_REACTION:
-			var reaction_id = current_job.reaction_id
-			if reaction_id == "": reaction_id = "smelt_iron"
-			var recipe = DFReactions.get_reaction(reaction_id)
-			if recipe.size() > 0:
-				for out_key in recipe.outputs.keys():
-					var amount = recipe.outputs[out_key]
-					var out_name = out_key.replace("_", " ").capitalize()
-					for i_2054 in range(amount):
-						world._spawn_item(current_job.tile_pos, out_name, out_key, 0, "-", Color.SILVER)
-				success = true
+			var reaction_id: String = current_job.reaction_id
+			if reaction_id.is_empty():
+				reaction_id = "smelt_iron"
+			var target_workshop = world.get_workshop_at(current_job.tile_pos)
+			if target_workshop != null:
+				# La orden solo entra en la cola. El operador recogerá insumos,
+				# trabajará el tiempo requerido y recién entonces creará salidas.
+				success = target_workshop.queue_recipe(reaction_id)
 		DFJob.JobType.BUILD_STAIRS_UP:
 			success = world.build_stairs_up(current_job.tile_pos)
 		DFJob.JobType.BUILD_STAIRS_DOWN:
@@ -2973,7 +3014,7 @@ func _execute_job(world) -> void:
 		DFJob.JobType.TEND_WOUNDS:
 			var patient_id = current_job.get_meta("patient_id") if current_job.has_meta("patient_id") else -1
 			var patient = null
-			for ent in world.entities:
+			for ent in world.dwarves:
 				if ent.get_instance_id() == patient_id:
 					patient = ent
 					break
@@ -3048,10 +3089,10 @@ func _execute_job(world) -> void:
 		add_thought("Completó satisfactoriamente un trabajo.", 0.03)
 		current_task = "idle"
 	elif current_job != null:
-		if current_job.state != DFJob.JobState.IN_PROGRESS:
-			current_job.state = DFJob.JobState.CANCELLED
-			current_job = null
-			current_task = "idle"
+		if _job_requires_physical_progress(current_job.job_type):
+			_cancel_current_job("el destino ya no admite este trabajo")
+		elif current_job.state != DFJob.JobState.IN_PROGRESS:
+			_cancel_current_job("no se pudo completar la acción")
 
 func _execute_empty_latrine_job(world: Object) -> bool:
 	var target_latrine = null
@@ -3154,6 +3195,14 @@ func _pick_up_job(world, jobs: Array) -> void:
 		assign_job(best_job)
 		current_task = best_job.get_description()
 
+func _path_request_slot_is_due(world) -> bool:
+	if is_possessed:
+		return true
+	if has_meta("is_follower") and bool(get_meta("is_follower", false)):
+		return true
+	var global_tick: int = int(world.get_meta("simulation_tick_total", 0))
+	return posmod(id, PATH_REQUEST_BUCKETS) == posmod(global_tick, PATH_REQUEST_BUCKETS)
+
 func _move_toward(world, target: Vector3i) -> void:
 	var effective_speed = speed * (1.0 - fatigue_level * 0.2)
 	var carried_ratio: float = get_carried_weight() / maxf(1.0, get_carrying_capacity())
@@ -3161,6 +3210,15 @@ func _move_toward(world, target: Vector3i) -> void:
 		effective_speed *= maxf(0.25, 1.0 / carried_ratio)
 		fatigue = minf(1.25, fatigue + 0.0005 * carried_ratio)
 	effective_speed = maxf(0.3, effective_speed)
+
+	# A* era solicitado por todos los habitantes en el mismo fotograma al cambiar
+	# de tarea. Los cálculos iniciales se distribuyen; posesión y seguidores
+	# mantienen respuesta inmediata. Esta comprobación ocurre antes del temporizador
+	# de movimiento para garantizar un turno de ruta en un máximo de tres ticks.
+	var needs_new_path: bool = path.is_empty() or path_index >= path.size()
+	if needs_new_path and not _path_request_slot_is_due(world):
+		return
+
 	# Only move every N ticks: faster dwarves = more frequent moves
 	if move_tick_counter > 0:
 		move_tick_counter -= 1
@@ -3171,28 +3229,38 @@ func _move_toward(world, target: Vector3i) -> void:
 		stuck_counter += 1
 	else:
 		stuck_counter = 0
+		path_replan_count = 0
 	last_pos = tile_pos
 	if stuck_counter > 5:
-		if current_job != null:
-			current_job.state = DFJob.JobState.CANCELLED
-			current_job = null
-		if operating_workshop != null:
-			operating_workshop.unassign_dwarf()
-			operating_workshop = null
-		if not autonomous_plan.is_empty():
-			DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada durante demasiado tiempo")
-		if current_task == "Yendo a su cama":
-			# La cama reclamada no es utilizable: liberarla para no bloquear a
-			# toda la colonia y descansar provisionalmente donde haya espacio.
+		# Un atasco corto suele ser tráfico entre habitantes. Primero se invalida
+		# la ruta y se vuelve a intentar; recién después de tres rutas fallidas se
+		# abandona la acción con una causa trazable.
+		path.clear()
+		path_index = 0
+		stuck_counter = 0
+		path_replan_count += 1
+		if path_replan_count < 3:
+			current_task = "Buscando una ruta alternativa"
+			return
+		path_replan_count = 0
+		if preferred_bed.x >= 0 and target == preferred_bed:
 			preferred_bed = Vector3i(-1, -1, -1)
 			claimed_bed = Vector3i(-1, -1, -1)
 			is_sleeping = true
 			current_task = "Durmiendo sin cama"
-		else:
-			current_task = "Recalculando ruta"
-		path.clear()
-		path_index = 0
-		stuck_counter = 0
+			return
+		var abandoned_job: bool = current_job != null
+		var abandoned_workshop: bool = operating_workshop != null
+		var abandoned_plan: bool = not autonomous_plan.is_empty()
+		if abandoned_job:
+			_cancel_current_job("ruta bloqueada después de tres intentos")
+		if abandoned_workshop:
+			operating_workshop.unassign_dwarf()
+			operating_workshop = null
+		if abandoned_plan:
+			DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada después de tres intentos")
+		if not abandoned_job and not abandoned_workshop and not abandoned_plan:
+			current_task = "Sin ruta accesible"
 		return
 
 	if path_index >= path.size() or path.is_empty():
@@ -3241,6 +3309,13 @@ func _move_toward(world, target: Vector3i) -> void:
 				var alt_blocked: bool = world.is_actor_occupied(alt, self)
 				if not alt_blocked:
 					world.move_entity(self, alt)
+					# El desvío cambió el origen real: la ruta anterior ya no es
+					# válida y debe recalcularse desde esta nueva casilla.
+					path.clear()
+					path_index = 0
+					path_replan_count = 0
+					has_moved_this_tick = true
+					stats_tracker["distance_traveled"] += 1
 					found_alt = true
 					break
 			if not found_alt:
@@ -3350,7 +3425,7 @@ func _check_personality_compatibility(other) -> bool:
 func _try_find_partner(world) -> void:
 	var best_candidate = null
 	var best_relation = 0.6
-	for e in world.entities:
+	for e in world.dwarves:
 		if e == self: continue
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		if not is_dwarf: continue
@@ -3402,7 +3477,7 @@ func _try_conceive(world) -> void:
 	if gender != "Female":
 		return
 	var husband = null
-	for e in world.entities:
+	for e in world.dwarves:
 		if e.id == family.spouse:
 			husband = e
 			break
@@ -3445,7 +3520,7 @@ func _give_birth(world) -> void:
 	child.family.mother = id
 	child.family.father = partner_id
 	var father = null
-	for e in world.entities:
+	for e in world.dwarves:
 		if e.id == partner_id:
 			father = e
 			break
@@ -3519,7 +3594,7 @@ func tick_child_growth(world) -> void:
 func _get_parent_from_world(world, parent_id: int):
 	if world == null:
 		return null
-	for e in world.entities:
+	for e in world.dwarves:
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		if is_dwarf and e.id == parent_id and e.get("is_alive") == true:
 			return e
@@ -3591,6 +3666,128 @@ func _get_best_skill() -> int:
 func get_body() -> Object:
 	return body
 
+func _workshop_item_matches(item: DFItem, requirement: Dictionary) -> bool:
+	if item == null or item.is_decayed or item.is_inside_container:
+		return false
+	var item_type_lower: String = item.item_type.to_lower()
+	var material_lower: String = item.material_name.to_lower()
+	if bool(requirement.get("fuel", false)):
+		return item_type_lower in ["fuel", "charcoal", "coal", "coal_ore", "wood"]
+	var required_type: String = str(requirement.get("type", "")).to_lower()
+	if not required_type.is_empty() and item_type_lower != required_type:
+		return false
+	var materials: Array = requirement.get("material", [])
+	if not materials.is_empty():
+		var material_ok: bool = false
+		for candidate in materials:
+			var candidate_lower: String = str(candidate).to_lower()
+			if candidate_lower == material_lower or candidate_lower == item_type_lower or item_type_lower.begins_with(candidate_lower + "_"):
+				material_ok = true
+				break
+		if not material_ok:
+			return false
+	var specifics: Array = requirement.get("specific", [])
+	if not specifics.is_empty():
+		var specific_ok: bool = false
+		for candidate in specifics:
+			var candidate_lower: String = str(candidate).to_lower()
+			if candidate_lower in item_type_lower or candidate_lower in material_lower or candidate_lower in item.name.to_lower():
+				specific_ok = true
+				break
+		if not specific_ok:
+			return false
+	return true
+
+func _prepare_workshop_inputs(world, recipe: Dictionary) -> bool:
+	var selected_indices: Array[int] = []
+	var missing_requirement: Dictionary = {}
+	for requirement in recipe.get("inputs", []):
+		var required_count: int = int(requirement.get("count", 1))
+		var matched_count: int = 0
+		for inventory_index in range(inventory.size()):
+			if inventory_index in selected_indices:
+				continue
+			var inventory_item = inventory[inventory_index]
+			if not inventory_item is DFItem:
+				continue
+			if _workshop_item_matches(inventory_item, requirement):
+				selected_indices.append(inventory_index)
+				matched_count += 1
+				if matched_count >= required_count:
+					break
+		if matched_count < required_count and not bool(requirement.get("optional", false)):
+			missing_requirement = requirement
+			break
+
+	if not missing_requirement.is_empty():
+		var nearest_item: DFItem = null
+		var nearest_distance: int = 999999
+		for ground_item in world.items:
+			if ground_item.carried_by_id >= 0:
+				continue
+			if not _workshop_item_matches(ground_item, missing_requirement):
+				continue
+			if ground_item.is_reserved_for_other(id, simulation_minute):
+				continue
+			var ground_distance: int = abs(ground_item.tile_pos.x - tile_pos.x) + abs(ground_item.tile_pos.z - tile_pos.z) + abs(ground_item.tile_pos.y - tile_pos.y) * 2
+			if ground_distance < nearest_distance:
+				nearest_distance = ground_distance
+				nearest_item = ground_item
+		if nearest_item == null:
+			current_task = "Esperando insumos para %s" % str(recipe.get("name", "el taller"))
+			return false
+		nearest_item.reserve_for(id, simulation_minute + 30)
+		if nearest_distance <= 1:
+			nearest_item.release_reservation(id)
+			nearest_item.carried_by_id = id
+			world.remove_entity(nearest_item)
+			inventory.append(nearest_item)
+			current_task = "Llevando insumo a %s" % operating_workshop.name
+		else:
+			current_task = "Recogiendo insumo para %s" % operating_workshop.name
+			_move_toward(world, nearest_item.tile_pos)
+		return false
+
+	selected_indices.sort()
+	selected_indices.reverse()
+	for inventory_index in selected_indices:
+		inventory.remove_at(inventory_index)
+	operating_workshop.current_recipe = recipe.duplicate(true)
+	needs_display_update = true
+	return true
+
+func _produce_workshop_outputs(world, recipe: Dictionary) -> void:
+	for output in recipe.get("outputs", []):
+		if bool(output.get("optional", false)):
+			continue
+		var output_count: int = int(output.get("count", 1))
+		for output_index in range(output_count):
+			var produced: DFItem = world._spawn_item(
+				operating_workshop.tile_pos,
+				str(output.get("name", "Producto")),
+				str(output.get("type", "craft")),
+				0,
+				"*",
+				Color("#FFD27F")
+			)
+			produced.created_by_entity_id = id
+			produced.production_recipe_id = str(recipe.get("id", ""))
+			produced.production_site = operating_workshop.tile_pos
+	stats_tracker["items_crafted"] = int(stats_tracker.get("items_crafted", 0)) + 1
+	add_thought("Fabricó %s usando insumos reales." % str(recipe.get("name", "un objeto")), 0.04)
+
+func _workshop_skill_from_recipe(recipe: Dictionary) -> int:
+	match str(recipe.get("skill", "CRAFTSMAN")).to_upper():
+		"MINING": return Skill.MINING
+		"CARPENTRY": return Skill.CARPENTRY
+		"MASONRY": return Skill.MASONRY
+		"SMITHING": return Skill.SMITHING
+		"COOKING": return Skill.COOKING
+		"BREWING": return Skill.BREWING
+		"FARMING": return Skill.FARMING
+		"WEAVING": return Skill.MECHANICS
+		_: return Skill.CRAFTSMAN
+
 func _operate_workshop(world) -> void:
 	if is_possessed:
 		return
@@ -3609,14 +3806,29 @@ func _operate_workshop(world) -> void:
 		current_task = "idle"
 		return
 
-	var dist = abs(tile_pos.x - operating_workshop.tile_pos.x) + abs(tile_pos.z - operating_workshop.tile_pos.z)
-	if dist <= 1 and tile_pos.y == operating_workshop.tile_pos.y:
-		current_task = "Operando " + operating_workshop.name
-		add_skill_xp(Skill.SMITHING, 1)
-		operating_workshop.operator_skill = get_skill_level(Skill.SMITHING)
-	else:
+	var dist: int = abs(tile_pos.x - operating_workshop.tile_pos.x) + abs(tile_pos.z - operating_workshop.tile_pos.z)
+	if dist > 1 or tile_pos.y != operating_workshop.tile_pos.y:
 		current_task = "Yendo a " + operating_workshop.name
 		_move_toward(world, operating_workshop.tile_pos)
+		return
+
+	var recipe: Dictionary = operating_workshop.production_queue[0]
+	if operating_workshop.current_recipe.is_empty() and not _prepare_workshop_inputs(world, recipe):
+		return
+
+	current_task = "Fabricando %s en %s" % [str(recipe.get("name", "producto")), operating_workshop.name]
+	var skill_id: int = _workshop_skill_from_recipe(recipe)
+	var operator_level: int = get_skill_level(skill_id)
+	operating_workshop.operator_skill = operator_level
+	var result: Dictionary = operating_workshop.tick(1.0)
+	if bool(result.get("completed", false)):
+		var completed_recipe: Dictionary = result.get("recipe", {})
+		_produce_workshop_outputs(world, completed_recipe)
+		add_skill_xp(skill_id, 8)
+		if operating_workshop.production_queue.is_empty():
+			operating_workshop.unassign_dwarf()
+			operating_workshop = null
+			current_task = "idle"
 
 func _check_workshops(world) -> void:
 	if is_possessed or operating_workshop != null:
@@ -3666,13 +3878,13 @@ func tick_autonomous_survival(world) -> void:
 		if not world.stockpiles.is_empty():
 			for sp in world.stockpiles:
 				for stock_tile in sp.tiles:
-					for e in world.entities:
-						if e is DFItem and e.tile_pos == stock_tile and e.get("item_type") in ["food", "drink", "seed"]:
+					for e in world.get_items_at(stock_tile):
+						if e.get("item_type") in ["food", "drink", "seed"]:
 							var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
 							if d < nearest_dist:
 								nearest_dist = d
 								nearest_food = e
-		for e_2770 in world.entities:
+		for e_2770 in world.items:
 			if e_2770 is DFItem and e_2770.get("item_type") in ["food", "drink", "seed"]:
 				var d_2772 = abs(e_2770.tile_pos.x - tile_pos.x) + abs(e_2770.tile_pos.z - tile_pos.z)
 				if d_2772 < nearest_dist:
@@ -3899,7 +4111,7 @@ func _has_tool_for_job(job_type: int) -> bool:
 func _find_nearest_item_on_ground_matching(world, item_substring: String):
 	var nearest_item = null
 	var nearest_dist = 9999.0
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem and item_substring in e.name:
 			var d = abs(tile_pos.x - e.tile_pos.x) + abs(tile_pos.z - e.tile_pos.z)
 			if d < nearest_dist:
@@ -3941,7 +4153,7 @@ func _find_nearest_mineable_wall(world) -> Vector3i:
 func _find_nearest_item_matching_type(world, it_type: String):
 	var nearest = null
 	var nearest_dist = 9999.0
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem and e.get("item_type") == it_type:
 			var d = abs(tile_pos.x - e.tile_pos.x) + abs(tile_pos.z - e.tile_pos.z)
 			if d < nearest_dist:
@@ -4225,7 +4437,7 @@ func _gather_mood_materials(world) -> void:
 func _find_material_on_ground(world, mat_id: String) -> Object:
 	var found = null
 	var best_dist = 9999
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem and e.get("item_type") != null:
 			var name_lower = e.name.to_lower()
 			var type_lower = e.item_type.to_lower()
@@ -4293,7 +4505,7 @@ func _complete_strange_mood(world) -> void:
 	if strange_mood_type == StrangeMoodType.FELL:
 		world.messages.append("Un escalofrío recorre la fortaleza. El artefacto '%s' tiene un aura oscura..." % strange_mood_artifact_name)
 
-	for e in world.entities:
+	for e in world.dwarves:
 		if e.get("creature_type") == "dwarf" and e.get("is_alive") == true and e != self:
 			e.add_thought("Se maravilla ante la creación de %s: '%s'." % [name, strange_mood_artifact_name], 0.05)
 
@@ -4318,12 +4530,12 @@ func _execute_hunt_job(world) -> bool:
 			return true
 	var target_creature_id = current_job.get_meta("creature_id", -1)
 	var target = null
-	for e in world.entities:
+	for e in world.creatures:
 		if e.get("id") == target_creature_id and e.get("is_alive") == true:
 			target = e
 			break
 	if target == null:
-		for e_3419 in world.entities:
+		for e_3419 in world.creatures:
 			if e_3419.get("creature_type") != null and e_3419.get("creature_type") != "dwarf" and e_3419.get("is_alive") == true:
 				var dist = abs(tile_pos.x - e_3419.tile_pos.x) + abs(tile_pos.z - e_3419.tile_pos.z)
 				if dist <= 20:
@@ -4408,7 +4620,7 @@ func _find_best_item_slot(world, type_filter: String, name_keyword: String = "",
 				best_inv_idx = i
 				break
 	if best_item == null:
-		for e in world.entities:
+		for e in world.items:
 			if e is DFItem and e.item_type == type_filter:
 				if e.is_decayed:
 					continue
@@ -4605,7 +4817,7 @@ func _execute_store_in_container_job(world) -> bool:
 	if carried_food == null:
 		var requested_item_id: int = int(current_job.get_meta("target_item_id", -1)) if current_job != null else -1
 		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
-		for ent in world.entities:
+		for ent in world.items:
 			if ent is DFItem and (ent.is_food or ent.is_meat or ent.is_drink or ent.item_type == "fish") and not ent.is_inside_container and not ent.is_decayed:
 				if requested_item_id >= 0 and ent.id != requested_item_id:
 					continue
@@ -4664,8 +4876,14 @@ func _execute_store_in_container_job(world) -> bool:
 	carried_food.tile_pos = best_fs_pos
 	carried_food.is_in_stockpile = true
 	carried_food.carried_by_id = -1
+	if not _put_item_in_container_at(world, carried_food, best_fs_pos):
+		# Otro transportista pudo llenar el cofre durante el trayecto. Se conserva
+		# el objeto en el inventario y se busca otro destino en el siguiente tick.
+		carried_food.carried_by_id = id
+		carried_food.is_in_stockpile = false
+		current_task = "Buscando otro cofre con espacio"
+		return false
 	carried_food.release_reservation(id)
-	_put_item_in_container_at(world, carried_food, best_fs_pos)
 	world.add_entity(carried_food)
 	inventory.erase(carried_food)
 	add_thought("Guardó " + carried_food.name + " en el almacén de comida.", 0.04)
@@ -4673,7 +4891,7 @@ func _execute_store_in_container_job(world) -> bool:
 	return true
 
 func _find_container_at(world: Object, pos: Vector3i):
-	for entity in world.entities:
+	for entity in world.items:
 		if (
 			entity is DFItem
 			and entity.is_container
@@ -4686,7 +4904,7 @@ func _find_container_at(world: Object, pos: Vector3i):
 func _detach_item_from_container(world: Object, item: DFItem) -> void:
 	if not item.is_inside_container:
 		return
-	for entity in world.entities:
+	for entity in world.items:
 		if entity is DFItem and entity.is_container and entity.id == item.container_id:
 			entity.container_contents.erase(item)
 			entity.contained_volume = maxf(
@@ -4706,131 +4924,111 @@ func _put_item_in_container_at(world: Object, item: DFItem, pos: Vector3i) -> bo
 	return true
 
 func _execute_collect_job(world, item_type_to_collect: String) -> bool:
-	# 1. Si no tenemos el objeto en el inventario, buscarlo e ir a recogerlo
-	var carried_item = null
-	for item in inventory:
-		if item.item_type == item_type_to_collect:
-			carried_item = item
+	var carried_item: DFItem = null
+	for inventory_item in inventory:
+		if inventory_item is DFItem and inventory_item.item_type == item_type_to_collect:
+			carried_item = inventory_item
 			break
-			
+
 	if carried_item == null:
-		# Verificar si hay espacio en algún stockpile antes de ir a buscarlo
-		var has_stockpile_space = false
-		for sp in world.stockpiles:
-			var free_pos = sp.get_free_tile(world)
-			if free_pos.y != -1:
-				has_stockpile_space = true
+		var has_storage_space: bool = false
+		for capacity_stockpile in world.stockpiles:
+			if capacity_stockpile.get_free_tile(world, item_type_to_collect).y != -1:
+				has_storage_space = true
 				break
-		if not has_stockpile_space and item_type_to_collect == "wood":
-			var ext_pos = _find_house_exterior_storage_pos(world)
-			if ext_pos != Vector3i(-1, -1, -1):
-				has_stockpile_space = true
-				
-		if not has_stockpile_space:
-			# No hay espacio de almacenamiento disponible, cancelar el trabajo
-			if current_job != null:
-				current_job.state = DFJob.JobState.CANCELLED
-			current_task = "idle"
+		if not has_storage_space:
+			_cancel_current_job("no hay espacio en ningún almacén")
 			return false
 
-		# Encontrar el item suelto mas cercano en el mundo
-		var target_item = null
-		var best_d = 999999
-		for ent in world.entities:
-			if ent is DFItem and ent.item_type == item_type_to_collect and not ent.is_inside_container:
-				# Verificar que no este ya en un stockpile
-				var already_in_sp = false
-				for sp in world.stockpiles:
-					if sp.has_tile(ent.tile_pos):
-						already_in_sp = true
-						break
-				if already_in_sp:
-					continue
-				var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z)
-				if d < best_d:
-					best_d = d
-					target_item = ent
+		var target_item: DFItem = null
+		var best_distance: int = 999999
+		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
+		for world_item in world.items:
+			if not world_item is DFItem:
+				continue
+			if world_item.item_type != item_type_to_collect or world_item.is_inside_container:
+				continue
+			if world_item.is_decayed or world_item.carried_by_id >= 0:
+				continue
+			if world_item.is_reserved_for_other(id, current_tick):
+				continue
+			var already_stored: bool = false
+			for occupied_stockpile in world.stockpiles:
+				if occupied_stockpile.has_tile(world_item.tile_pos) and world_item.is_in_stockpile:
+					already_stored = true
+					break
+			if already_stored:
+				continue
+			var item_distance: int = abs(world_item.tile_pos.x - tile_pos.x) + abs(world_item.tile_pos.z - tile_pos.z) + abs(world_item.tile_pos.y - tile_pos.y) * 2
+			if item_distance < best_distance:
+				best_distance = item_distance
+				target_item = world_item
+
 		if target_item == null:
-			# No hay items sueltos de este tipo para recolectar, cancelar el trabajo
-			if current_job != null:
-				current_job.state = DFJob.JobState.CANCELLED
-			current_task = "idle"
+			_cancel_current_job("ya no queda %s suelta para recoger" % item_type_to_collect)
 			return false
-			
-		var dist = abs(tile_pos.x - target_item.tile_pos.x) + abs(tile_pos.z - target_item.tile_pos.z)
-		if dist > 1:
+
+		target_item.reserve_for(id, current_tick + 600)
+		if best_distance > 1 or target_item.tile_pos.y != tile_pos.y:
 			_move_toward(world, target_item.tile_pos)
 			current_task = "Yendo a recoger " + target_item.name
-			if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
-			return false # Aun no completado
-		else:
-			# Recoger el item
-			inventory.append(target_item)
-			target_item.carried_by_id = id
-			world.remove_entity(target_item)
-			add_thought("Recogio un " + target_item.name + " para almacenar.", 0.02)
-			current_task = "Recolectando " + target_item.name
-			needs_display_update = true
-			return false # Siguiente tick para ir a guardarlo
-			
-	# 2. Si ya tenemos el objeto, buscar el stockpile mas cercano con espacio libre
-	var best_sp = null
-	var best_sp_pos = Vector3i(-1, -1, -1)
-	var best_sp_dist = 999999
-	for sp_3794 in world.stockpiles:
-		var free_pos = sp_3794.get_free_tile(world)
-		if free_pos.y != -1:
-			var d_3797 = abs(free_pos.x - tile_pos.x) + abs(free_pos.z - tile_pos.z)
-			if d_3797 < best_sp_dist:
-				best_sp_dist = d_3797
-				best_sp_pos = free_pos
-				best_sp = sp_3794
+			if current_job != null:
+				current_job.state = DFJob.JobState.IN_PROGRESS
+			return false
 
-	var target_drop_pos = best_sp_pos
-	var is_exterior_drop = false
-	
-	if best_sp == null or best_sp_pos.y == -1:
-		if item_type_to_collect == "wood":
-			var ext_pos = _find_house_exterior_storage_pos(world)
-			if ext_pos != Vector3i(-1, -1, -1):
-				target_drop_pos = ext_pos
-				is_exterior_drop = true
-
-	if target_drop_pos.y == -1:
-		# No hay almacenes ni espacio exterior de casas, dejar caer aquí y completar
-		carried_item.tile_pos = tile_pos
-		world.add_entity(carried_item)
-		inventory.erase(carried_item)
-		add_thought("Dejo " + carried_item.name + " en el suelo por falta de espacio.", -0.01)
-		return true
-
-	var dist_to_drop = abs(tile_pos.x - target_drop_pos.x) + abs(tile_pos.z - target_drop_pos.z)
-	if dist_to_drop > 1:
-		_move_toward(world, target_drop_pos)
-		current_task = "Llevando " + carried_item.name + (" al exterior" if is_exterior_drop else " al almacen")
-		if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
-		return false
-	else:
-		# Depositar en la posición destino
-		carried_item.tile_pos = target_drop_pos
-		carried_item.carried_by_id = -1
-		carried_item.is_in_stockpile = not is_exterior_drop
-		if not is_exterior_drop:
-			_put_item_in_container_at(world, carried_item, target_drop_pos)
-		world.add_entity(carried_item)
-		inventory.erase(carried_item)
-		if is_exterior_drop:
-			add_thought("Almacenó " + carried_item.name + " afuera de una casa.", 0.03)
-		else:
-			add_thought("Almaceno " + carried_item.name + " en el almacen.", 0.04)
-		current_task = "idle"
+		target_item.release_reservation(id)
+		target_item.carried_by_id = id
+		target_item.is_in_stockpile = false
+		world.remove_entity(target_item)
+		inventory.append(target_item)
+		add_thought("Recogió %s para almacenarlo." % target_item.name, 0.02)
+		current_task = "Transportando " + target_item.name
 		needs_display_update = true
-		return true
+		return false
+
+	var target_stockpile = null
+	var target_drop_pos: Vector3i = Vector3i(-1, -1, -1)
+	var best_stockpile_distance: int = 999999
+	for candidate_stockpile in world.stockpiles:
+		var candidate_pos: Vector3i = candidate_stockpile.get_free_tile(world, carried_item.item_type)
+		if candidate_pos.y == -1:
+			continue
+		var candidate_distance: int = abs(candidate_pos.x - tile_pos.x) + abs(candidate_pos.z - tile_pos.z) + abs(candidate_pos.y - tile_pos.y) * 2
+		if candidate_distance < best_stockpile_distance:
+			best_stockpile_distance = candidate_distance
+			target_drop_pos = candidate_pos
+			target_stockpile = candidate_stockpile
+
+	if target_stockpile == null:
+		current_task = "Esperando espacio para guardar " + carried_item.name
+		return false
+
+	if best_stockpile_distance > 1 or target_drop_pos.y != tile_pos.y:
+		_move_toward(world, target_drop_pos)
+		current_task = "Llevando " + carried_item.name + " al almacén"
+		if current_job != null:
+			current_job.state = DFJob.JobState.IN_PROGRESS
+		return false
+
+	carried_item.tile_pos = target_drop_pos
+	carried_item.carried_by_id = -1
+	carried_item.is_in_stockpile = true
+	carried_item.release_reservation(id)
+	var stored_in_container: bool = _put_item_in_container_at(world, carried_item, target_drop_pos)
+	world.add_entity(carried_item)
+	inventory.erase(carried_item)
+	if stored_in_container:
+		add_thought("Guardó %s dentro de un cofre." % carried_item.name, 0.05)
+	else:
+		add_thought("Apiló %s en el almacén." % carried_item.name, 0.03)
+	current_task = "idle"
+	needs_display_update = true
+	return true
 
 func _find_house_exterior_storage_pos(world) -> Vector3i:
 	# Recopilar todas las posiciones de puertas
 	var door_positions = []
-	for ent in world.entities:
+	for ent in world.items:
 		if ent is DFItem and ent.item_type == "door":
 			door_positions.append(ent.tile_pos)
 
@@ -4883,11 +5081,7 @@ func _find_house_exterior_storage_pos(world) -> Vector3i:
 						continue
 						
 					# No debe tener ya un objeto tirado en esa posición
-					var has_item = false
-					for ent_check in world.entities:
-						if ent_check is DFItem and ent_check.tile_pos == p:
-							has_item = true
-							break
+					var has_item: bool = not world.get_items_at(p).is_empty()
 					if has_item:
 						continue
 						
@@ -4999,7 +5193,7 @@ func _tick_hunting_behavior(world) -> bool:
 	# Validar target actual
 	if hunting_target != null:
 		var target_exists = false
-		for ent1 in world.entities:
+		for ent1 in world.creatures:
 			if ent1 == hunting_target:
 				target_exists = true
 				break
@@ -5007,7 +5201,7 @@ func _tick_hunting_behavior(world) -> bool:
 			# El target murió o desapareció, buscar si dejó un cadáver en su lugar para degollarlo
 			if hunting_target != null:
 				var corpse_found = null
-				for ent2 in world.entities:
+				for ent2 in world.items:
 					if ent2 is DFItem and ent2.item_type == "corpse" and ent2.tile_pos == hunting_target.tile_pos:
 						corpse_found = ent2
 						break
@@ -5037,7 +5231,7 @@ func _tick_hunting_behavior(world) -> bool:
 		# Buscar criatura viva más cercana (rango 30)
 		var best_prey = null
 		var best_d = 99999
-		for ent3 in world.entities:
+		for ent3 in world.creatures:
 			var c_type = ent3.get("creature_type")
 			var alive = ent3.get("is_alive")
 			if ent3 != self and c_type != null and c_type != "dwarf" and c_type != "" and alive == true:

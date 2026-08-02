@@ -98,8 +98,12 @@ static func _find_path_internal(world, from: Vector3i, to: Vector3i, use_dwarf_r
 	_heap_push(open_heap, from, _heuristic(from, to))
 	open_set[start_key] = true
 
-	var iterations = 0
-	var max_iter = 5000
+	var iterations: int = 0
+	# Un destino cercano no necesita el mismo presupuesto que cruzar una región.
+	# El límite proporcional evita picos de varios miles de expansiones por habitante
+	# y conserva margen suficiente para rodear edificios y desniveles.
+	var direct_distance: int = int(_heuristic(from, to))
+	var max_iter: int = clampi(256 + direct_distance * 48, 512, 4096)
 	while not open_heap.is_empty() and iterations < max_iter:
 		iterations += 1
 		var current = _heap_pop(open_heap)
