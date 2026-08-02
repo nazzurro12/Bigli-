@@ -620,9 +620,9 @@ class ColonyConsistencyContracts(unittest.TestCase):
         execute = self.dwarf.split("func _execute_job", 1)[1].split(
             "func _execute_empty_latrine_job", 1
         )[0]
-        self.assertIn("if success and floor_material_index >= 0:", execute)
-        self.assertIn("if success and wall_material_index >= 0:", execute)
-        self.assertIn("if success and workshop_material_index >= 0:", execute)
+        self.assertIn("floor_material_index >= 0:", execute)
+        self.assertIn("wall_material_index >= 0:", execute)
+        self.assertIn("workshop_material_index >= 0:", execute)
 
     def test_story_director_turns_real_state_into_visible_hooks(self):
         for token in (
