@@ -254,15 +254,16 @@ var _dwarf_animation_tick: int = 0
 var _animation_phase: bool = false
 
 # ---- TUTORIAL / ONBOARDING ----
-var _tutorial_step: int = 0       # 0-5: which hint is shown; -1: finished
-var _tutorial_timer: float = 0.0  # seconds this step has been shown
-const TUTORIAL_DURATION: float = 8.0  # seconds per hint
+var _tutorial_step: int = -1
+var _tutorial_timer: float = 0.0
+var _tutorial_camera_origin: Vector3i = Vector3i.ZERO
+var _tutorial_initial_job_count: int = 0
 const TUTORIAL_STEPS: Array = [
-	{"icon": "👁", "text": "Mantén WASD o usa las FLECHAS para mover la cámara y explorar el mundo."},
-	{"icon": "F",  "text": "Presiona F para seguir a un enano. Presiona P para poseer al aldeano seguido."},
-	{"icon": "⚔",  "text": "Con un enano poseído, usa WASD para moverlo. ¡Explora cuevas y bosques!"},
-	{"icon": "⛏",  "text": "Presiona 1 para designar tiles para EXCAVAR. Tus enanos cavan solos."},
-	{"icon": "⏸",  "text": "ESPACIO = Pausar · H = Ayuda completa · ESC = Menú. ¡Construye tu fortaleza!"},
+	{"icon": "👁", "text": "Mueve la cámara con WASD o las flechas."},
+	{"icon": "F", "text": "Pulsa F para seguir a uno de tus habitantes."},
+	{"icon": "⛏", "text": "Pulsa 1 y arrastra sobre roca para ordenar una excavación."},
+	{"icon": "P", "text": "Pulsa P para poseer al habitante que estás siguiendo."},
+	{"icon": "E", "text": "Pulsa E junto a un objeto o terreno para ejecutar una acción contextual."},
 ]
 
 
@@ -3167,20 +3168,63 @@ func _draw_embark_prepare() -> void:
 # TUTORIAL OVERLAY — Animated hint cards for new players
 # Timer is advanced by the main node calling renderer.tick_tutorial(delta)
 # =============================================================================
+func start_interactive_tutorial(camera_origin: Vector3i) -> void:
+	_tutorial_step = 0
+	_tutorial_timer = 0.0
+	_tutorial_camera_origin = camera_origin
+	_tutorial_initial_job_count = designation.job_queue.size() if designation != null else 0
+	queue_redraw()
+
+func is_tutorial_active() -> bool:
+	return _tutorial_step >= 0 and _tutorial_step < TUTORIAL_STEPS.size()
+
+func skip_interactive_tutorial() -> void:
+	_tutorial_step = -1
+	_tutorial_timer = 0.0
+	queue_redraw()
+
+func _advance_interactive_tutorial() -> void:
+	_tutorial_step += 1
+	_tutorial_timer = 0.0
+	if _tutorial_step >= TUTORIAL_STEPS.size():
+		_tutorial_step = -1
+		var main_node := get_parent()
+		if main_node != null and main_node.has_method("add_message"):
+			main_node.add_message("TUTORIAL COMPLETADO: ya puedes observar o intervenir libremente.")
+	queue_redraw()
+
 func tick_tutorial(delta: float) -> void:
-	if _tutorial_step < 0 or _tutorial_step >= TUTORIAL_STEPS.size():
+	if not is_tutorial_active():
 		return
 	_tutorial_timer += delta
-	if _tutorial_timer >= TUTORIAL_DURATION:
-		_tutorial_timer = 0.0
-		_tutorial_step += 1
+	var main_node := get_parent()
+	if main_node == null:
+		return
+	var completed := false
+	match _tutorial_step:
+		0:
+			var current_camera: Variant = main_node.get("camera_pos")
+			completed = current_camera is Vector3i and current_camera != _tutorial_camera_origin
+		1:
+			completed = follow_dwarf >= 0
+		2:
+			var current_designation: Variant = main_node.get("designation")
+			completed = current_designation != null and current_designation.job_queue.size() > _tutorial_initial_job_count
+		3:
+			completed = main_node.get("possessed_dwarf") != null
+		4:
+			var director: Variant = main_node.get("story_director")
+			var session: Variant = director.get("possession_session") if director != null else {}
+			completed = session is Dictionary and not session.get("actions", []).is_empty()
+	if completed:
+		_advance_interactive_tutorial()
 
 func _draw_tutorial_overlay() -> void:
 	if _tutorial_step < 0 or _tutorial_step >= TUTORIAL_STEPS.size():
 		return
 
 	var step = TUTORIAL_STEPS[_tutorial_step]
-	var progress = clampf(_tutorial_timer / TUTORIAL_DURATION, 0.0, 1.0)
+	var progress: float = float(_tutorial_step + 1) / float(TUTORIAL_STEPS.size())
 
 	var vp = size
 	var card_w = 520
@@ -3194,8 +3238,8 @@ func _draw_tutorial_overlay() -> void:
 	_draw_rounded_rect(Rect2(card_x, card_y, card_w, card_h),
 		Color(0.55, 0.40, 0.90, 0.9 * alpha), 6, false, 1.5)
 
-	# Progress bar (shrinks as time passes)
-	var bar_w = card_w * (1.0 - progress)
+	# Progress bar tracks completed onboarding objectives
+	var bar_w = card_w * progress
 	draw_rect(Rect2(card_x, card_y + card_h - 3, bar_w, 3),
 		Color(0.55, 0.40, 0.90, 0.7 * alpha), true)
 
@@ -3218,7 +3262,7 @@ func _draw_tutorial_overlay() -> void:
 		HORIZONTAL_ALIGNMENT_RIGHT, -1, 8, Color(0.45, 0.40, 0.60, alpha))
 
 	# Skip label
-	draw_string(_font, Vector2(card_x + card_w - 8, card_y + 24), "T: Saltar",
+	draw_string(_font, Vector2(card_x + card_w - 8, card_y + 24), "F10: Omitir tutorial",
 		HORIZONTAL_ALIGNMENT_RIGHT, -1, 8, Color(0.35, 0.32, 0.50, alpha))
 
 # =============================================================================
