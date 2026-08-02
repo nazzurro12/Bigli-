@@ -51,6 +51,16 @@ class SimulationContracts(unittest.TestCase):
         self.assertIn("var consequence_system: DFConsequenceSystem = null", source)
         self.assertIn("consequence_system = DFConsequenceSystem.new(self)", source)
 
+    def test_tutorial_advances_from_real_player_actions(self) -> None:
+        main = self.read("df_mode/df_main.gd")
+        renderer = self.read("df_mode/df_renderer.gd")
+        self.assertNotIn("Tutorial no implementado aun.", main)
+        self.assertIn("renderer.start_interactive_tutorial(camera_pos)", main)
+        self.assertIn("func start_interactive_tutorial", renderer)
+        self.assertIn("current_designation.job_queue.size() > _tutorial_initial_job_count", renderer)
+        self.assertIn('main_node.get("possessed_dwarf") != null', renderer)
+        self.assertIn('session.get("actions", []).is_empty()', renderer)
+
     def test_memories_use_world_time(self) -> None:
         source = self.read("df_mode/df_dwarf.gd")
         self.assertNotIn("return Time.get_ticks_msec()", source)
