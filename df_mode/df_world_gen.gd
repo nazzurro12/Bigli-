@@ -9,6 +9,18 @@ const DFWorldHydrology = preload("res://df_mode/df_world_hydrology.gd")
 const DFWorldSites = preload("res://df_mode/df_world_sites.gd")
 
 const BIOME_FALLBACK: String = "grassland"
+# Escala horizontal equivalente al mundo "Large" de Dwarf Fortress:
+# 257 regiones * 16 bloques * 48 casillas = 197.376 casillas por eje.
+# Bigli materializa zonas locales de 256 casillas, por lo que necesita
+# 197.376 / 256 = 771 regiones transmitidas por eje.
+const DF_LARGE_MACRO_REGIONS: int = 257
+const DF_BLOCKS_PER_MACRO_REGION: int = 16
+const DF_TILES_PER_BLOCK: int = 48
+const STREAMED_REGION_TILES: int = 256
+const MAX_PLANET_REGIONS_PER_AXIS: int = (
+	DF_LARGE_MACRO_REGIONS * DF_BLOCKS_PER_MACRO_REGION * DF_TILES_PER_BLOCK
+) / STREAMED_REGION_TILES
+const MAX_PLANET_TILES_PER_AXIS: int = MAX_PLANET_REGIONS_PER_AXIS * STREAMED_REGION_TILES
 
 var rng: RandomNumberGenerator
 var namegen: DFNamegen
@@ -16,12 +28,15 @@ var generation_settings: WorldGenerationSettings
 var _noise_cache: Dictionary = {}
 
 var world_name: String = ""
-var world_width: int = 1024
-var world_depth: int = 1024
+var world_width: int = MAX_PLANET_REGIONS_PER_AXIS
+var world_depth: int = MAX_PLANET_REGIONS_PER_AXIS
 var sea_level_value: int = 30
-var local_region_span: float = 6.0
+# Cada mapa local representa exactamente una región transmitida. El valor
+# anterior (6.0) hacía que regiones vecinas se solaparan un 83% y parecieran
+# copias del mismo mapa al cruzar sus bordes.
+var local_region_span: float = 1.0
 
-# Los mapas mundiales usan filas Packed* para que un mundo de 1024² no
+# Los mapas mundiales usan filas Packed* para que un mundo planetario no
 # consuma cientos de megabytes en Variants de GDScript.
 var elevation_map: Array = []
 var rainfall_map: Array = []
@@ -58,7 +73,8 @@ var lore_seed: int = 0
 var civ_lineages: Dictionary = {}
 var world_alignment: String = "Neutral"
 var setting_beast_density: int = 1
-var embark_pos: Vector2i = Vector2i(-1, -1)
+const NO_EMBARK_REGION := Vector2i(2147483647, 2147483647)
+var embark_pos: Vector2i = NO_EMBARK_REGION
 var setting_civ_density: int = 1
 
 var config_tree_density: float = 1.0
@@ -72,7 +88,7 @@ var config_rainfall: float = 1.0
 var config_river_density: float = 1.15
 var config_site_density: float = 1.0
 var config_world_chunk_size: int = 64
-var config_local_map_size: int = 512
+var config_local_map_size: int = 256
 
 func _init(seed_value: int = -1) -> void:
 	rng = RandomNumberGenerator.new()
@@ -131,11 +147,11 @@ func generate(world: Object, seed_value: int = -1, build_local_map_immediately: 
 func _get_world_sample(x: int, z: int, local_w: int, local_d: int) -> Vector2:
 	var safe_w: float = maxf(1.0, float(local_w))
 	var safe_d: float = maxf(1.0, float(local_d))
-	if embark_pos.x >= 0:
+	if embark_pos != NO_EMBARK_REGION:
 		var half_span: float = local_region_span * 0.5
 		var gx: float = float(embark_pos.x) - half_span + ((float(x) + 0.5) / safe_w) * local_region_span
 		var gz: float = float(embark_pos.y) - half_span + ((float(z) + 0.5) / safe_d) * local_region_span
-		return Vector2(clampf(gx, 0.0, float(world_width - 1)), clampf(gz, 0.0, float(world_depth - 1)))
+		return Vector2(fposmod(gx, float(world_width)), fposmod(gz, float(world_depth)))
 	var gx_full: float = ((float(x) + 0.5) / safe_w) * float(world_width - 1)
 	var gz_full: float = ((float(z) + 0.5) / safe_d) * float(world_depth - 1)
 	return Vector2(clampf(gx_full, 0.0, float(world_width - 1)), clampf(gz_full, 0.0, float(world_depth - 1)))
@@ -143,6 +159,26 @@ func _get_world_sample(x: int, z: int, local_w: int, local_d: int) -> Vector2:
 func _get_world_coords(x: int, z: int, local_w: int, local_d: int) -> Vector2i:
 	var sample: Vector2 = _get_world_sample(x, z, local_w, local_d)
 	return Vector2i(clampi(floori(sample.x), 0, world_width - 1), clampi(floori(sample.y), 0, world_depth - 1))
+
+func _get_global_tile_sample(x: int, z: int, local_w: int, local_d: int) -> Vector2:
+	# Coordenadas continuas para el detalle procedural. A diferencia de x/z
+	# locales, no vuelven a cero al entrar en la región vecina.
+	var safe_w: float = maxf(1.0, float(local_w))
+	var safe_d: float = maxf(1.0, float(local_d))
+	if embark_pos != NO_EMBARK_REGION:
+		return Vector2(
+			(float(embark_pos.x) + (float(x) + 0.5) / safe_w) * float(STREAMED_REGION_TILES),
+			(float(embark_pos.y) + (float(z) + 0.5) / safe_d) * float(STREAMED_REGION_TILES)
+		)
+	return Vector2(
+		(float(x) + 0.5) / safe_w * float(MAX_PLANET_TILES_PER_AXIS),
+		(float(z) + 0.5) / safe_d * float(MAX_PLANET_TILES_PER_AXIS)
+	)
+
+func _local_tile_random(x: int, z: int, local_w: int, local_d: int, salt: int) -> float:
+	var global_tile: Vector2 = _get_global_tile_sample(x, z, local_w, local_d)
+	var hashed: int = _coord_hash(floori(global_tile.x), floori(global_tile.y), salt)
+	return float(hashed % 100000) / 100000.0
 
 func _sample_local_elevation(x: int, z: int, local_w: int, local_d: int) -> float:
 	var sample: Vector2 = _get_world_sample(x, z, local_w, local_d)
@@ -163,40 +199,8 @@ func _sample_local_elevation(x: int, z: int, local_w: int, local_d: int) -> floa
 	else:
 		local_height = 2.0 + ((raw_height - float(sea_level_value)) / maxf(1.0, 100.0 - float(sea_level_value))) * 10.0
 	var seed_offset: float = float(int(rng.seed) % 10007)
-	var biome: String = get_biome(x0, z0)
-	var rolling_noise: float = _octave_noise(
-		float(x) + seed_offset,
-		float(z) - seed_offset,
-		4,
-		0.56,
-		52.0
-	)
-	var ridge_noise: float = 1.0 - absf(_octave_noise(
-		float(x) - seed_offset * 0.37,
-		float(z) + seed_offset * 0.61,
-		3,
-		0.52,
-		24.0
-	))
-	var relief_strength: float = 0.75
-	match biome:
-		"mountain", "mountain_forest":
-			relief_strength = 3.4 * config_mountain_strength
-		"alpine_meadow", "badlands":
-			relief_strength = 2.2 * config_mountain_strength
-		"tundra", "taiga":
-			relief_strength = 1.35 * config_mountain_strength
-		"grassland", "savanna":
-			relief_strength = 0.95 * config_mountain_strength
-		"swamp", "beach":
-			relief_strength = 0.35
-	var detail: float = rolling_noise * relief_strength
-	if biome in ["mountain", "mountain_forest", "alpine_meadow", "badlands"]:
-		detail += maxf(0.0, ridge_noise - 0.42) * relief_strength * 1.45
-	# Keep oceans coherent; land receives enough vertical range to form visible
-	# hills, ridges and valleys instead of rounding every tile to the same level.
-	if raw_height <= float(sea_level_value):
-		detail *= 0.18
+	var global_tile: Vector2 = _get_global_tile_sample(x, z, local_w, local_d)
+	var detail: float = _octave_noise(global_tile.x + seed_offset, global_tile.y - seed_offset, 3, 0.55, 34.0) * 0.34
 	return clampf(local_height + detail, 0.0, 12.0)
 
 func _is_local_river(x: int, z: int, local_w: int, local_d: int) -> bool:
@@ -228,10 +232,11 @@ func _is_local_lake(x: int, z: int, local_w: int, local_d: int) -> bool:
 	var coords: Vector2i = _get_world_coords(x, z, local_w, local_d)
 	if not is_lake(coords.x, coords.y):
 		return false
-	var edge_noise: float = _octave_noise(float(x), float(z), 2, 0.5, 18.0) * 0.5 + 0.5
+	var global_tile: Vector2 = _get_global_tile_sample(x, z, local_w, local_d)
+	var edge_noise: float = _octave_noise(global_tile.x, global_tile.y, 2, 0.5, 18.0) * 0.5 + 0.5
 	return edge_noise > 0.18
 
-func generate_local_map(world: Object, embark_pt: Vector2i = Vector2i(-1, -1)) -> void:
+func generate_local_map(world: Object, embark_pt: Vector2i = NO_EMBARK_REGION) -> void:
 	embark_pos = embark_pt
 	world.tiles.clear()
 	world.tile_data.clear()
@@ -244,6 +249,7 @@ func generate_local_map(world: Object, embark_pt: Vector2i = Vector2i(-1, -1)) -
 		world.elevation.append(row)
 
 	_place_terrain_in_local(world)
+	_place_surface_rock_outcrops(world)
 	_place_trees_in_local(world)
 	_place_flora_in_local(world)
 	_place_features_in_local(world)
@@ -251,8 +257,9 @@ func generate_local_map(world: Object, embark_pt: Vector2i = Vector2i(-1, -1)) -
 	_generate_creatures()
 	# Los asentamientos se materializan al final para que árboles, flora y vetas
 	# no reaparezcan dentro de calles, paredes, habitaciones o campos.
-	if embark_pos.x >= 0 and not sites.is_empty():
-		DFWorldSites.materialize_nearby_sites(world, self, embark_pos)
+	if embark_pos != NO_EMBARK_REGION and not sites.is_empty():
+		var site_region := Vector2i(posmod(embark_pos.x, world_width), posmod(embark_pos.y, world_depth))
+		DFWorldSites.materialize_nearby_sites(world, self, site_region)
 
 func _generate_name() -> String:
 	var prefixes = ["Ara", "Bel", "Cal", "Dor", "Ere", "Fal", "Gar", "Hal", "Ith", "Kel",
@@ -344,14 +351,15 @@ func _octave_noise(x: float, y: float, octaves: int, persistence: float, scale: 
 func _generate_elevation() -> void:
 	elevation_map.clear()
 	var plate_count: int = clampi(int(round(sqrt(float(world_width * world_depth)) / 85.0)), 8, 18)
-	var plates: Array = []
+	var plate_centers := PackedVector2Array()
+	var plate_radii := PackedFloat32Array()
+	var plate_uplifts := PackedFloat32Array()
+	var plate_ridges := PackedFloat32Array()
 	for plate_index in range(plate_count):
-		plates.append({
-			"center": Vector2(rng.randf_range(0.08, 0.92), rng.randf_range(0.08, 0.92)),
-			"radius": rng.randf_range(0.18, 0.42),
-			"uplift": rng.randf_range(-0.18, 0.36),
-			"ridge": rng.randf_range(0.4, 1.0)
-		})
+		plate_centers.append(Vector2(rng.randf_range(0.08, 0.92), rng.randf_range(0.08, 0.92)))
+		plate_radii.append(rng.randf_range(0.18, 0.42))
+		plate_uplifts.append(rng.randf_range(-0.18, 0.36))
+		plate_ridges.append(rng.randf_range(0.4, 1.0))
 	for z in range(world_depth):
 		var row := PackedByteArray()
 		row.resize(world_width)
@@ -363,16 +371,17 @@ func _generate_elevation() -> void:
 			var plate_field: float = 0.0
 			var ridge_field: float = 0.0
 			var point := Vector2(nx, nz)
-			for plate_variant in plates:
-				var plate: Dictionary = plate_variant
-				var center: Vector2 = plate["center"]
-				var radius: float = float(plate["radius"])
+			for active_plate_index in range(plate_count):
+				var center: Vector2 = plate_centers[active_plate_index]
+				var radius: float = plate_radii[active_plate_index]
 				var distance: float = point.distance_to(center)
+				if distance > radius:
+					continue
 				var influence: float = clampf(1.0 - distance / radius, 0.0, 1.0)
 				influence = influence * influence * (3.0 - 2.0 * influence)
-				plate_field += influence * float(plate["uplift"])
+				plate_field += influence * plate_uplifts[active_plate_index]
 				var boundary: float = 1.0 - absf(distance - radius * 0.66) / maxf(0.001, radius * 0.24)
-				ridge_field = maxf(ridge_field, clampf(boundary, 0.0, 1.0) * float(plate["ridge"]))
+				ridge_field = maxf(ridge_field, clampf(boundary, 0.0, 1.0) * plate_ridges[active_plate_index])
 			var edge_distance: float = minf(minf(nx, 1.0 - nx), minf(nz, 1.0 - nz))
 			var edge_falloff: float = smoothstep(0.0, 0.095, edge_distance)
 			var ridge_noise: float = 1.0 - absf(_octave_noise(float(x) + 700.0, float(z) + 1300.0, 4, 0.52, float(world_width) * 0.095))
@@ -620,9 +629,9 @@ func _generate_biomes() -> void:
 			var temperature: float = float(temperature_map[z][x])
 			var drainage: float = float(drainage_map[z][x])
 			var biome: String = BIOME_FALLBACK
-			if is_ocean(x, z):
+			if int(elevation_map[z][x]) <= sea_level_value:
 				biome = "ocean_deep" if int(elevation_map[z][x]) < sea_level_value - 9 else "ocean_shallow"
-			elif is_lake(x, z):
+			elif not lake_map.is_empty() and int(lake_map[z][x]) > 0:
 				biome = "lake"
 			elif int(elevation_map[z][x]) <= sea_level_value + 2:
 				biome = "beach" if rain < 0.65 else "swamp"
@@ -668,7 +677,7 @@ func _generate_vegetation() -> void:
 		var row := PackedFloat32Array()
 		row.resize(world_width)
 		for x in range(world_width):
-			var biome: String = get_biome(x, z)
+			var biome: String = str(biome_map[z][x])
 			var rain: float = float(rainfall_map[z][x])
 			var base: float
 			match biome:
@@ -781,7 +790,8 @@ func _generate_aquifers() -> void:
 			var drainage: float = float(drainage_map[z][x])
 			var profile: int = int(geological_map[z][x])
 			var suitable_rock: bool = profile in [0, 4]
-			row[x] = 1 if not is_ocean(x, z) and rain > 0.48 and drainage < 0.72 and (suitable_rock or rain > 0.76) else 0
+			var ocean_cell: bool = int(elevation_map[z][x]) <= sea_level_value
+			row[x] = 1 if not ocean_cell and rain > 0.48 and drainage < 0.72 and (suitable_rock or rain > 0.76) else 0
 		aquifer_map.append(row)
 
 func rebuild_civilized_world() -> void:
@@ -930,24 +940,12 @@ func _place_terrain_in_local(world) -> void:
 				match biome:
 					"desert": tile_type = DFWorld.TileType.SAND; mat = DFWorld.MatType.SAND
 					"beach": tile_type = DFWorld.TileType.SAND; mat = DFWorld.MatType.SAND
-					"swamp": tile_type = DFWorld.TileType.MURKY_POOL if rng.randf() < 0.3 else DFWorld.TileType.GRASS; mat = DFWorld.MatType.SOIL
+					"swamp": tile_type = DFWorld.TileType.MURKY_POOL if _local_tile_random(x, z, world.width, world.depth, 101) < 0.3 else DFWorld.TileType.GRASS; mat = DFWorld.MatType.SOIL
 					"badlands": tile_type = DFWorld.TileType.DIRT; mat = DFWorld.MatType.CLAY
 					"tundra": tile_type = DFWorld.TileType.SNOW; mat = DFWorld.MatType.SOIL
 					"glacier": tile_type = DFWorld.TileType.ICE; mat = DFWorld.MatType.WATER
-					"mountain":
-						tile_type = DFWorld.TileType.STONE_FLOOR
-						mat = _geo_to_material(_get_geology_layers(wx, wz)[0])
-					"mountain_forest":
-						var exposed_mountain_rock := h >= 7 or _octave_noise(float(x), float(z), 2, 0.5, 15.0) > 0.28
-						tile_type = DFWorld.TileType.STONE_FLOOR if exposed_mountain_rock else DFWorld.TileType.GRASS
-						mat = _geo_to_material(_get_geology_layers(wx, wz)[0]) if exposed_mountain_rock else DFWorld.MatType.SOIL
-					"alpine_meadow":
-						var exposed_alpine_rock := h >= 8 or _octave_noise(float(x), float(z), 2, 0.5, 19.0) > 0.48
-						tile_type = DFWorld.TileType.STONE_FLOOR if exposed_alpine_rock else DFWorld.TileType.GRASS
-						mat = _geo_to_material(_get_geology_layers(wx, wz)[0]) if exposed_alpine_rock else DFWorld.MatType.SOIL
-					"taiga":
-						tile_type = DFWorld.TileType.STONE_FLOOR if h >= 9 else DFWorld.TileType.GRASS
-						mat = _geo_to_material(_get_geology_layers(wx, wz)[0]) if h >= 9 else DFWorld.MatType.SOIL
+					"alpine_meadow": tile_type = DFWorld.TileType.GRASS; mat = DFWorld.MatType.SOIL
+					"taiga": tile_type = DFWorld.TileType.GRASS; mat = DFWorld.MatType.SOIL
 					_: tile_type = DFWorld.TileType.GRASS; mat = DFWorld.MatType.SOIL
 
 			if (is_river or is_lake_tile) and h > 2:
@@ -987,11 +985,12 @@ func _place_terrain_in_local(world) -> void:
 						world.set_material(upos, geo_mat)
 					else:
 						# Carve caves using 3D pseudo-noise
-						var cave_noise = _octave_noise(float(x) + float(y) * 0.7, float(z) + float(y) * 1.3, 2, 0.5, 16.0) + 0.5
+						var global_cave_tile: Vector2 = _get_global_tile_sample(x, z, world.width, world.depth)
+						var cave_noise = _octave_noise(global_cave_tile.x + float(y) * 0.7, global_cave_tile.y + float(y) * 1.3, 2, 0.5, 16.0) + 0.5
 						var is_cave = cave_noise > (0.6 - config_hidden_mines_chance * 0.5)
 						
 						if is_cave:
-							if is_aquifer and rng.randf() < 0.25:
+							if is_aquifer and _local_tile_random(x, z, world.width, world.depth, 200 + y) < 0.25:
 								world.set_tile(upos, DFWorld.TileType.WATER_SHALLOW)
 								world.set_material(upos, DFWorld.MatType.WATER)
 								world.tile_data[upos] = {"aquifer": true, "layer": geo_layers[mini(geo_idx, geo_layers.size() - 1)]}
@@ -1028,6 +1027,37 @@ func _geo_to_material(geo: String) -> int:
 		"OBSIDIAN": return DFWorld.MatType.OBSIDIAN
 		_: return DFWorld.MatType.STONE
 
+func _place_surface_rock_outcrops(world) -> void:
+	# Afloramientos visibles, agrupados y explotables. Antes toda la geología
+	# quedaba enterrada, así que el mapa superficial parecía contener solo árboles.
+	for z in range(2, world.depth - 2):
+		for x in range(2, world.width - 2):
+			var surface_y: int = world.get_surface_height(x, z)
+			if surface_y < 3 or surface_y > 9:
+				continue
+			var surface_pos := Vector3i(x, surface_y, z)
+			if world.get_tile(surface_pos) not in [
+				DFWorld.TileType.GRASS,
+				DFWorld.TileType.DIRT,
+				DFWorld.TileType.SNOW,
+				DFWorld.TileType.SOIL,
+			]:
+				continue
+			var global_rock_tile: Vector2 = _get_global_tile_sample(x, z, world.width, world.depth)
+			var broad_noise: float = _octave_noise(global_rock_tile.x + 2211.0, global_rock_tile.y - 903.0, 3, 0.55, 21.0) * 0.5 + 0.5
+			var detail_noise: float = _octave_noise(global_rock_tile.x - 177.0, global_rock_tile.y + 419.0, 2, 0.5, 5.0) * 0.5 + 0.5
+			if broad_noise < 0.71 or detail_noise < 0.58:
+				continue
+			var world_coords: Vector2i = _get_world_coords(x, z, world.width, world.depth)
+			var geology: Array[String] = _get_geology_layers(world_coords.x, world_coords.y)
+			var rock_layer: String = geology[mini(1, geology.size() - 1)] if not geology.is_empty() else "STONE"
+			world.set_tile(surface_pos, DFWorld.TileType.WALL)
+			world.set_material(surface_pos, _geo_to_material(rock_layer))
+			world.tile_data[surface_pos] = {
+				"natural_outcrop": true,
+				"layer": rock_layer,
+			}
+
 func _place_trees_in_local(world) -> void:
 	for z in range(world.depth):
 		for x in range(world.width):
@@ -1039,18 +1069,11 @@ func _place_trees_in_local(world) -> void:
 			if veg <= 0 or h < 2 or h > 8: continue
 			if world.get_tile(Vector3i(x, h, z)) != DFWorld.TileType.GRASS: continue
 			var chance = veg * 0.4 * config_tree_density
-			if rng.randf() < chance and _check_tree_spacing(world, x, h, z, config_tree_spacing):
+			if _local_tile_random(x, z, world.width, world.depth, 301) < chance and _check_tree_spacing(world, x, h, z, config_tree_spacing):
 				world.set_tile(Vector3i(x, h, z), DFWorld.TileType.TREE)
 				world.set_material(Vector3i(x, h, z), DFWorld.MatType.WOOD)
 
 func _place_flora_in_local(world) -> void:
-	# La flora silvestre debe ser visible sin convertir miles de plantas en
-	# entidades activas. El presupuesto escala con el mapa y mantiene estable
-	# el coste del ciclo de simulación.
-	var surface_budget: int = clampi(int(world.width * world.depth / 112), 180, 640)
-	var cave_budget: int = clampi(int(world.width * world.depth / 320), 48, 220)
-	var surface_count: int = 0
-	var cave_count: int = 0
 	for z in range(world.depth):
 		for x in range(world.width):
 			var coords = _get_world_coords(x, z, world.width, world.depth)
@@ -1060,50 +1083,21 @@ func _place_flora_in_local(world) -> void:
 			var h = world.get_surface_height(x, z)
 			
 			# 1. Flora superficial
-			if h >= 2 and h <= 12:
+			if h >= 2 and h <= 8:
 				var pos = Vector3i(x, h, z)
 				var t = world.get_tile(pos)
 				if t == DFWorld.TileType.GRASS or t == DFWorld.TileType.SAND:
-					var flora_chance: float = config_cactus_chance if biome in ["desert", "beach"] else config_berry_bush_chance
-					if surface_count < surface_budget and rng.randf() < flora_chance * 0.18:
-						var flora: Dictionary = _surface_flora_for_biome(biome)
-						if not flora.is_empty():
-							world._spawn_item(
-								pos,
-								str(flora["name"]),
-								str(flora["type"]),
-								int(flora["material"]),
-								str(flora["glyph"]),
-								flora["color"] as Color
-							)
-							surface_count += 1
+					if _local_tile_random(x, z, world.width, world.depth, 401) < config_cactus_chance and (biome == "desert" or biome == "beach"):
+						world._spawn_item(pos, "Cactus", "wood", DFWorld.MatType.WOOD, "♣", Color("#88FF88"))
+					elif _local_tile_random(x, z, world.width, world.depth, 402) < config_berry_bush_chance and biome in ["grassland", "alpine_meadow", "taiga", "swamp"]:
+						world._spawn_item(pos, "Arbusto de Bayas", "food", 0, "*", Color("#FF5555"))
 							
 			# 2. Flora subterránea
-			if cave_count >= cave_budget:
-				continue
 			for y in range(h - 1, -8, -1):
 				var pos_c = Vector3i(x, y, z)
 				if world.get_tile(pos_c) == DFWorld.TileType.CAVE_FLOOR:
-					if rng.randf() < 0.002:
+					if _local_tile_random(x, z, world.width, world.depth, 500 + y) < 0.02:
 						world._spawn_item(pos_c, "Plump Helmet Silvestre", "food", 0, "%", Color("#FF88FF"))
-						cave_count += 1
-						break
-
-
-func _surface_flora_for_biome(biome: String) -> Dictionary:
-	match biome:
-		"desert", "beach":
-			return {"name": "Cactus", "type": "wood", "material": DFWorld.MatType.WOOD, "glyph": "♣", "color": Color("#6FAF55")}
-		"swamp":
-			return {"name": "Junco Silvestre", "type": "plant", "material": DFWorld.MatType.SOIL, "glyph": ";", "color": Color("#76A85B")}
-		"taiga", "pine_forest", "mountain_forest":
-			return {"name": "Helecho", "type": "plant", "material": DFWorld.MatType.SOIL, "glyph": "♣", "color": Color("#4F9A5B")}
-		"temperate_forest", "dense_temperate_forest", "rainforest":
-			return {"name": "Matorral Silvestre", "type": "plant", "material": DFWorld.MatType.SOIL, "glyph": "♣", "color": Color("#42A85A")}
-		"grassland", "savanna", "alpine_meadow":
-			return {"name": "Flores Silvestres", "type": "plant", "material": DFWorld.MatType.SOIL, "glyph": "*", "color": Color("#E4C95B")}
-		_:
-			return {}
 
 func _check_tree_spacing(world, x: int, y: int, z: int, min_dist: int) -> bool:
 	for dz in range(-min_dist, min_dist + 1):
@@ -1156,7 +1150,7 @@ func _place_ore_in_local(world) -> void:
 
 func _generate_creatures() -> void:
 	creatures.clear()
-	if embark_pos.x < 0:
+	if embark_pos == NO_EMBARK_REGION:
 		return
 	var data := DFData.new(rng.seed)
 	var all_creatures: Array = data.creatures
@@ -1166,8 +1160,8 @@ func _generate_creatures() -> void:
 	# El mundo gigantesco no mantiene millones de animales activos.
 	var attempts: int = clampi(18 * setting_beast_density, 12, 72)
 	for attempt in range(attempts):
-		var wx: int = clampi(embark_pos.x + rng.randi_range(-4, 4), 0, world_width - 1)
-		var wz: int = clampi(embark_pos.y + rng.randi_range(-4, 4), 0, world_depth - 1)
+		var wx: int = posmod(embark_pos.x + rng.randi_range(-4, 4), world_width)
+		var wz: int = posmod(embark_pos.y + rng.randi_range(-4, 4), world_depth)
 		if is_ocean(wx, wz) or is_lake(wx, wz):
 			continue
 		var creature_variant: Variant = all_creatures[rng.randi() % all_creatures.size()]

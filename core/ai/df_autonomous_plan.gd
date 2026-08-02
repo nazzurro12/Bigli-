@@ -1,6 +1,8 @@
 extends RefCounted
 class_name DFAutonomousPlan
 
+const MAX_STEP_FAILURES: int = 3
+
 static func create(goal: String, reason: String, steps: Array, target: Vector3i = Vector3i(-1, -1, -1)) -> Dictionary:
 	return {
 		"goal": goal,
@@ -19,6 +21,9 @@ static func is_active(plan: Dictionary) -> bool:
 
 static func is_complete(plan: Dictionary) -> bool:
 	return not plan.is_empty() and plan.get("state", "") == "completed"
+
+static func is_failed(plan: Dictionary) -> bool:
+	return not plan.is_empty() and plan.get("state", "") == "failed"
 
 static func current_step(plan: Dictionary) -> Dictionary:
 	if plan.is_empty():
@@ -44,6 +49,8 @@ static func fail_step(plan: Dictionary, reason: String) -> void:
 		return
 	plan["failures"] = int(plan.get("failures", 0)) + 1
 	plan["last_failure"] = reason
+	if int(plan["failures"]) >= MAX_STEP_FAILURES:
+		plan["state"] = "failed"
 
 static func replace_target(plan: Dictionary, target: Vector3i) -> void:
 	if plan.is_empty():

@@ -34,7 +34,15 @@ func get_candidate_tiles(
 	if world == null or max_candidates <= 0:
 		return candidates
 
-	# 1. Apilar junto a objetos del mismo tipo.
+	# 1. Los cofres físicos tienen prioridad sobre dejar pilas en el suelo.
+	for container_tile_value: Variant in tiles:
+		var container_pos: Vector3i = container_tile_value
+		if _tile_has_capacity(world, container_pos) and _is_container_tile(world, container_pos):
+			_append_unique_candidate(candidates, container_pos, max_candidates)
+			if candidates.size() >= max_candidates:
+				return candidates
+
+	# 2. Apilar junto a objetos del mismo tipo.
 	if not preferred_item_type.is_empty():
 		for same_type_tile_value: Variant in tiles:
 			var same_type_pos: Vector3i = same_type_tile_value
@@ -43,7 +51,7 @@ func get_candidate_tiles(
 				if candidates.size() >= max_candidates:
 					return candidates
 
-	# 2. Comida y bebida prefieren estanterías físicas.
+	# 3. Comida y bebida prefieren estanterías físicas.
 	if preferred_item_type in ["food", "drink", "meat", "fish"]:
 		for shelf_tile_value: Variant in tiles:
 			var shelf_pos: Vector3i = shelf_tile_value
@@ -52,7 +60,7 @@ func get_candidate_tiles(
 				if candidates.size() >= max_candidates:
 					return candidates
 
-	# 3. Cualquier suelo interior con capacidad.
+	# 4. Cualquier suelo interior con capacidad.
 	for free_tile_value: Variant in tiles:
 		var free_pos: Vector3i = free_tile_value
 		if _tile_has_capacity(world, free_pos):
@@ -75,8 +83,14 @@ func _tile_has_capacity(world: Object, pos: Vector3i) -> bool:
 	return world.is_floor(pos) and not world.is_blocked(pos) and _count_items_at(world, pos) < MAX_ITEMS_PER_TILE
 
 func _tile_contains_item_type(world: Object, pos: Vector3i, item_type: String) -> bool:
-	for entity: Variant in world.entities:
-		if entity is DFItem and entity.tile_pos == pos and entity.is_in_stockpile and entity.item_type == item_type:
+	for entity: Variant in world.get_items_at(pos):
+		if entity is DFItem and entity.is_in_stockpile and entity.item_type == item_type:
+			return true
+	return false
+
+func _is_container_tile(world: Object, pos: Vector3i) -> bool:
+	for entity: Variant in world.get_items_at(pos):
+		if entity is DFItem and entity.is_container and entity.contained_volume < entity.container_volume:
 			return true
 	return false
 
@@ -88,8 +102,8 @@ func _is_shelf_tile(world: Object, pos: Vector3i) -> bool:
 
 func _count_items_at(world: Object, pos: Vector3i) -> int:
 	var count: int = 0
-	for entity: Variant in world.entities:
-		if entity is DFItem and entity.tile_pos == pos and entity.is_in_stockpile:
+	for entity: Variant in world.get_items_at(pos):
+		if entity is DFItem and entity.is_in_stockpile:
 			count += maxi(1, entity.stack_size)
 	return count
 

@@ -4,19 +4,19 @@ class_name DFBuilding
 # Tipos de edificio
 enum BuildingType {
 	NONE,
-	SMELTER,      # Fundicion
-	WORKSHOP,     # Taller generico
+	SMELTER,      # Fundición
+	WORKSHOP,     # Taller genérico
 	KITCHEN,      # Cocina
-	STILL,        # Destileria
-	MASONRY,      # Albanileria
-	CARPENTRY,    # Carpinteria
+	STILL,        # Destilería
+	MASONRY,      # Albañilería
+	CARPENTRY,    # Carpintería
 	FORGE,        # Forja
 	LOOM,         # Telar
 	TANNER,       # Curtiembre
-	JEWELER,      # Joyeria
-	CRAFT_SHOP,   # Artesania
+	JEWELER,      # Joyería
+	CRAFT_SHOP,   # Artesanía
 	BEDROOM,      # Dormitorio
-	STOCKPILE,    # Almacen
+	STOCKPILE,    # Almacén
 	DINING_HALL,  # Comedor
 	BARRACK,      # Barracas
 	TEMPLE,       # Templo
@@ -24,63 +24,55 @@ enum BuildingType {
 	BRIDGE,       # Puente levadizo
 	CAMPFIRE,     # Fogata
 	FOOD_STORE,   # Estante/Barrel/Caja que preserva comida
-	POTTERY,      # Alfareria
-	GRAVE,        # Tumba / Lapida
-	PRISON,       # Celda de prision
-	CHAIN,        # Cadena / Grillo para prisionero
-	COURTROOM,    # Sala de justicia
+	LATRINE,
+	WATER_WELL,
+	PRISON,
+	CHAIN
 }
-
 const BUILDING_NAMES = {
-	BuildingType.SMELTER: "Fundicion",
+	BuildingType.SMELTER: "Fundición",
 	BuildingType.WORKSHOP: "Taller",
 	BuildingType.KITCHEN: "Cocina",
-	BuildingType.STILL: "Destileria",
-	BuildingType.MASONRY: "Albanileria",
-	BuildingType.CARPENTRY: "Carpinteria",
+	BuildingType.STILL: "Destilería",
+	BuildingType.MASONRY: "Albañilería",
+	BuildingType.CARPENTRY: "Carpintería",
 	BuildingType.FORGE: "Forja",
 	BuildingType.LOOM: "Telar",
 	BuildingType.TANNER: "Curtiembre",
 	BuildingType.JEWELER: "Joyero",
-	BuildingType.CRAFT_SHOP: "Artesania",
+	BuildingType.CRAFT_SHOP: "Artesanía",
 	BuildingType.BEDROOM: "Dormitorio",
-	BuildingType.STOCKPILE: "Gran Almacen",
+	BuildingType.STOCKPILE: "Gran Almacén",
 	BuildingType.DINING_HALL: "Comedor",
 	BuildingType.BARRACK: "Barracas",
 	BuildingType.TEMPLE: "Templo",
 	BuildingType.CAMPFIRE: "Fogata",
-	BuildingType.FOOD_STORE: "Almacen de Comida",
-	BuildingType.POTTERY: "Alfareria",
-	BuildingType.GRAVE: "Tumba",
-	BuildingType.PRISON: "Celda",
-	BuildingType.CHAIN: "Cadena",
-	BuildingType.COURTROOM: "Juzgado",
+	BuildingType.FOOD_STORE: "Almacén de Comida",
+	BuildingType.LATRINE: "Letrina",
+	BuildingType.WATER_WELL: "Pozo Comunal",
 }
 
 const BUILDING_GLYPHS = {
-	BuildingType.SMELTER: char(0x2642),
-	BuildingType.WORKSHOP: char(0x263A),
-	BuildingType.KITCHEN: char(0x2660),
-	BuildingType.STILL: char(0x2663),
-	BuildingType.MASONRY: char(0x2666),
-	BuildingType.CARPENTRY: char(0x266B),
-	BuildingType.FORGE: char(0x263C),
-	BuildingType.LOOM: char(0x2660),
-	BuildingType.TANNER: char(0x2660),
-	BuildingType.JEWELER: char(0x2666),
-	BuildingType.CRAFT_SHOP: char(0x266B),
-	BuildingType.BEDROOM: char(0x263A),
-	BuildingType.STOCKPILE: char(0x25A4),
-	BuildingType.DINING_HALL: char(0x266B),
-	BuildingType.BARRACK: char(0x263B),
-	BuildingType.TEMPLE: char(0x263C),
-	BuildingType.CAMPFIRE: char(0x00A4),
-	BuildingType.FOOD_STORE: char(0x2593),
-	BuildingType.POTTERY: "P",
-	BuildingType.GRAVE: char(0x2020),
-	BuildingType.PRISON: char(0x25A2),
-	BuildingType.CHAIN: char(0x00A7),
-	BuildingType.COURTROOM: char(0x2696),
+	BuildingType.SMELTER: "S",
+	BuildingType.WORKSHOP: "T",
+	BuildingType.KITCHEN: "K",
+	BuildingType.STILL: "D",
+	BuildingType.MASONRY: "M",
+	BuildingType.CARPENTRY: "C",
+	BuildingType.FORGE: "F",
+	BuildingType.LOOM: "L",
+	BuildingType.TANNER: "P",
+	BuildingType.JEWELER: "J",
+	BuildingType.CRAFT_SHOP: "A",
+	BuildingType.BEDROOM: "B",
+	BuildingType.STOCKPILE: "X",
+	BuildingType.DINING_HALL: "Q",
+	BuildingType.BARRACK: "R",
+	BuildingType.TEMPLE: "T",
+	BuildingType.CAMPFIRE: "*",
+	BuildingType.FOOD_STORE: "O",
+	BuildingType.LATRINE: "L",
+	BuildingType.WATER_WELL: "W",
 }
 
 const BUILDING_COLORS = {
@@ -102,11 +94,8 @@ const BUILDING_COLORS = {
 	BuildingType.TEMPLE: Color("#FFFFFF"),
 	BuildingType.CAMPFIRE: Color("#FF5500"),
 	BuildingType.FOOD_STORE: Color("#BB8844"),
-	BuildingType.POTTERY: Color("#CC8844"),
-	BuildingType.GRAVE: Color("#CCCCCC"),
-	BuildingType.PRISON: Color("#888888"),
-	BuildingType.CHAIN: Color("#AAAAAA"),
-	BuildingType.COURTROOM: Color("#D4AF37"),
+	BuildingType.LATRINE: Color("#8B7355"),
+	BuildingType.WATER_WELL: Color("#4FA3D1"),
 }
 
 # Dimensiones (ancho, profundidad)
@@ -122,24 +111,63 @@ const BUILDING_SIZES = {
 	BuildingType.TEMPLE: Vector3i(5, 0, 5),
 	BuildingType.CAMPFIRE: Vector3i(1, 0, 1),
 	BuildingType.FOOD_STORE: Vector3i(1, 0, 1),
-	BuildingType.GRAVE: Vector3i(1, 0, 1),
-	BuildingType.PRISON: Vector3i(1, 0, 1),
-	BuildingType.CHAIN: Vector3i(1, 0, 1),
-	BuildingType.COURTROOM: Vector3i(3, 0, 3),
+	BuildingType.LATRINE: Vector3i(1, 0, 1),
+	BuildingType.WATER_WELL: Vector3i(1, 0, 1),
 }
 
 var type: int = BuildingType.WORKSHOP
 var tile_pos: Vector3i
 var size: Vector3i = Vector3i(3, 0, 3)
-var is_constructed: bool = false
+var is_constructed: bool = true  # Ya construido por defecto
 var name: String = ""
+var sanitation_load: float = 0.0
+var sanitation_capacity: float = 20.0
+var water_volume: float = 0.0
+var water_capacity: float = 80.0
+var water_contamination: float = 0.0
 
-func _init(b_type: int, pos: Vector3i, constructed: bool = false):
+func has_sanitation_capacity(amount: float = 0.0) -> bool:
+	return type == BuildingType.LATRINE and sanitation_load + amount <= sanitation_capacity
+
+func add_sanitation_waste(amount: float) -> bool:
+	if not has_sanitation_capacity(amount):
+		return false
+	sanitation_load += maxf(0.0, amount)
+	return true
+
+func remove_sanitation_waste(max_amount: float) -> float:
+	if type != BuildingType.LATRINE or max_amount <= 0.0:
+		return 0.0
+	var removed: float = minf(sanitation_load, max_amount)
+	sanitation_load = maxf(0.0, sanitation_load - removed)
+	return removed
+
+func get_sanitation_fill_ratio() -> float:
+	return sanitation_load / maxf(0.01, sanitation_capacity)
+
+func draw_water(liters: float) -> Dictionary:
+	if type != BuildingType.WATER_WELL or liters <= 0.0 or water_volume <= 0.0:
+		return {"amount": 0.0, "contamination": water_contamination}
+	var amount: float = minf(liters, water_volume)
+	water_volume -= amount
+	return {"amount": amount, "contamination": water_contamination}
+
+func recharge_water(amount: float, local_contamination: float) -> void:
+	if type != BuildingType.WATER_WELL:
+		return
+	water_volume = minf(water_capacity, water_volume + maxf(0.0, amount))
+	water_contamination = lerpf(
+		water_contamination,
+		clampf(local_contamination, 0.0, 1.0),
+		0.08
+	)
+
+func _init(b_type: int, pos: Vector3i):
 	type = b_type
 	tile_pos = pos
 	size = BUILDING_SIZES.get(b_type, Vector3i(3, 0, 3))
 	name = BUILDING_NAMES.get(b_type, "Edificio")
-	is_constructed = constructed
+	is_constructed = true
 
 func is_inside(pos: Vector3i) -> bool:
 	if pos.y != tile_pos.y:
@@ -147,6 +175,7 @@ func is_inside(pos: Vector3i) -> bool:
 	var dx: int = pos.x - tile_pos.x
 	var dz: int = pos.z - tile_pos.z
 	if type == BuildingType.STOCKPILE:
+		# El gran almacén se registra por su centro: interior -10..9 en ambos ejes.
 		return dx >= -10 and dx <= 9 and dz >= -10 and dz <= 9
 	return dx >= 0 and dx < size.x and dz >= 0 and dz < size.z
 

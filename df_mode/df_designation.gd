@@ -217,7 +217,10 @@ func _is_valid_for_job(pos: Vector3i, job_type: int) -> bool:
 		DFJob.JobType.BUILD_WALL:
 			return world.is_floor(pos) or world.is_open_space(pos)
 		DFJob.JobType.BUILD_FLOOR:
-			return world.is_open_space(pos) or world.get_tile(pos) == DFWorld.TileType.CAVE_WALL
+			return (
+				world.get_tile(pos) != DFWorld.TileType.CONSTRUCTED_FLOOR
+				and (world.is_open_space(pos) or world.is_wall(pos) or world.is_floor(pos))
+			)
 		DFJob.JobType.BUILD_STAIRS_UP:
 			return world.is_wall(pos) or world.is_floor(pos)
 		DFJob.JobType.BUILD_STAIRS_DOWN:

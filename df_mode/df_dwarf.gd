@@ -4,7 +4,10 @@ class_name DFDwarf
 # Carga diferida para romper dependencia circular con df_job.gd
 const DFActorActionExecutor = preload("res://core/actions/df_actor_action_executor.gd")
 const DFAutonomousPlan = preload("res://core/ai/df_autonomous_plan.gd")
-const DFDwarfPsychology = preload("res://df_mode/core/simulation/dwarf_psychology.gd")
+
+# Reparte únicamente los cálculos de rutas nuevas. Una ruta ya calculada continúa
+# moviéndose cada tick, por lo que esto reduce picos sin robotizar el movimiento.
+const PATH_REQUEST_BUCKETS: int = 4
 
 enum Skill {
 	MINING, CARPENTRY, MASONRY, SMITHING, COOKING, BREWING, FARMING, FISHING,
@@ -77,16 +80,6 @@ var home_z: int = 0
 # Indica si el habitante fue materializado desde un asentamiento del mapa mundial.
 # Los habitantes normales de la colonia conservan el valor false.
 var is_world_settlement_resident: bool = false
-var settlement_site_id: int = -1
-var settlement_family_id: int = -1
-var home_structure_id: int = -1
-var work_structure_id: int = -1
-var civilization_id: int = -1
-var religion_id: int = -1
-var settlement_home_position: Vector3i = Vector3i(-1, -1, -1)
-var settlement_work_position: Vector3i = Vector3i(-1, -1, -1)
-var settlement_leisure_position: Vector3i = Vector3i(-1, -1, -1)
-var settlement_work_label: String = "Trabajando"
 var is_possessed: bool = false
 var body: Object = null
 var name: String = "Urist"
@@ -103,6 +96,7 @@ var health: float = 1.0
 var inventory: Array = []
 var thoughts: Array = []
 var minutes_since_alcohol: int = 0
+var simulation_minute: int = 0
 
 var skills: Dictionary = {}
 var current_task: String = "idle"
@@ -128,14 +122,11 @@ var path: Array = []
 var path_index: int = 0
 var last_pos: Vector3i = Vector3i(-1, -1, -1)
 var stuck_counter: int = 0
+var path_replan_count: int = 0
 var move_tick_counter: int = 0
 var speed: float = 1.0
 var has_moved_this_tick: bool = false
 var needs_display_update: bool = true
-
-var coins: int = 15
-var digestion_level: float = 0.0
-var latrine_need: float = 0.0
 
 var strength: float = 5.0 + randi() % 8
 var agility: float = 5.0 + randi() % 8
@@ -191,22 +182,6 @@ var relationships: Dictionary = {}
 var family: Dictionary = { "mother": -1, "father": -1, "spouse": -1, "children": [] }
 var friends: Array = []
 var rivals: Array = []
-var reputation: Dictionary = {}
-var life_history: Array = []
-var career_offers: Array = []
-var social_roles: Array = []
-var known_reputations: Dictionary = {}
-var rumors: Array = []
-var legal_record: Array = []
-var is_arrested: bool = false
-var is_imprisoned: bool = false
-var prison_cell: Vector3i = Vector3i(-1, -1, -1)
-var sentence_remaining: int = 0
-var sentence_type: String = ""
-var crimes_convicted: int = 0
-var life_decisions: Array = []
-var possession_count: int = 0
-var last_possession_event_id: int = -1
 
 var preferences: Dictionary = {}
 var memories: Array = []
@@ -221,6 +196,12 @@ var needs: Dictionary = {}
 var mood: int = MoodState.NORMAL
 var mood_counter: int = 0
 var tantrum_destruction: int = 0
+var crisis_pressure: float = 0.0
+var last_crisis_evaluation_minute: int = -1
+var crisis_reason: String = ""
+var berserk_bonus_applied: bool = false
+const CRISIS_GRACE_MINUTES: int = 1440
+const CRISIS_PRESSURE_REQUIRED: float = 360.0
 
 var profession: int = Profession.MINER
 var appointed_position: String = ""
@@ -242,6 +223,12 @@ var room_quality: float = 0.0
 var social_timer: float = 0.0
 var last_social_interaction: int = 0
 var loneliness: float = 0.0
+var social_beliefs: Array = []
+var social_reputation: Dictionary = {}
+var last_belief_decay_day: int = -1
+var conversations_held: int = 0
+const MAX_SOCIAL_BELIEFS: int = 24
+const BELIEF_FORGET_DAYS: int = 30
 
 var prayer_timer: float = 0.0
 var favored_deity: String = ""
@@ -292,6 +279,15 @@ var is_bleeding: bool = false
 var infection_chance: float = 0.0
 var has_infection: bool = false
 var rest_timer: float = 0.0
+enum DiseasePhase { HEALTHY, INCUBATING, SYMPTOMATIC, RECOVERING }
+var disease_phase: int = DiseasePhase.HEALTHY
+var disease_progress: float = 0.0
+var disease_severity: float = 0.0
+var pathogen_exposure: float = 0.0
+var immune_strength: float = 0.5
+var acquired_immunity: float = 0.0
+var recovery_streak: int = 0
+var fever: float = 0.0
 
 var nausea: float = 0.0
 var is_vomiting: bool = false
@@ -315,6 +311,21 @@ var socialized_recently: bool = false
 ## --- GENETICS & BODY COMPOSITION ---
 var genome: RefCounted = null  # DFGenetics.Genome, set on spawn
 var body_mass_kg: float = 70.0  # base dwarf mass in kg (modified by genome.size_multiplier)
+var meals_today: int = 0
+var water_liters_today: float = 0.0
+var daily_protein: float = 0.0
+var daily_carbohydrates: float = 0.0
+var daily_fat: float = 0.0
+var daily_fiber: float = 0.0
+var daily_micronutrients: float = 0.0
+var nutrition_quality: float = 0.75
+var bladder_fill: float = 0.0
+var bowel_fill: float = 0.0
+var physical_condition: float = 0.5
+var education_level: float = 0.0
+var chronic_health: float = 1.0
+var last_physiology_day: int = -1
+var physiology_status: String = "Estable"
 
 ## --- REPRODUCTION ---
 var is_pregnant: bool = false
@@ -329,7 +340,6 @@ func _init(pos: Vector3i, dwarf_name: String = ""):
 	tile_pos = pos
 	id = _id_counter
 	_id_counter += 1
-	move_tick_counter = (id * 17 + (randi() % 5)) % 3
 	body = DFAnatomy.Body.new("humanoid")
 	genome = DFGenetics.Genome.new(1.0, 1.0, 1.0, 1.0).mutate(0.05, 0.1)
 	body_mass_kg = 70.0 * genome.size_multiplier
@@ -384,6 +394,7 @@ func get_skill_level(skill: int) -> int:
 	return skills.get(skill, 0)
 
 func add_skill_xp(skill: int, amount: int) -> void:
+	education_level = minf(1.0, education_level + float(maxi(0, amount)) * 0.0005)
 	var current = skills.get(skill, 0)
 	if randi() % 100 < amount:
 		skills[skill] = current + 1
@@ -455,31 +466,159 @@ func add_memory(category: String, text: String, intensity: float = 0.5) -> void:
 	memories.append(memory)
 	if memories.size() > 100:
 		memories.pop_front()
+	_learn_social_belief(category, id, text, intensity, id, true)
 
 func _get_turn_count() -> int:
-	return Time.get_ticks_msec()
+	return simulation_minute
 
 func has_relationship_with(other_id: int) -> bool:
 	return relationships.has(other_id)
 
 func get_relationship_value(other_id: int) -> float:
-	return relationships.get(other_id, 0.0)
+	return _normalized_relationship_value(relationships.get(other_id, 0.0))
 
 func modify_relationship(other_id: int, delta: float) -> void:
-	var current = relationships.get(other_id, 0.0)
-	relationships[other_id] = clampf(current + delta, -1.0, 1.0)
+	var current = get_relationship_value(other_id)
+	var updated: float = clampf(current + delta, -1.0, 1.0)
+	relationships[other_id] = updated
+	if updated >= 0.55:
+		if not friends.has(other_id):
+			friends.append(other_id)
+		rivals.erase(other_id)
+	elif updated <= -0.45:
+		if not rivals.has(other_id):
+			rivals.append(other_id)
+		friends.erase(other_id)
+	else:
+		friends.erase(other_id)
+		rivals.erase(other_id)
+
+func _normalized_relationship_value(raw_value) -> float:
+	var value: float = float(raw_value)
+	# Las primeras partidas guardaban afinidad como 60..99 aunque el resto del
+	# sistema usa -1..1. Se migra al leer sin romper partidas antiguas.
+	if value > 1.0:
+		return clampf((value - 50.0) / 50.0, -1.0, 1.0)
+	return clampf(value, -1.0, 1.0)
 
 func update_emotions() -> void:
-	DFDwarfPsychology.update_emotions(self, Emotion, MoodState)
+	var stress_factor = stress
+	var need_penalty = 0.0
+	var critical_needs = 0
+	for n in needs.values():
+		if n > 0.7:
+			need_penalty += n * 0.1
+		if n > 0.85:
+			critical_needs += 1
+
+	var total_unhappiness = stress_factor * 0.3 + need_penalty + (1.0 - happiness) * 0.5
+
+	if total_unhappiness > 0.8:
+		current_emotion = Emotion.ANGRY
+		emotion_intensity = total_unhappiness
+	elif total_unhappiness > 0.5:
+		current_emotion = Emotion.SAD
+		emotion_intensity = total_unhappiness
+	elif total_unhappiness < 0.2 and happiness > 0.7:
+		current_emotion = Emotion.HAPPY
+		emotion_intensity = 1.0 - total_unhappiness
+	else:
+		current_emotion = Emotion.CONTENT
+		emotion_intensity = 0.5
+
+	# Las crisis son consecuencias de privaciones graves sostenidas, no una
+	# lotería ejecutada varias veces por segundo.
+	if simulation_minute == last_crisis_evaluation_minute:
+		return
+	last_crisis_evaluation_minute = simulation_minute
+	var severe_distress = stress >= 0.80 and happiness <= 0.30 and critical_needs >= 2
+	if severe_distress:
+		crisis_pressure = minf(CRISIS_PRESSURE_REQUIRED * 2.0, crisis_pressure + 1.0)
+		crisis_reason = "estrés extremo y %d necesidades críticas" % critical_needs
+	else:
+		crisis_pressure = maxf(0.0, crisis_pressure - 2.0)
+		if crisis_pressure <= 0.0:
+			crisis_reason = ""
+
+	if (
+		mood == MoodState.NORMAL
+		and simulation_minute >= CRISIS_GRACE_MINUTES
+		and crisis_pressure >= CRISIS_PRESSURE_REQUIRED
+	):
+		var violent_disposition = get_trait(PersonalityTrait.VIOLENCE)
+		var anger_disposition = get_trait(PersonalityTrait.ANGER)
+		var can_go_berserk = violent_disposition >= 0.85 and anger_disposition >= 0.80 and stress >= 0.95
+		mood = MoodState.BESERK if can_go_berserk and randf() < 0.08 else MoodState.TANTRUM
+		mood_counter = 120
+		crisis_pressure = CRISIS_PRESSURE_REQUIRED * 0.5
+	elif (
+		mood == MoodState.NORMAL
+		and simulation_minute >= CRISIS_GRACE_MINUTES
+		and total_unhappiness > 0.65
+		and crisis_pressure >= CRISIS_PRESSURE_REQUIRED * 0.75
+	):
+		mood = MoodState.MELANCHOLY
+		mood_counter = 180
+		crisis_pressure *= 0.5
+
+	if stress < 0.1 and crisis_pressure <= 0.0 and mood in [
+		MoodState.TANTRUM, MoodState.BESERK, MoodState.MELANCHOLY
+	]:
+		mood = MoodState.NORMAL
+		mood_counter = 0
 
 func update_stress(delta: float) -> void:
-	DFDwarfPsychology.update_stress(self, delta, PersonalityTrait, MoodState)
+	var stress_change = 0.0
+	var has_violent_trait = get_trait(PersonalityTrait.VIOLENCE) > 0.6
+	var has_anxious_trait = get_trait(PersonalityTrait.FEAR) > 0.6
+
+	for n_key in needs:
+		var n_val = needs[n_key]
+		if n_val > 0.8:
+			stress_change += n_val * 0.02
+		elif n_val < 0.2:
+			stress_change -= 0.005
+
+	if has_violent_trait and kill_count > 0:
+		stress_change -= 0.01 * min(kill_count, 10)
+	if has_anxious_trait:
+		stress_change += 0.01
+
+	if mood == MoodState.STRANGE_MOOD or mood == MoodState.FELL_MOOD:
+		stress_change += 0.05
+
+	var room_bonus = room_quality * 0.01
+	stress_change -= room_bonus
+
+	stress = clampf(stress + stress_change * delta, 0.0, 1.0)
 
 func update_needs(delta: float) -> void:
-	DFDwarfPsychology.update_needs(self, delta, Need)
+	needs[Need.FOOD] = minf(1.0, needs[Need.FOOD] + 0.0002 * delta * 60)
+	needs[Need.DRINK] = minf(1.0, needs[Need.DRINK] + 0.0003 * delta * 60)
+	needs[Need.SLEEP] = minf(1.0, needs[Need.SLEEP] + 0.0004 * delta * 60)
+	needs[Need.COMFORT] = minf(1.0, needs[Need.COMFORT] + 0.0001 * delta * 60)
+
+	if relationships.size() > 0:
+		needs[Need.SOCIAL] = minf(1.0, needs[Need.SOCIAL] + 0.0001 * delta * 60)
+	if is_military:
+		needs[Need.SECURITY] = minf(1.0, needs[Need.SECURITY] + 0.0002 * delta * 60)
+	if is_noble:
+		needs[Need.ESTEEM] = minf(1.0, needs[Need.ESTEEM] + 0.0003 * delta * 60)
+	if religious_fervor > 0.6:
+		needs[Need.RELIGION] = minf(1.0, needs[Need.RELIGION] + 0.0002 * delta * 60)
+
+	needs[Need.SECURITY] = minf(1.0, needs[Need.SECURITY] + 0.0001 * delta * 60)
+	needs[Need.ORDER] = minf(1.0, needs[Need.ORDER] + 0.00005 * delta * 60)
 
 func get_most_pressing_need() -> int:
-	return DFDwarfPsychology.get_most_pressing_need(needs, Need.FOOD)
+	var highest = Need.FOOD
+	var highest_val = -1.0
+	for n in needs:
+		var v = needs[n]
+		if v > highest_val:
+			highest_val = v
+			highest = n
+	return highest
 
 func get_need_name(need: int) -> String:
 	var names = {
@@ -552,6 +691,17 @@ func get_full_description() -> String:
 	desc += "\nEstado de Ánimo: %s" % get_mood_name()
 	desc += "\nEmoción: %s (%.0f%%)" % [get_emotion_name(current_emotion), emotion_intensity * 100]
 	desc += "\nEstrés: %.0f%% | Felicidad: %.0f%%" % [stress * 100, happiness * 100]
+	desc += "\nFisiología: %s | Nutrición: %.0f%%" % [physiology_status, nutrition_quality * 100]
+	desc += "\nHoy: %d comidas | %.2f L de agua" % [meals_today, water_liters_today]
+	desc += "\nCondición: %.0f%% | Carga: %.1f/%.1f" % [
+		physical_condition * 100, get_carried_weight(), get_carrying_capacity()
+	]
+	desc += "\nSalud sistémica: %s | Inmunidad: %.0f%% | Exposición: %.0f%%" % [
+		get_disease_status(), immune_strength * 100.0, pathogen_exposure * 100.0
+	]
+	desc += "\nVida social: %d conversaciones | %d creencias activas" % [
+		conversations_held, social_beliefs.size()
+	]
 	desc += "\nPersonalidad: %s" % get_personality_description()
 	return desc
 
@@ -634,9 +784,8 @@ func apply_bleeding(rate: float) -> void:
 	is_bleeding = true
 
 func apply_infection_risk(amount: float) -> void:
-	if randi() % 100 < int(amount):
-		has_infection = true
-		add_thought("La herida se ha infectado. Duele y huele mal.", -0.1)
+	pathogen_exposure = minf(2.0, pathogen_exposure + maxf(0.0, amount) * 0.01)
+	infection_chance = pathogen_exposure
 
 func rest_and_recover(delta: float) -> void:
 	if is_sleeping:
@@ -647,12 +796,6 @@ func rest_and_recover(delta: float) -> void:
 			if bleeding_rate < 0.01:
 				bleeding_rate = 0.0
 				is_bleeding = false
-		if has_infection:
-			infection_chance -= 0.01 * delta * 60
-			if infection_chance <= 0:
-				has_infection = false
-				stats_tracker["infections_survived"] += 1
-				add_thought("Su cuerpo venció la infección.", 0.05)
 		rest_timer += delta
 		if rest_timer > 100:
 			add_thought("Descansó y se siente mejor.", 0.03)
@@ -811,6 +954,7 @@ func get_equipment_string() -> String:
 func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 	if not is_alive:
 		return
+	simulation_minute = int(world.get_meta("simulation_minute", simulation_minute))
 	has_moved_this_tick = false
 	needs_display_update = false
 	var delta_game_minute: float = 1.0
@@ -824,9 +968,10 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		update_stress(delta_game_minute)
 		update_pain_and_bleeding(delta_game_minute)
 		tick_metabolism(world)
+		tick_humanoid_physiology(world)
+		tick_health_cycle(world)
 		tick_grooming()
 		tick_hygiene(world)
-		tick_digestion(world)
 		tick_social(world)
 		tick_inspect(world)
 		
@@ -850,7 +995,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 			world.deposit_footprint(tile_pos, standing)
 
 	# --- SISTEMA DE REPOSO MÉDICO ---
-	var is_injured_or_sick = health < 0.70 or has_infection or is_bleeding
+	var is_injured_or_sick = health < 0.70 or disease_severity >= 0.35 or is_bleeding
 	if is_injured_or_sick and not is_sleeping and not is_possessed:
 		is_resting_medical = true
 		current_task = "Descanso Médico"
@@ -869,6 +1014,8 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 				return
 		
 		# Reposar en cama
+		is_sleeping = true
+		fatigue = maxf(fatigue, 0.35)
 		rest_and_recover(1.0)
 		return
 
@@ -939,7 +1086,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		if randi() % 5 == 0:
 			current_task = "¡PATALETA! (Destruyendo cosas)"
 			current_job = null
-			for other in world.entities:
+			for other in world.dwarves:
 				if other is DFDwarf and other != self and other.is_alive:
 					var d = abs(other.tile_pos.x - tile_pos.x) + abs(other.tile_pos.z - tile_pos.z)
 					if d <= 1:
@@ -948,22 +1095,28 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 							world.combat_system._add_log(msg)
 							other.happiness = clampf(other.happiness - 0.05, 0.0, 1.0)
 						break
-		mood_counter -= 1
+		if minute_ticked:
+			mood_counter -= 1
 		if mood_counter <= 0:
 			mood = MoodState.NORMAL
 			add_thought("Se calmó tras desahogar su frustración.", 0.05)
 		return
 
 	if mood == MoodState.BESERK:
-		combat_skill += 0.5
-		strength += 1.0
+		if not berserk_bonus_applied:
+			combat_skill += 0.5
+			strength += 1.0
+			berserk_bonus_applied = true
 		speed *= 1.5
 		current_task = "¡BESERK! (Atacando todo)"
-		mood_counter -= 1
+		if minute_ticked:
+			mood_counter -= 1
 		if mood_counter <= 0:
 			mood = MoodState.NORMAL
-			combat_skill = maxf(1.0, combat_skill - 0.5)
-			strength = maxf(5.0, strength - 1.0)
+			if berserk_bonus_applied:
+				combat_skill = maxf(1.0, combat_skill - 0.5)
+				strength = maxf(5.0, strength - 1.0)
+				berserk_bonus_applied = false
 			add_thought("La furia berserker se disipó. Está agotado.", -0.05)
 		return
 
@@ -971,7 +1124,8 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		if randi() % 10 == 0:
 			add_thought("Se siente vacío y sin propósito.", -0.05)
 			current_task = "Melancólico (meditando)"
-		mood_counter -= 1
+		if minute_ticked:
+			mood_counter -= 1
 		if mood_counter <= 0:
 			mood = MoodState.NORMAL
 		return
@@ -1010,16 +1164,19 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		return
 
 	# --- SISTEMA DE COMPORTAMIENTO DIARIO, RELIGIÓN Y APRENDIZAJE ---
-	var hour: int = 12
-	var main_node = world.get_parent() if world.has_method("get_parent") else (world.parent if "parent" in world else null)
-	if main_node != null and "_game_hour" in main_node:
-		hour = main_node._game_hour
+	# DFWorld no pertenece al árbol de escenas: la hora se comparte como metadata
+	# autoritativa desde DFMain para que dormir, trabajar y recrearse coincidan.
+	var hour: int = int(world.get_meta("game_hour", 12))
 
-	var is_sleep_time = (hour >= 22 or hour < 5)
-	var is_recreation_time = (hour >= 18 and hour < 22)
+	var is_sleep_time = (hour >= 22 or hour < 6)
+	var is_recreation_time = (hour >= 14 and hour < 22)
 	var is_meal_time = (hour == 12 or hour == 6 or hour == 18)
 
 	# PRIORIDAD 1: Necesidades de supervivencia críticas
+	if bladder_fill >= 0.75 or bowel_fill >= 0.75:
+		if _try_relieve_waste(world):
+			update_emotions()
+			return
 	if hunger > 0.85 or thirst > 0.85:
 		if _satisfy_needs(world):
 			update_emotions()
@@ -1032,7 +1189,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 	# PRIORIDAD 2: Descanso nocturno programado
 	if is_sleep_time:
 		if fatigue > 0.3 or current_job == null:
-			if _try_sleep(world):
+			if _try_sleep(world, true):
 				update_emotions()
 				return
 
@@ -1116,7 +1273,15 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		if _tick_persistent_autonomy(world, minute_ticked):
 			update_emotions()
 			return
-		tick_autonomous_survival(world)
+		# Las necesidades críticas y los trabajos siguen respondiendo cada tick,
+		# pero las búsquedas ambientales costosas se reparten entre habitantes.
+		# Si ya existe una ruta, el movimiento continúa sin volver a decidir.
+		var simulation_tick: int = int(world.get_meta("simulation_tick_total", 0))
+		var autonomous_decision_due: bool = posmod(simulation_tick + id, 12) == 0
+		if autonomous_decision_due:
+			tick_autonomous_survival(world)
+		elif not path.is_empty() and path_index < path.size():
+			_move_toward(world, path.back())
 
 	update_emotions()
 
@@ -1152,6 +1317,27 @@ func _tick_persistent_autonomy(world, minute_ticked: bool) -> bool:
 		autonomous_reason = ""
 		autonomous_target = Vector3i(-1, -1, -1)
 		autonomous_plan_cooldown = 10
+		return true
+
+	if DFAutonomousPlan.is_failed(autonomous_plan):
+		var failed_reason: String = str(autonomous_plan.get("last_failure", "No pudo continuar"))
+		autonomous_plan_history.append({
+			"goal": autonomous_goal,
+			"reason": autonomous_reason,
+			"failed": true,
+			"failure": failed_reason,
+			"completed_at": Time.get_ticks_msec(),
+		})
+		if autonomous_plan_history.size() > 12:
+			autonomous_plan_history.pop_front()
+		current_task = "Reconsiderando: %s" % failed_reason
+		autonomous_plan = {}
+		autonomous_goal = ""
+		autonomous_reason = ""
+		autonomous_target = Vector3i(-1, -1, -1)
+		path.clear()
+		path_index = 0
+		autonomous_plan_cooldown = 15
 		return true
 
 	return _execute_autonomous_plan_step(world)
@@ -1210,13 +1396,17 @@ func _execute_autonomous_plan_step(world) -> bool:
 			if tile_pos == target:
 				DFAutonomousPlan.advance(autonomous_plan)
 			else:
+				var before_move: Vector3i = tile_pos
 				_move_toward(world, target)
+				_record_plan_movement_result(before_move)
 			return true
 		"move_adjacent":
 			if _plan_distance(tile_pos, target) <= 1:
 				DFAutonomousPlan.advance(autonomous_plan)
 			else:
+				var before_adjacent_move: Vector3i = tile_pos
 				_move_toward(world, target)
+				_record_plan_movement_result(before_adjacent_move)
 			return true
 		"stairs_down":
 			var tile_type: int = world.get_tile(target)
@@ -1285,6 +1475,19 @@ func _execute_autonomous_plan_step(world) -> bool:
 	autonomous_plan["state"] = "completed"
 	return true
 
+func _record_plan_movement_result(before_move: Vector3i) -> void:
+	if autonomous_plan.is_empty():
+		return
+	var step: Dictionary = DFAutonomousPlan.current_step(autonomous_plan)
+	if tile_pos != before_move:
+		step["blocked_attempts"] = 0
+		return
+	var blocked_attempts: int = int(step.get("blocked_attempts", 0)) + 1
+	step["blocked_attempts"] = blocked_attempts
+	if blocked_attempts >= 8:
+		DFAutonomousPlan.fail_step(autonomous_plan, "No existe una ruta practicable al objetivo")
+		step["blocked_attempts"] = 0
+
 func _has_tool_named(tokens: Array) -> bool:
 	var weapon_lower: String = equipped_weapon.to_lower()
 	for token in tokens:
@@ -1293,8 +1496,8 @@ func _has_tool_named(tokens: Array) -> bool:
 	for item in inventory:
 		var item_name: String = str(item.name).to_lower() if "name" in item else ""
 		var item_type: String = str(item.item_type).to_lower() if "item_type" in item else ""
-		for tok in tokens:
-			var lowered: String = str(tok).to_lower()
+		for inventory_token in tokens:
+			var lowered: String = str(inventory_token).to_lower()
 			if lowered in item_name or lowered in item_type:
 				return true
 	return false
@@ -1365,7 +1568,7 @@ func _find_nearest_ore_wall(world, radius: int) -> Vector3i:
 func _pick_up_nearby_item_by_types(world, accepted_types: Array) -> int:
 	var best_item: Variant = null
 	var best_distance: int = 999999
-	for entity in world.entities:
+	for entity in world.items:
 		if not "item_type" in entity or not "tile_pos" in entity:
 			continue
 		if str(entity.item_type) not in accepted_types:
@@ -1390,7 +1593,7 @@ func _find_nearby_master_for_skill(world, skill_id: int):
 	var best_master = null
 	var best_level = my_level
 	var nearest_dist = 15.0
-	for e in world.entities:
+	for e in world.dwarves:
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		var is_alive_check = e.get("is_alive")
 		if is_dwarf and e != self and (is_alive_check == null or is_alive_check == true):
@@ -1419,7 +1622,7 @@ func _find_nearby_building_type(world, b_type: int) -> Vector3i:
 
 func _try_socialize(world) -> bool:
 	var target = null
-	for e in world.entities:
+	for e in world.dwarves:
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		var is_alive_check = e.get("is_alive")
 		if is_dwarf and e != self and (is_alive_check == null or is_alive_check == true):
@@ -1475,7 +1678,7 @@ func _pick_up_items(world) -> void:
 
 	# First, pick up any items on our current tile (if not already stored in a stockpile)
 	var items_to_remove = []
-	for ent in world.entities:
+	for ent in world.get_items_at(tile_pos):
 		if ent is DFItem and ent.tile_pos == tile_pos:
 			if ent.is_food or ent.is_drink:
 				continue
@@ -1527,7 +1730,7 @@ func _pick_up_items(world) -> void:
 
 	var best_item = null
 	var best_dist = 999999
-	for ent_h in world.entities:
+	for ent_h in world.items:
 		if ent_h is DFItem:
 			var _decayed = ent_h.get("is_decayed")
 			if _decayed == null or _decayed:
@@ -1561,10 +1764,12 @@ func _store_items(world: Object) -> void:
 		return
 
 	for sp in world.stockpiles:
-		if sp.has_tile(tile_pos) and not sp._has_item_at(world, tile_pos):
+		if sp.has_tile(tile_pos) and sp._tile_has_capacity(world, tile_pos):
 			var item = inventory.pop_back()
 			item.tile_pos = tile_pos
 			item.is_in_stockpile = true
+			item.carried_by_id = -1
+			_put_item_in_container_at(world, item, tile_pos)
 			world.add_entity(item)
 			current_task = "idle"
 			needs_display_update = true
@@ -1587,6 +1792,8 @@ func _store_items(world: Object) -> void:
 			var item_1352 = inventory.pop_back()
 			item_1352.tile_pos = tile_pos
 			item_1352.is_in_stockpile = true
+			item_1352.carried_by_id = -1
+			_put_item_in_container_at(world, item_1352, tile_pos)
 			world.add_entity(item_1352)
 			current_task = "idle"
 			needs_display_update = true
@@ -1600,6 +1807,29 @@ func assign_job(job) -> void:
 	job.state = DFJob.JobState.ASSIGNED
 	job.assigned_dwarf_id = id
 
+func _job_requires_physical_progress(job_type: int) -> bool:
+	return job_type in [
+		DFJob.JobType.DIG,
+		DFJob.JobType.CHOP_TREE,
+		DFJob.JobType.BUILD_WALL,
+		DFJob.JobType.BUILD_FLOOR,
+		DFJob.JobType.BUILD_WORKSHOP,
+		DFJob.JobType.BUILD_STAIRS_UP,
+		DFJob.JobType.BUILD_STAIRS_DOWN,
+		DFJob.JobType.SMOOTH,
+	]
+
+func _cancel_current_job(reason: String) -> void:
+	if current_job == null:
+		return
+	current_job.cancel_reason = reason
+	current_job.state = DFJob.JobState.CANCELLED
+	current_job.assigned_dwarf_id = -1
+	current_job = null
+	task_progress = 0.0
+	current_task = "Trabajo cancelado: %s" % reason
+	needs_display_update = true
+
 func _work_on_job(world) -> void:
 	if is_possessed:
 		return
@@ -1610,12 +1840,12 @@ func _work_on_job(world) -> void:
 		current_job = null
 		current_task = "idle"
 		return
-	if current_job.state == DFJob.JobState.IN_PROGRESS:
-		task_progress += 0.20 + get_skill_level(current_job.get_required_skill()) * 0.08
-		if task_progress >= 1.0:
-			_execute_job(world)
-		else:
-			current_task = current_job.get_description() + " (%.0f%%)" % (task_progress * 100)
+	if current_job.state == DFJob.JobState.IN_PROGRESS and not _job_requires_physical_progress(current_job.job_type):
+		# Transporte, almacenamiento y talleres son máquinas de estados: deben
+		# continuar su siguiente etapa cada tick. Los trabajos físicos, en cambio,
+		# pasan por la barra de progreso antes de modificar el mundo.
+		current_task = current_job.get_description()
+		_execute_job(world)
 		return
 
 	if current_job.job_type == DFJob.JobType.BUILD_WALL or current_job.job_type == DFJob.JobType.BUILD_FLOOR or current_job.job_type == DFJob.JobType.BUILD_WORKSHOP:
@@ -1628,17 +1858,25 @@ func _work_on_job(world) -> void:
 		if not has_material:
 			var best_item = null
 			var best_dist = 999999
-			for ent in world.entities:
-				if ent.get("item_type") == "stone" or ent.get("item_type") == "wood":
-					var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
-					if d < best_dist:
-						best_dist = d
-						best_item = ent
+			for ent in world.items:
+				if ent.item_type != "stone" and ent.item_type != "wood":
+					continue
+				if ent.is_decayed or ent.is_inside_container or ent.carried_by_id >= 0:
+					continue
+				if ent.is_reserved_for_other(id, simulation_minute):
+					continue
+				var d: int = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
+				if d < best_dist:
+					best_dist = d
+					best_item = ent
 
 			if best_item != null:
-				current_task = "Buscando material"
-				var dist_to_item = abs(tile_pos.x - best_item.tile_pos.x) + abs(tile_pos.z - best_item.tile_pos.z) + abs(tile_pos.y - best_item.tile_pos.y) * 2
+				best_item.reserve_for(id, simulation_minute + 30)
+				current_task = "Llevando material para %s" % current_job.get_description().to_lower()
+				var dist_to_item: int = abs(tile_pos.x - best_item.tile_pos.x) + abs(tile_pos.z - best_item.tile_pos.z) + abs(tile_pos.y - best_item.tile_pos.y) * 2
 				if dist_to_item <= 1:
+					best_item.release_reservation(id)
+					best_item.carried_by_id = id
 					world.remove_entity(best_item)
 					inventory.append(best_item)
 					needs_display_update = true
@@ -1646,7 +1884,7 @@ func _work_on_job(world) -> void:
 				else:
 					_move_toward(world, best_item.tile_pos)
 			else:
-				current_job.state = DFJob.JobState.CANCELLED
+				_cancel_current_job("no hay piedra o madera accesible")
 			return
 
 	var dist = abs(tile_pos.x - current_job.tile_pos.x) + abs(tile_pos.z - current_job.tile_pos.z)
@@ -1710,6 +1948,7 @@ func tick_metabolism(world: RefCounted) -> void:
 		var digest = 0.002 * met_rate
 		var absorbed = minf(food_stored, digest)
 		hunger = maxf(0.0, hunger - absorbed * 10.0)
+		bowel_fill = minf(1.25, bowel_fill + absorbed * 0.35)
 		body.ingested_substances["food"] = food_stored - absorbed
 		if body.ingested_substances["food"] <= 0.0:
 			body.ingested_substances.erase("food")
@@ -1717,6 +1956,7 @@ func tick_metabolism(world: RefCounted) -> void:
 	if water_stored > 0.0:
 		var absorb_water = minf(water_stored, 0.003 * met_rate)
 		thirst = maxf(0.0, thirst - absorb_water * 10.0)
+		bladder_fill = minf(1.25, bladder_fill + absorb_water * 0.65)
 		body.ingested_substances["water"] = water_stored - absorb_water
 		if body.ingested_substances["water"] <= 0.0:
 			body.ingested_substances.erase("water")
@@ -1752,8 +1992,7 @@ func tick_metabolism(world: RefCounted) -> void:
 	var pathogen: float = body.ingested_substances.get("pathogen", 0.0)
 	if pathogen > 0.0:
 		var path_resist: float = genome.pathogen_resistance if genome else 1.0
-		if not has_infection and randf() < (0.01 * pathogen / path_resist):
-			has_infection = true
+		pathogen_exposure = minf(2.0, pathogen_exposure + 0.01 * pathogen / maxf(0.25, path_resist))
 		body.ingested_substances["pathogen"] = maxf(0.0, pathogen - 0.01)
 		if body.ingested_substances["pathogen"] <= 0.0:
 			body.ingested_substances.erase("pathogen")
@@ -1774,11 +2013,254 @@ func tick_metabolism(world: RefCounted) -> void:
 		body.ebriety = maxf(0.0, body.ebriety - 0.5)
 		body.is_vomiting = false
 
-	# Disease coughing: spread pathogen particles
-	if has_infection and randf() < 0.03:
-		var dirs = [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,0,1), Vector3i(0,0,-1), Vector3i(0,0,0)]
-		for d in dirs:
-			world.add_splatter_substance(tile_pos + d, "pathogen", 0.005)
+func record_consumption(item: DFItem) -> void:
+	if item == null:
+		return
+	if item.is_edible:
+		meals_today += 1
+		daily_protein += item.protein_value
+		daily_carbohydrates += item.carbohydrate_value
+		daily_fat += item.fat_value
+		daily_fiber += item.fiber_value
+		daily_micronutrients += item.micronutrient_value
+	if item.is_drink:
+		water_liters_today += maxf(0.0, item.hydration)
+
+## Salud sistémica evaluada una vez por minuto simulado. Evita búsquedas entre
+## entidades: el contagio usa la capa ambiental de patógenos ya indexada por tile.
+func tick_health_cycle(world: Object) -> void:
+	if body == null:
+		return
+
+	# Migración transparente de partidas que solo guardaban has_infection.
+	if has_infection and disease_phase == DiseasePhase.HEALTHY:
+		disease_phase = DiseasePhase.SYMPTOMATIC
+		disease_progress = 0.35
+		disease_severity = maxf(0.25, infection_chance)
+
+	var tile_substances: Dictionary = world.get_splatters_at(tile_pos)
+	var environmental_pathogen: float = float(tile_substances.get("pathogen", 0.0))
+	var miasma_load: float = float(tile_substances.get("miasma", 0.0))
+	var ingested_pathogen: float = float(body.ingested_substances.get("pathogen", 0.0))
+	var genetic_resistance: float = genome.pathogen_resistance if genome != null else 1.0
+	var resilience: float = maxf(0.25, genetic_resistance * (0.45 + chronic_health * 0.35 + nutrition_quality * 0.20))
+	var exposure_gain: float = (environmental_pathogen * 0.018 + miasma_load * 0.004 + ingested_pathogen * 0.025) / resilience
+	pathogen_exposure = clampf(pathogen_exposure + exposure_gain - 0.0007, 0.0, 2.0)
+	infection_chance = pathogen_exposure
+
+	var rest_support: float = 0.0
+	if is_sleeping:
+		rest_support += 0.45 + sleep_quality * 0.25
+	if is_resting_medical:
+		rest_support += 0.20
+	var hydration_support: float = clampf(1.0 - thirst, 0.0, 1.0)
+	immune_strength = clampf(
+		0.15
+		+ chronic_health * 0.25
+		+ nutrition_quality * 0.25
+		+ hydration_support * 0.15
+		+ rest_support * 0.20,
+		0.10,
+		1.25
+	)
+
+	if acquired_immunity > 0.0:
+		acquired_immunity = maxf(0.0, acquired_immunity - 1.0 / 10080.0)
+
+	match disease_phase:
+		DiseasePhase.HEALTHY:
+			has_infection = false
+			body.disease_type = ""
+			disease_severity = 0.0
+			fever = maxf(0.0, fever - 0.01)
+			# Una sola evaluación por hora y habitante reduce coste y oscilaciones.
+			if pathogen_exposure >= 0.12 and simulation_minute % 60 == id % 60:
+				var infection_risk: float = clampf(
+					(pathogen_exposure - acquired_immunity * 0.55) / maxf(0.25, immune_strength),
+					0.0,
+					0.85
+				)
+				if randf() < infection_risk:
+					disease_phase = DiseasePhase.INCUBATING
+					disease_progress = 0.0
+					body.disease_type = "environmental_infection"
+					add_thought("Nota un malestar después de exponerse a un ambiente insalubre.", -0.03)
+		DiseasePhase.INCUBATING:
+			has_infection = true
+			body.disease_type = "environmental_infection"
+			disease_progress += 1.0 / 360.0
+			disease_severity = lerpf(0.05, 0.30, disease_progress)
+			if disease_progress >= 1.0:
+				disease_phase = DiseasePhase.SYMPTOMATIC
+				disease_progress = 0.0
+				add_thought("Se siente enfermo y necesita descanso, agua y comida adecuada.", -0.08)
+		DiseasePhase.SYMPTOMATIC:
+			has_infection = true
+			body.disease_type = "environmental_infection"
+			var vulnerability: float = clampf(
+				(1.0 - immune_strength) * 0.55 + pathogen_exposure * 0.20 + stress * 0.10,
+				0.0,
+				0.85
+			)
+			var target_severity: float = clampf(0.28 + vulnerability - rest_support * 0.20, 0.15, 0.95)
+			disease_severity = move_toward(disease_severity, target_severity, 0.0025)
+			fever = move_toward(fever, disease_severity, 0.006)
+			fatigue = minf(1.25, fatigue + disease_severity * 0.0007)
+			if disease_severity > 0.70:
+				health = maxf(0.05, health - (disease_severity - 0.70) * 0.00012)
+			if is_sleeping and nutrition_quality >= 0.45 and thirst < 0.70:
+				recovery_streak += 1
+			else:
+				recovery_streak = maxi(0, recovery_streak - 1)
+			if recovery_streak >= 240 or (immune_strength >= 0.85 and recovery_streak >= 120):
+				disease_phase = DiseasePhase.RECOVERING
+				disease_progress = 0.0
+				add_thought("Su estado empieza a mejorar tras descansar y alimentarse.", 0.04)
+			if disease_severity >= 0.30 and simulation_minute % 20 == id % 20:
+				world.add_splatter_substance(tile_pos, "pathogen", 0.003 * disease_severity)
+		DiseasePhase.RECOVERING:
+			has_infection = true
+			body.disease_type = "recovering_infection"
+			disease_progress += immune_strength / 720.0
+			disease_severity = maxf(0.0, disease_severity - 0.0015 * immune_strength)
+			fever = maxf(0.0, fever - 0.003)
+			if disease_progress >= 1.0 or disease_severity <= 0.02:
+				disease_phase = DiseasePhase.HEALTHY
+				disease_progress = 0.0
+				disease_severity = 0.0
+				pathogen_exposure *= 0.20
+				infection_chance = pathogen_exposure
+				acquired_immunity = 1.0
+				recovery_streak = 0
+				has_infection = false
+				body.disease_type = ""
+				stats_tracker["infections_survived"] = stats_tracker.get("infections_survived", 0) + 1
+				add_thought("Se recuperó de la enfermedad y desarrolló resistencia temporal.", 0.08)
+
+func get_disease_status() -> String:
+	match disease_phase:
+		DiseasePhase.INCUBATING:
+			return "Incubando"
+		DiseasePhase.SYMPTOMATIC:
+			if disease_severity >= 0.70:
+				return "Enfermedad grave"
+			if disease_severity >= 0.40:
+				return "Enfermedad moderada"
+			return "Enfermedad leve"
+		DiseasePhase.RECOVERING:
+			return "Recuperándose"
+	return "Sano"
+
+func tick_humanoid_physiology(world: Object) -> void:
+	var day_index: int = floori(float(simulation_minute) / 1440.0)
+	if last_physiology_day < 0:
+		last_physiology_day = day_index
+	elif day_index != last_physiology_day:
+		_evaluate_daily_health()
+		last_physiology_day = day_index
+		meals_today = 0
+		water_liters_today = 0.0
+		daily_protein = 0.0
+		daily_carbohydrates = 0.0
+		daily_fat = 0.0
+		daily_fiber = 0.0
+		daily_micronutrients = 0.0
+
+	var carried_ratio: float = get_carried_weight() / maxf(1.0, get_carrying_capacity())
+	if carried_ratio > 0.30 and has_moved_this_tick:
+		physical_condition = minf(1.0, physical_condition + 0.00004)
+		fatigue = minf(1.25, fatigue + carried_ratio * 0.0002)
+	elif is_sleeping:
+		physical_condition = maxf(0.0, physical_condition - 0.000002)
+
+	if bladder_fill >= 1.0 or bowel_fill >= 1.0:
+		_try_relieve_waste(world)
+	elif bladder_fill > 0.85 or bowel_fill > 0.85:
+		stress = minf(1.0, stress + 0.0005)
+		physiology_status = "Necesita aliviarse"
+	elif nutrition_quality < 0.4:
+		physiology_status = "Malnutrición"
+	elif physical_condition < 0.25:
+		physiology_status = "Condición física baja"
+	else:
+		physiology_status = "Estable"
+
+func _evaluate_daily_health() -> void:
+	var meal_score: float = clampf(float(meals_today) / 3.0, 0.0, 1.0)
+	var water_score: float = clampf(water_liters_today / 1.0, 0.0, 1.0)
+	var macro_score: float = (
+		clampf(daily_protein / 0.65, 0.0, 1.0)
+		+ clampf(daily_carbohydrates / 0.90, 0.0, 1.0)
+		+ clampf(daily_fat / 0.25, 0.0, 1.0)
+	) / 3.0
+	var micro_score: float = (
+		clampf(daily_fiber / 0.45, 0.0, 1.0)
+		+ clampf(daily_micronutrients / 0.45, 0.0, 1.0)
+	) / 2.0
+	var day_quality: float = meal_score * 0.30 + water_score * 0.25 + macro_score * 0.25 + micro_score * 0.20
+	nutrition_quality = lerpf(nutrition_quality, day_quality, 0.20)
+	if day_quality < 0.35:
+		chronic_health = maxf(0.20, chronic_health - 0.004)
+		toughness = maxf(1.0, toughness - 0.002)
+		stress = minf(1.0, stress + 0.02)
+	elif day_quality >= 0.75:
+		chronic_health = minf(1.0, chronic_health + 0.002)
+	health = minf(health, chronic_health)
+
+func get_carried_weight() -> float:
+	var total_weight: float = 0.0
+	for carried_item in inventory:
+		if carried_item is DFItem:
+			total_weight += carried_item.get_item_volume() * maxi(1, carried_item.stack_size)
+	return total_weight
+
+func get_carrying_capacity() -> float:
+	var age_factor: float = 1.0
+	if age < 16:
+		age_factor = 0.55
+	elif age > 55:
+		age_factor = maxf(0.55, 1.0 - float(age - 55) * 0.012)
+	return maxf(5.0, (strength * 2.2 + body_mass_kg * 0.12) * (0.55 + physical_condition * 0.75) * age_factor * chronic_health)
+
+func _try_relieve_waste(world: Object) -> bool:
+	if bladder_fill < 0.75 and bowel_fill < 0.75:
+		return false
+	var nearest_latrine = null
+	var nearest_distance: int = 2147483647
+	for building in world.buildings:
+		if building.type != DFBuilding.BuildingType.LATRINE:
+			continue
+		if not building.has_sanitation_capacity(0.12):
+			continue
+		var distance: int = abs(building.tile_pos.x - tile_pos.x) + abs(building.tile_pos.z - tile_pos.z)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_latrine = building
+	var emergency: bool = bladder_fill >= 1.0 or bowel_fill >= 1.0
+	if nearest_latrine != null and nearest_distance > 0 and not emergency:
+		current_task = "Yendo a la letrina"
+		_move_toward(world, nearest_latrine.tile_pos)
+		return true
+	var waste_amount: float = 0.03 + maxf(bladder_fill, bowel_fill) * 0.05
+	var used_latrine: bool = nearest_latrine != null and nearest_distance == 0
+	if bladder_fill >= bowel_fill:
+		bladder_fill = 0.0
+		current_task = "Aliviando la vejiga"
+	else:
+		bowel_fill = 0.0
+		current_task = "Aliviando el intestino"
+	if used_latrine:
+		if not nearest_latrine.add_sanitation_waste(waste_amount):
+			world.add_splatter_substance(tile_pos, "feces", waste_amount)
+			world.add_splatter_substance(tile_pos, "pathogen", waste_amount * 0.10)
+	else:
+		var waste_type: String = "urine" if current_task == "Aliviando la vejiga" else "feces"
+		world.add_splatter_substance(tile_pos, waste_type, waste_amount)
+		if waste_type == "feces":
+			world.add_splatter_substance(tile_pos, "pathogen", waste_amount * 0.08)
+	stress = maxf(0.0, stress - 0.02)
+	needs_display_update = true
+	return true
 
 
 ## Grooming: lick/clean limbs coated in substances, ingesting them.
@@ -1835,30 +2317,12 @@ func tick_hygiene(world) -> void:
 				add_thought("Se lavó la suciedad en el agua.", 0.03)
 				return
 
-# ---- DIGESTIÓN Y HIGIENE SANITARIA ----
-func tick_digestion(world: Object) -> void:
-	if not is_alive: return
-	if body.ingested_substances.has("food") and body.ingested_substances["food"] > 0.0:
-		var digested: float = minf(body.ingested_substances["food"], 0.05)
-		body.ingested_substances["food"] -= digested
-		digestion_level += digested
-		latrine_need = minf(1.0, latrine_need + digested * 0.8)
-
-	if latrine_need > 0.70 and (current_task == "idle" or current_task == ""):
-		_use_latrine(world)
-
-func _use_latrine(world: Object) -> void:
-	latrine_need = 0.0
-	digestion_level = 0.0
-	current_task = "Aliviándose en la letrina"
-	needs_display_update = true
-	add_thought("Se alivió en la letrina y mantiene excelente higiene corporal.", 0.04)
-
 # ---- SOCIAL ----
 func tick_social(world) -> void:
+	_decay_social_beliefs()
 	if current_task != "idle": return
 	if randi() % 30 != 0: return
-	for e in world.entities:
+	for e in world.dwarves:
 		if e == self: continue
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		var e_alive = e.get("is_alive")
@@ -1868,40 +2332,159 @@ func tick_social(world) -> void:
 			current_task = "Socializando"
 			needs_display_update = true
 			needs[Need.SOCIAL] = maxf(0.0, needs[Need.SOCIAL] - 0.2)
-			# Share thoughts — both parties exchange a random memory
-			var my_mem = _pick_random_memory()
-			var their_mem = _pick_other_random_memory(e)
-			if my_mem != "":
-				add_thought("Compartió con alguien: %s" % my_mem, 0.03)
-				e.add_thought("Escuchó de %s: %s" % [name, my_mem], 0.02)
-			if their_mem != "":
-				add_thought("Escuchó de %s: %s" % [e.name, their_mem], 0.02)
-				e.add_thought("Compartió con %s: %s" % [name, their_mem], 0.03)
-			# Gossip: spread stress
+			last_social_interaction = simulation_minute
+			conversations_held += 1
+			_exchange_social_belief(e)
+			var affinity: float = get_relationship_value(e.id)
+			var compatibility: float = _social_compatibility_with(e)
+			var interaction_delta: float = lerpf(-0.015, 0.025, compatibility)
+			modify_relationship(e.id, interaction_delta)
+			e.modify_relationship(id, interaction_delta * 0.8)
+			# El estado emocional se contagia, pero la confianza amortigua el
+			# efecto: una conversación ya no copia estrés sin contexto.
 			var target_stress = e.get("stress")
 			if target_stress == null:
 				target_stress = 0.5
 			var stress_diff = stress - target_stress
 			if abs(stress_diff) > 0.2:
-				var transfer = stress_diff * 0.1
+				var transfer = stress_diff * (0.035 + maxf(0.0, affinity) * 0.045)
 				stress = clampf(stress - transfer, 0.0, 1.0)
 				e.stress = clampf(e.stress + transfer, 0.0, 1.0)
 			return
 
-func _pick_random_memory() -> String:
-	if memories.is_empty(): return ""
-	return memories[randi() % memories.size()].get("text", "")
+func _exchange_social_belief(other) -> void:
+	var belief: Dictionary = _pick_salient_belief()
+	if belief.is_empty() and not memories.is_empty():
+		var memory: Dictionary = memories.back()
+		_learn_social_belief(
+			str(memory.get("category", "vida")),
+			id,
+			str(memory.get("text", "")),
+			float(memory.get("intensity", 0.5)),
+			id,
+			true
+		)
+		belief = _pick_salient_belief()
+	if belief.is_empty():
+		add_thought("Conversó tranquilamente con %s." % other.name, 0.02)
+		return
+	add_thought("Contó a %s: %s" % [other.name, belief.get("claim", "")], 0.02)
+	other._receive_social_belief(belief, self)
 
-func _pick_other_random_memory(other) -> String:
-	var other_memories = other.get("memories")
-	if other_memories == null or other_memories.is_empty(): return ""
-	return other_memories[randi() % other_memories.size()].get("text", "")
+func _receive_social_belief(belief: Dictionary, speaker) -> void:
+	var trust: float = get_relationship_value(speaker.id)
+	var speaker_honesty: float = speaker.get_trait(PersonalityTrait.HONESTY)
+	var confidence: float = float(belief.get("confidence", 0.5))
+	var accepted_confidence: float = confidence * (0.35 + speaker_honesty * 0.25 + (trust + 1.0) * 0.20)
+	accepted_confidence = clampf(accepted_confidence, 0.05, 0.95)
+	var changed: bool = _learn_social_belief(
+		str(belief.get("category", "rumor")),
+		int(belief.get("subject_id", speaker.id)),
+		str(belief.get("claim", "")),
+		accepted_confidence,
+		speaker.id,
+		false
+	)
+	if changed:
+		add_thought("Escuchó de %s: %s" % [speaker.name, belief.get("claim", "")], 0.01)
+		var reputation: float = float(social_reputation.get(speaker.id, 0.0))
+		social_reputation[speaker.id] = clampf(
+			reputation + (accepted_confidence - 0.45) * 0.05, -1.0, 1.0
+		)
+
+func _learn_social_belief(
+	category: String,
+	subject_id: int,
+	claim: String,
+	confidence: float,
+	source_id: int,
+	witnessed: bool
+) -> bool:
+	if claim.strip_edges().is_empty():
+		return false
+	var normalized_claim: String = claim.strip_edges().to_lower()
+	var belief_key: String = "%s|%d|%s" % [category, subject_id, normalized_claim]
+	for existing in social_beliefs:
+		if str(existing.get("key", "")) == belief_key:
+			existing["confidence"] = clampf(
+				maxf(float(existing.get("confidence", 0.0)), confidence) + (0.04 if witnessed else 0.01),
+				0.0,
+				1.0
+			)
+			existing["last_heard_minute"] = simulation_minute
+			var sources: Array = existing.get("sources", [])
+			if not sources.has(source_id):
+				sources.append(source_id)
+			existing["sources"] = sources.slice(maxi(0, sources.size() - 4))
+			return false
+		# Dos afirmaciones diferentes sobre el mismo asunto generan duda real.
+		if str(existing.get("category", "")) == category and int(existing.get("subject_id", -1)) == subject_id:
+			existing["confidence"] = maxf(0.05, float(existing.get("confidence", 0.5)) - confidence * 0.20)
+	var belief := {
+		"key": belief_key,
+		"category": category,
+		"subject_id": subject_id,
+		"claim": claim.strip_edges(),
+		"confidence": clampf(confidence + (0.20 if witnessed else 0.0), 0.05, 1.0),
+		"witnessed": witnessed,
+		"sources": [source_id],
+		"created_minute": simulation_minute,
+		"last_heard_minute": simulation_minute
+	}
+	social_beliefs.append(belief)
+	_prune_social_beliefs()
+	return true
+
+func _pick_salient_belief() -> Dictionary:
+	var selected: Dictionary = {}
+	var best_score: float = 0.0
+	for belief in social_beliefs:
+		var age_days: float = float(simulation_minute - int(belief.get("last_heard_minute", 0))) / 1440.0
+		var score: float = float(belief.get("confidence", 0.0)) - age_days * 0.01
+		if bool(belief.get("witnessed", false)):
+			score += 0.12
+		if score > best_score:
+			best_score = score
+			selected = belief
+	return selected
+
+func _decay_social_beliefs() -> void:
+	var day: int = simulation_minute / 1440
+	if day == last_belief_decay_day or simulation_minute % 60 != id % 60:
+		return
+	last_belief_decay_day = day
+	for belief in social_beliefs:
+		var confidence: float = float(belief.get("confidence", 0.0))
+		belief["confidence"] = maxf(0.0, confidence - (0.008 if bool(belief.get("witnessed", false)) else 0.025))
+	_prune_social_beliefs()
+
+func _prune_social_beliefs() -> void:
+	var oldest_allowed: int = simulation_minute - BELIEF_FORGET_DAYS * 1440
+	var retained: Array = []
+	for belief in social_beliefs:
+		if float(belief.get("confidence", 0.0)) >= 0.08 and int(belief.get("last_heard_minute", 0)) >= oldest_allowed:
+			retained.append(belief)
+	retained.sort_custom(func(a, b): return float(a.get("confidence", 0.0)) > float(b.get("confidence", 0.0)))
+	social_beliefs = retained.slice(0, mini(MAX_SOCIAL_BELIEFS, retained.size()))
+
+func _social_compatibility_with(other) -> float:
+	var similarity: float = 0.0
+	var compared_traits: Array = [
+		PersonalityTrait.SOCIABILITY,
+		PersonalityTrait.HONESTY,
+		PersonalityTrait.COMPASSION,
+		PersonalityTrait.POLITENESS
+	]
+	for trait_id in compared_traits:
+		similarity += 1.0 - absf(get_trait(trait_id) - other.get_trait(trait_id))
+	similarity /= float(compared_traits.size())
+	return clampf(similarity * 0.65 + (get_relationship_value(other.id) + 1.0) * 0.175, 0.0, 1.0)
 
 # ---- INSPECT ----
 func tick_inspect(world) -> void:
 	if current_task != "idle": return
 	if randi() % 40 != 0: return
-	for e in world.entities:
+	for e in world.items:
 		if e == self: continue
 		if e is DFItem:
 			var dist = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z) + abs(e.tile_pos.y - tile_pos.y) * 2
@@ -1940,6 +2523,8 @@ func _satisfy_needs(world) -> bool:
 		if hunger > food_threshold and item.is_edible:
 			body.ingested_substances["food"] = body.ingested_substances.get("food", 0.0) + item.nutrition * 0.5
 			needs[Need.FOOD] = maxf(0.0, needs[Need.FOOD] - item.nutrition * 0.5)
+			hunger = maxf(0.0, hunger - item.nutrition)
+			record_consumption(item)
 			inventory.remove_at(i)
 			ate = true
 			current_task = "Comiendo"
@@ -1950,28 +2535,30 @@ func _satisfy_needs(world) -> bool:
 				add_thought("Comió para sobrevivir.", 0.04 if hunger < 0.8 else 0.01)
 			break
 		elif thirst > drink_threshold and item.is_drink:
-			body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + item.nutrition * 0.5
-			needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - item.nutrition * 0.5)
+			body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + item.hydration
+			needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - item.hydration)
+			thirst = maxf(0.0, thirst - maxf(0.35, item.hydration))
+			record_consumption(item)
 			inventory.remove_at(i)
 			drank = true
 			current_task = "Bebiendo"
 			needs_display_update = true
 
-			var iname_lower = item.name.to_lower()
-			var is_alcohol = ("ale" in iname_lower or "cerveza" in iname_lower or "vino" in iname_lower or "beer" in iname_lower or "wine" in iname_lower or "hidromiel" in iname_lower or "mead" in iname_lower or "lager" in iname_lower or "rum" in iname_lower or "ron" in iname_lower or "cider" in iname_lower or "sidra" in iname_lower)
-			if is_alcohol:
+			if "Ale" in item.name or "Cerveza" in item.name or "Vino" in item.name:
 				minutes_since_alcohol = 0
-				stress *= 0.85
-				speed = 1.2
+				stress *= 0.9
 				if item.name == preferred_drink:
-					add_thought("Bebió su alcohol favorito: %s. ¡Una obra maestra!" % item.name, 0.12)
+					add_thought("Bebió su alcohol favorito: %s. ¡Excelente!" % item.name, 0.10)
 				else:
-					add_thought("Se sintió reconfortado y vigorizado al beber buen alcohol enano.", 0.08)
+					add_thought("Se sintió reconfortado al beber buen alcohol enano.", 0.08)
 			else:
-				add_thought("Bebió agua (un verdadero enano preferiría alcohol).", -0.01)
+				add_thought("Bebió agua (preferiría alcohol).", -0.01)
 			break
 
 	if ate or drank:
+		return true
+
+	if thirst > drink_threshold and _drink_from_water_well(world):
 		return true
 
 	if _drink_from_splatters(world):
@@ -1980,28 +2567,42 @@ func _satisfy_needs(world) -> bool:
 	# Busqueda mas agresiva: buscar en todo el mapa cuando es critico
 	var target_food: DFItem = null
 	var target_drink: DFItem = null
-	var best_dist_food = 99999
-	var best_dist_drink = 99999
-	var max_search_radius = 35 if (hunger > 0.8 or thirst > 0.8) else 20
+	var best_dist = 99999
+	var max_search_radius = 30 if (hunger > 0.8 or thirst > 0.8) else 15
 
-	# Buscar comida o bebida libre o almacenada en el mundo (priorizando alcohol para bebidas)
-	for ent_1754 in world.entities:
+	# Buscar comida en stockpiles (items almacenados)
+	if not world.stockpiles.is_empty():
+		for sp in world.stockpiles:
+			for stock_tile in sp.tiles:
+				var d = abs(stock_tile.x - tile_pos.x) + abs(stock_tile.z - tile_pos.z) + abs(stock_tile.y - tile_pos.y) * 2
+				if d > max_search_radius:
+					continue
+				# Buscar items en este tile del stockpile
+				for ent in world.get_items_at(stock_tile):
+					if ent.is_decayed:
+						continue
+					if d < best_dist:
+						if hunger > 0.5 and ent.is_edible:
+							best_dist = d
+							target_food = ent
+						elif thirst > 0.5 and ent.is_drink and target_food == null:
+							best_dist = d
+							target_drink = ent
+
+	# Buscar en el suelo (siempre, independientemente de stockpiles)
+	for ent_1754 in world.items:
 		if ent_1754 is DFItem:
 			if ent_1754.is_decayed:
 				continue
 			var d_1758 = abs(ent_1754.tile_pos.x - tile_pos.x) + abs(ent_1754.tile_pos.z - tile_pos.z) + abs(ent_1754.tile_pos.y - tile_pos.y) * 2
 			if d_1758 > max_search_radius:
 				continue
-			if hunger > 0.4 and ent_1754.is_edible and d_1758 < best_dist_food:
-				best_dist_food = d_1758
-				target_food = ent_1754
-			elif thirst > 0.4 and ent_1754.is_drink:
-				var iname_lower = ent_1754.name.to_lower()
-				var is_alc = ("ale" in iname_lower or "cerveza" in iname_lower or "vino" in iname_lower or "beer" in iname_lower or "wine" in iname_lower or "hidromiel" in iname_lower or "mead" in iname_lower)
-				# Priorizar alcohol sobre agua simple reduciendo la distancia percibida
-				var effective_dist = d_1758 if is_alc else d_1758 + 10
-				if effective_dist < best_dist_drink:
-					best_dist_drink = effective_dist
+			if d_1758 < best_dist:
+				if hunger > 0.5 and ent_1754.is_edible:
+					best_dist = d_1758
+					target_food = ent_1754
+				elif thirst > 0.5 and ent_1754.is_drink and target_food == null:
+					best_dist = d_1758
 					target_drink = ent_1754
 
 	var target = target_food if target_food != null else target_drink
@@ -2009,15 +2610,58 @@ func _satisfy_needs(world) -> bool:
 		var dist = abs(tile_pos.x - target.tile_pos.x) + abs(tile_pos.z - target.tile_pos.z) + abs(tile_pos.y - target.tile_pos.y) * 2
 		if dist <= 1:
 			inventory.append(target)
+			target.carried_by_id = id
+			target.is_in_stockpile = false
+			target.is_inside_container = false
+			target.container_id = -1
 			world.remove_entity(target)
 			needs_display_update = true
 			return false
 		else:
-			current_task = "Buscando comida" if target == target_food else "Buscando bebida"
+			current_task = "Buscando comida"
 			_move_toward(world, target.tile_pos)
 			return true
 
 	return false
+
+func _drink_from_water_well(world: Object) -> bool:
+	var nearest_well = null
+	var nearest_distance: int = 2147483647
+	for building_value: Variant in world.buildings:
+		if not (building_value is DFBuilding):
+			continue
+		var well: DFBuilding = building_value
+		if well.type != DFBuilding.BuildingType.WATER_WELL or well.water_volume < 0.10:
+			continue
+		var distance: int = abs(well.tile_pos.x - tile_pos.x) + abs(well.tile_pos.z - tile_pos.z)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_well = well
+	if nearest_well == null:
+		return false
+	if nearest_distance > 0:
+		current_task = "Yendo al pozo"
+		_move_toward(world, nearest_well.tile_pos)
+		return true
+	var serving: Dictionary = nearest_well.draw_water(0.35)
+	var amount: float = float(serving.get("amount", 0.0))
+	if amount <= 0.0:
+		return false
+	var contamination: float = float(serving.get("contamination", 0.0))
+	body.ingested_substances["water"] = body.ingested_substances.get("water", 0.0) + amount
+	water_liters_today += amount
+	thirst = maxf(0.0, thirst - amount * 1.40)
+	needs[Need.DRINK] = maxf(0.0, needs[Need.DRINK] - amount)
+	if contamination > 0.0:
+		body.ingested_substances["pathogen"] = body.ingested_substances.get("pathogen", 0.0) + contamination * amount
+		pathogen_exposure = minf(2.0, pathogen_exposure + contamination * 0.04)
+	current_task = "Bebiendo del pozo"
+	needs_display_update = true
+	if contamination >= 0.20:
+		add_thought("El agua del pozo tenía olor y sabor desagradables.", -0.05)
+	else:
+		add_thought("Bebió agua fresca del pozo comunal.", 0.03)
+	return true
 
 func _drink_from_splatters(world) -> bool:
 	var here = world.get_splatters_at(tile_pos)
@@ -2027,7 +2671,11 @@ func _drink_from_splatters(world) -> bool:
 		if amount > 0.01:
 			var sip = minf(amount, 0.02)
 			body.ingested_substances[s] = body.ingested_substances.get(s, 0.0) + sip
-			world.add_splatter_substance(tile_pos, s, -sip)
+			world.absorb_from_tile(tile_pos, s, sip)
+			var water_contamination: float = world.get_water_contamination(tile_pos)
+			if s != "beer" and water_contamination > 0.0:
+				body.ingested_substances["pathogen"] = body.ingested_substances.get("pathogen", 0.0) + water_contamination * sip
+				pathogen_exposure = minf(2.0, pathogen_exposure + water_contamination * 0.02)
 			thirst = maxf(0.0, thirst - 0.1)
 			hunger = maxf(0.0, hunger - 0.03)
 			if s == "beer":
@@ -2035,14 +2683,17 @@ func _drink_from_splatters(world) -> bool:
 				stress *= 0.95
 				add_thought("Bebió un poco de cerveza del suelo. No es lo ideal, pero sirve.", 0.02)
 			else:
-				add_thought("Bebió del suelo para saciar la sed.", -0.01)
+				if water_contamination >= 0.20:
+					add_thought("Bebió agua de aspecto insalubre por necesidad.", -0.04)
+				else:
+					add_thought("Bebió del suelo para saciar la sed.", -0.01)
 			current_task = "Bebiendo del suelo"
 			needs_display_update = true
 			return true
 	return false
 
-func _try_sleep(world) -> bool:
-	if fatigue <= 0.82:
+func _try_sleep(world, scheduled: bool = false) -> bool:
+	if not scheduled and fatigue <= 0.82:
 		return false
 
 	# Buscar y reclamar cama si no tiene una
@@ -2051,11 +2702,12 @@ func _try_sleep(world) -> bool:
 		if bed_pos.x >= 0:
 			_claim_bed(world, bed_pos)
 
-	# Si tiene cama y no está extremadamente exhausto, caminar hacia ella primero
-	if preferred_bed.x >= 0 and fatigue < 0.96:
+	# Durante el horario nocturno siempre intenta llegar a su cama. Solo una
+	# emergencia de agotamiento permite quedarse dormido antes de alcanzarla.
+	if preferred_bed.x >= 0 and (scheduled or fatigue < 0.96):
 		var dist_to_bed = abs(tile_pos.x - preferred_bed.x) + abs(tile_pos.z - preferred_bed.z)
-		if dist_to_bed > 0:
-			current_task = "Yendo a dormir"
+		if dist_to_bed > 1 or tile_pos.y != preferred_bed.y:
+			current_task = "Yendo a su cama"
 			_move_toward(world, preferred_bed)
 			return true
 
@@ -2103,24 +2755,25 @@ func _idle_wander(world) -> void:
 	if path.size() > 0 and path_index < path.size():
 		_move_toward(world, path.back())
 
-func _find_unclaimed_bed(world):
-	if world == null or world.entities == null:
-		return null
-	var best = null
-	var best_dist = 99999
-	for e in world.entities:
-		if e is DFItem and e.get("is_bed") == true and not _is_bed_claimed(world, e.tile_pos):
-			var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
-			if d < best_dist:
-				best_dist = d
-				best = e.tile_pos
+func _find_unclaimed_bed(world) -> Vector3i:
+	var best := Vector3i(-1, -1, -1)
+	if world == null:
+		return best
+	var best_dist: int = 99999
+	for item_value in world.items:
+		if not item_value.is_bed or item_value.is_decayed or _is_bed_claimed(world, item_value.tile_pos):
+			continue
+		var distance: int = abs(item_value.tile_pos.x - tile_pos.x) + abs(item_value.tile_pos.z - tile_pos.z)
+		if distance < best_dist:
+			best_dist = distance
+			best = item_value.tile_pos
 	return best
 
 func _is_bed_claimed(world, bed_pos: Vector3i) -> bool:
 	if world == null:
 		return false
-	for e in world.entities:
-		if e.get("creature_type") == "dwarf" and e.get("is_alive") == true and e.preferred_bed == bed_pos:
+	for dwarf_value in world.dwarves:
+		if dwarf_value.is_alive and dwarf_value.preferred_bed == bed_pos:
 			return true
 	return false
 
@@ -2191,7 +2844,7 @@ func _find_nearby_interesting_tile(world, radius: int) -> Vector3i:
 	var sy = tile_pos.y
 	
 	# Buscar items en el suelo
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem:
 			var dx = abs(e.tile_pos.x - tile_pos.x)
 			var dz = abs(e.tile_pos.z - tile_pos.z)
@@ -2216,7 +2869,7 @@ func _find_nearby_interesting_tile(world, radius: int) -> Vector3i:
 			candidates.append({"pos": w.tile_pos, "priority": 0})
 	
 	# Buscar otros enanos y caminar hacia ellos (efecto manada)
-	for e_1981 in world.entities:
+	for e_1981 in world.dwarves:
 		var is_dwarf = e_1981.get("creature_type") == "dwarf" and e_1981 != self
 		if is_dwarf and e_1981.get("is_alive") == true:
 			var dx_1984 = abs(e_1981.tile_pos.x - tile_pos.x)
@@ -2253,45 +2906,58 @@ func _execute_job(world) -> void:
 		DFJob.JobType.CHOP_TREE:
 			success = world.chop_tree(current_job.tile_pos, tile_pos)
 		DFJob.JobType.BUILD_WALL:
+			var wall_was_complete: bool = world.get_tile(current_job.tile_pos) == DFWorld.TileType.CONSTRUCTED_WALL
 			var mat_id = 11
+			var wall_material_index: int = -1
 			for i in range(inventory.size()):
 				if inventory[i].item_type == "stone" or inventory[i].item_type == "wood":
 					mat_id = inventory[i].material
-					inventory.remove_at(i)
+					wall_material_index = i
 					break
 			success = world.build_wall(current_job.tile_pos, mat_id)
+			if success and not wall_was_complete and wall_material_index >= 0:
+				inventory.remove_at(wall_material_index)
 		DFJob.JobType.BUILD_FLOOR:
+			var floor_was_complete: bool = world.get_tile(current_job.tile_pos) == DFWorld.TileType.CONSTRUCTED_FLOOR
 			var mat_id_2026 = 11
+			var floor_material_index: int = -1
 			for i_2027 in range(inventory.size()):
 				if inventory[i_2027].item_type == "stone" or inventory[i_2027].item_type == "wood":
 					mat_id_2026 = inventory[i_2027].material
-					inventory.remove_at(i_2027)
+					floor_material_index = i_2027
 					break
 			success = world.build_floor(current_job.tile_pos, mat_id_2026)
+			if success and not floor_was_complete and floor_material_index >= 0:
+				inventory.remove_at(floor_material_index)
 		DFJob.JobType.BUILD_WORKSHOP:
+			var workshop_was_complete: bool = world.get_workshop_at(current_job.tile_pos) != null
 			var mat_id_2034 = 11
+			var workshop_material_index: int = -1
 			for i_2035 in range(inventory.size()):
 				if inventory[i_2035].item_type == "stone" or inventory[i_2035].item_type == "wood":
 					mat_id_2034 = inventory[i_2035].material
-					inventory.remove_at(i_2035)
+					workshop_material_index = i_2035
 					break
-			for b in world.buildings:
-				if b.tile_pos == current_job.tile_pos and not b.is_constructed:
-					b.is_constructed = true
-					success = true
-					world.create_workshop(b.type, b.tile_pos)
-					break
-		DFJob.JobType.WORKSHOP_REACTION:
-			var reaction_id = current_job.reaction_id
-			if reaction_id == "": reaction_id = "smelt_iron"
-			var recipe = DFReactions.get_reaction(reaction_id)
-			if recipe.size() > 0:
-				for out_key in recipe.outputs.keys():
-					var amount = recipe.outputs[out_key]
-					var out_name = out_key.replace("_", " ").capitalize()
-					for i_2054 in range(amount):
-						world._spawn_item(current_job.tile_pos, out_name, out_key, 0, "-", Color.SILVER)
+			if workshop_was_complete:
 				success = true
+			else:
+				for b in world.buildings:
+					if b.tile_pos == current_job.tile_pos and not b.is_constructed:
+						b.is_constructed = true
+						world.create_workshop(b.type, b.tile_pos)
+						success = true
+						break
+			if success and not workshop_was_complete and workshop_material_index >= 0:
+				inventory.remove_at(workshop_material_index)
+		DFJob.JobType.WORKSHOP_REACTION:
+			var reaction_id: String = current_job.reaction_id
+			if reaction_id.is_empty():
+				reaction_id = "smelt_iron"
+			var target_workshop = world.get_workshop_at(current_job.tile_pos)
+			if target_workshop != null:
+				# La orden solo entra en la cola. El operador recogerá insumos,
+				# trabajará el tiempo requerido y recién entonces creará salidas.
+				success = target_workshop.queue_recipe(reaction_id)
 		DFJob.JobType.BUILD_STAIRS_UP:
 			success = world.build_stairs_up(current_job.tile_pos)
 		DFJob.JobType.BUILD_STAIRS_DOWN:
@@ -2325,6 +2991,13 @@ func _execute_job(world) -> void:
 			success = _execute_hunt_job(world)
 		DFJob.JobType.STORE_IN_CONTAINER:
 			success = _execute_store_in_container_job(world)
+		DFJob.JobType.CLEAN:
+			success = world.clean_sanitary_tile(current_job.tile_pos, 0.18) > 0.0
+			if success:
+				current_task = "Limpiando contaminación"
+				stress = maxf(0.0, stress - 0.01)
+		DFJob.JobType.EMPTY_LATRINE:
+			success = _execute_empty_latrine_job(world)
 		DFJob.JobType.FARM_HARVEST:
 			if world.is_grown_crop(current_job.tile_pos):
 				var crop = world.growing_crops.get(current_job.tile_pos)
@@ -2341,7 +3014,7 @@ func _execute_job(world) -> void:
 		DFJob.JobType.TEND_WOUNDS:
 			var patient_id = current_job.get_meta("patient_id") if current_job.has_meta("patient_id") else -1
 			var patient = null
-			for ent in world.entities:
+			for ent in world.dwarves:
 				if ent.get_instance_id() == patient_id:
 					patient = ent
 					break
@@ -2366,7 +3039,8 @@ func _execute_job(world) -> void:
 					patient.is_bleeding = false
 					wounds_treated += 1
 				
-				# 2. Disinfecting infections using alcohol/beer
+				# 2. Los cuidados reducen exposición y gravedad; no borran una
+				# enfermedad sistémica de forma instantánea.
 				if patient.has_infection:
 					# Check if doctor has beer/alcohol in inventory
 					var has_alcohol = false
@@ -2375,16 +3049,14 @@ func _execute_job(world) -> void:
 							inventory.remove_at(i_2135)
 							has_alcohol = true
 							break
-					patient.has_infection = false
-					patient.infection_chance = 0.0
-					# Disinfection hurts! Pain spike + nausea (might vomit)
-					patient.inflict_pain(15.0)
-					patient.body.nausea = minf(1.0, patient.body.nausea + 0.4)
-					if patient.body.nausea >= 0.8:
-						# Spawn a vomit splatter on the bed!
-						world.add_splatter_substance(patient.tile_pos, "vomit", 0.08)
-						patient.add_thought("Sintió náuseas insoportables por el alcohol vertido en sus heridas.", -0.06)
-					patient.add_thought("Aulló de dolor cuando el doctor desinfectó sus heridas.", -0.05)
+					var treatment_quality: float = 0.08 + get_skill_level(DFDwarf.Skill.DOCTORING) * 0.025
+					if has_alcohol:
+						treatment_quality += 0.05
+					patient.pathogen_exposure = maxf(0.0, patient.pathogen_exposure - treatment_quality)
+					patient.infection_chance = patient.pathogen_exposure
+					patient.disease_severity = maxf(0.05, patient.disease_severity - treatment_quality * 0.50)
+					patient.recovery_streak += 30 + get_skill_level(DFDwarf.Skill.DOCTORING) * 10
+					patient.add_thought("Recibió cuidados que mejoraron sus posibilidades de recuperación.", 0.05)
 					wounds_treated += 1
 				
 				# Restore health partially
@@ -2392,7 +3064,7 @@ func _execute_job(world) -> void:
 				patient.needs_display_update = true
 				
 				# Clear medical rest if fully healed
-				var still_needs_attention = patient.health < 0.9 or patient.has_infection
+				var still_needs_attention = patient.health < 0.9 or patient.disease_severity >= 0.20
 				for wound_2158 in patient.wounds:
 					if not wound_2158.get("healed", false):
 						still_needs_attention = true
@@ -2417,10 +3089,30 @@ func _execute_job(world) -> void:
 		add_thought("Completó satisfactoriamente un trabajo.", 0.03)
 		current_task = "idle"
 	elif current_job != null:
-		current_job.state = DFJob.JobState.CANCELLED
-		current_job = null
-		current_task = "idle"
-		task_progress = 0.0
+		if _job_requires_physical_progress(current_job.job_type):
+			_cancel_current_job("el destino ya no admite este trabajo")
+		elif current_job.state != DFJob.JobState.IN_PROGRESS:
+			_cancel_current_job("no se pudo completar la acción")
+
+func _execute_empty_latrine_job(world: Object) -> bool:
+	var target_latrine = null
+	for building in world.buildings:
+		if building.type == DFBuilding.BuildingType.LATRINE and building.tile_pos == current_job.tile_pos:
+			target_latrine = building
+			break
+	if target_latrine == null:
+		return false
+	var removed: float = target_latrine.remove_sanitation_waste(4.0)
+	if removed <= 0.0:
+		return true
+	var disposal_pos: Vector3i = current_job.disposal_pos
+	if disposal_pos.x < 0:
+		disposal_pos = tile_pos
+	world.add_splatter_substance(disposal_pos, "compost", removed)
+	current_task = "Transportando residuos al compostaje"
+	fatigue = minf(1.0, fatigue + 0.01)
+	add_thought("Mantuvo utilizable una instalación sanitaria.", 0.03)
+	return true
 
 func _pick_up_job(world, jobs: Array) -> void:
 	var best_job: DFJob = null
@@ -2441,16 +3133,29 @@ func _pick_up_job(world, jobs: Array) -> void:
 		if j.state != DFJob.JobState.UNASSIGNED:
 			continue
 			
-		# Restricción preferencial de profesión con bonificación de puntuación
-		var profession_bonus = 20 if (
-			(j.job_type == DFJob.JobType.DIG and profession == Profession.MINER) or
-			(j.job_type == DFJob.JobType.CHOP_TREE and profession == Profession.WOODCUTTER) or
-			(j.job_type == DFJob.JobType.COOK_FOOD and profession == Profession.COOK) or
-			(j.job_type == DFJob.JobType.BREW_DRINK and (profession == Profession.COOK or profession == Profession.BREWER)) or
-			(j.job_type == DFJob.JobType.HUNT and profession == Profession.HUNTER) or
-			(j.job_type == DFJob.JobType.FISH and profession == Profession.FISHER)
-		) else 0
-
+		# Restricción estricta de profesión
+		if j.job_type == DFJob.JobType.CHOP_TREE and profession != Profession.WOODCUTTER:
+			continue
+		if j.job_type == DFJob.JobType.DIG and profession != Profession.MINER:
+			continue
+		if j.job_type == DFJob.JobType.HUNT and profession != Profession.HUNTER:
+			continue
+		if j.job_type == DFJob.JobType.FISH and profession != Profession.FISHER and profession != Profession.COOK and profession != Profession.FARMER and profession != Profession.HUNTER:
+			continue
+		if j.job_type == DFJob.JobType.COOK_FOOD and profession != Profession.COOK:
+			continue
+		if j.job_type == DFJob.JobType.BREW_DRINK and profession != Profession.COOK and profession != Profession.BREWER:
+			continue
+		if j.job_type == DFJob.JobType.SMELT_ORE and profession != Profession.SMITH:
+			continue
+		if j.job_type == DFJob.JobType.MAKE_CHARCOAL and profession != Profession.SMITH and profession != Profession.WOODCUTTER:
+			continue
+		if j.job_type == DFJob.JobType.PROCESS_PLANT and profession != Profession.FARMER:
+			continue
+		if j.job_type == DFJob.JobType.TAN_HIDE and profession != Profession.HUNTER and profession != Profession.COOK and profession != Profession.CARPENTER:
+			continue
+		if j.job_type == DFJob.JobType.SPIN_THREAD and profession != Profession.FARMER and profession != Profession.CRAFTSMAN:
+			continue
 		if j.job_type == DFJob.JobType.STORE_IN_CONTAINER:
 			pass  # Todos pueden guardar comida en almacenes
 			
@@ -2460,8 +3165,8 @@ func _pick_up_job(world, jobs: Array) -> void:
 
 		# Verificar si tenemos la herramienta requerida para el trabajo
 		if not _has_tool_for_job(j.job_type):
-			var tool_tokens = ["pickaxe", "pico"] if j.job_type == DFJob.JobType.DIG else ["axe", "hacha"] if j.job_type == DFJob.JobType.CHOP_TREE else ["caña", "fishing", "fish"] if j.job_type == DFJob.JobType.FISH else ["sword", "espada", "weapon", "arma"]
-			var target_tool = _find_nearest_item_on_ground_matching(world, tool_tokens)
+			var tool_substring = "Pickaxe" if j.job_type == DFJob.JobType.DIG else "Axe" if j.job_type == DFJob.JobType.CHOP_TREE else "Caña" if j.job_type == DFJob.JobType.FISH else "Sword"
+			var target_tool = _find_nearest_item_on_ground_matching(world, tool_substring)
 			if target_tool != null:
 				# Ir a recoger la herramienta primero
 				_move_toward(world, target_tool.tile_pos)
@@ -2480,7 +3185,7 @@ func _pick_up_job(world, jobs: Array) -> void:
 		var skill_level = get_skill_level(j.get_required_skill())
 		var skill_bonus = skill_level * 5
 		var dist_penalty = int(dist)
-		var score = skill_bonus + profession_bonus - dist_penalty
+		var score = skill_bonus - dist_penalty
 		if score > best_score:
 			best_score = score
 			best_job = j
@@ -2490,9 +3195,30 @@ func _pick_up_job(world, jobs: Array) -> void:
 		assign_job(best_job)
 		current_task = best_job.get_description()
 
+func _path_request_slot_is_due(world) -> bool:
+	if is_possessed:
+		return true
+	if has_meta("is_follower") and bool(get_meta("is_follower", false)):
+		return true
+	var global_tick: int = int(world.get_meta("simulation_tick_total", 0))
+	return posmod(id, PATH_REQUEST_BUCKETS) == posmod(global_tick, PATH_REQUEST_BUCKETS)
+
 func _move_toward(world, target: Vector3i) -> void:
 	var effective_speed = speed * (1.0 - fatigue_level * 0.2)
+	var carried_ratio: float = get_carried_weight() / maxf(1.0, get_carrying_capacity())
+	if carried_ratio > 1.0:
+		effective_speed *= maxf(0.25, 1.0 / carried_ratio)
+		fatigue = minf(1.25, fatigue + 0.0005 * carried_ratio)
 	effective_speed = maxf(0.3, effective_speed)
+
+	# A* era solicitado por todos los habitantes en el mismo fotograma al cambiar
+	# de tarea. Los cálculos iniciales se distribuyen; posesión y seguidores
+	# mantienen respuesta inmediata. Esta comprobación ocurre antes del temporizador
+	# de movimiento para garantizar un turno de ruta en un máximo de tres ticks.
+	var needs_new_path: bool = path.is_empty() or path_index >= path.size()
+	if needs_new_path and not _path_request_slot_is_due(world):
+		return
+
 	# Only move every N ticks: faster dwarves = more frequent moves
 	if move_tick_counter > 0:
 		move_tick_counter -= 1
@@ -2503,21 +3229,38 @@ func _move_toward(world, target: Vector3i) -> void:
 		stuck_counter += 1
 	else:
 		stuck_counter = 0
+		path_replan_count = 0
 	last_pos = tile_pos
 	if stuck_counter > 5:
-		if current_job != null:
-			current_job.state = DFJob.JobState.CANCELLED
-			current_job = null
-		if not autonomous_plan.is_empty():
-			autonomous_plan = {}
-			autonomous_goal = ""
-			autonomous_reason = ""
-			autonomous_target = Vector3i(-1, -1, -1)
-			autonomous_plan_cooldown = 15
-		current_task = "idle"
+		# Un atasco corto suele ser tráfico entre habitantes. Primero se invalida
+		# la ruta y se vuelve a intentar; recién después de tres rutas fallidas se
+		# abandona la acción con una causa trazable.
 		path.clear()
 		path_index = 0
 		stuck_counter = 0
+		path_replan_count += 1
+		if path_replan_count < 3:
+			current_task = "Buscando una ruta alternativa"
+			return
+		path_replan_count = 0
+		if preferred_bed.x >= 0 and target == preferred_bed:
+			preferred_bed = Vector3i(-1, -1, -1)
+			claimed_bed = Vector3i(-1, -1, -1)
+			is_sleeping = true
+			current_task = "Durmiendo sin cama"
+			return
+		var abandoned_job: bool = current_job != null
+		var abandoned_workshop: bool = operating_workshop != null
+		var abandoned_plan: bool = not autonomous_plan.is_empty()
+		if abandoned_job:
+			_cancel_current_job("ruta bloqueada después de tres intentos")
+		if abandoned_workshop:
+			operating_workshop.unassign_dwarf()
+			operating_workshop = null
+		if abandoned_plan:
+			DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada después de tres intentos")
+		if not abandoned_job and not abandoned_workshop and not abandoned_plan:
+			current_task = "Sin ruta accesible"
 		return
 
 	if path_index >= path.size() or path.is_empty():
@@ -2549,14 +3292,9 @@ func _move_toward(world, target: Vector3i) -> void:
 			return
 
 	if next_step != tile_pos:
-		# Entity collision avoidance using spatial hash O(1)
-		var blocked_by_entity = false
-		var occupant = world.get_entity_at(next_step)
-		if occupant != null and occupant != self and not (occupant is DFItem):
-			var is_alive_check = occupant.get("is_alive")
-			if is_alive_check == null or is_alive_check == true:
-				blocked_by_entity = true
-
+		# Consulta espacial O(1). El barrido anterior de todas las entidades por
+		# cada paso convertía una aldea concurrida en trabajo cuadrático.
+		var blocked_by_entity: bool = world.is_actor_occupied(next_step, self)
 		if blocked_by_entity:
 			# Try to find adjacent free tile instead
 			var dirs = [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1),
@@ -2568,15 +3306,22 @@ func _move_toward(world, target: Vector3i) -> void:
 				if alt.x < 0 or alt.x >= world.width or alt.z < 0 or alt.z >= world.depth:
 					continue
 				if world.is_blocked(alt): continue
-				var alt_occ = world.get_entity_at(alt)
-				if alt_occ == null or alt_occ == self or alt_occ is DFItem:
-					tile_pos = alt
+				var alt_blocked: bool = world.is_actor_occupied(alt, self)
+				if not alt_blocked:
+					world.move_entity(self, alt)
+					# El desvío cambió el origen real: la ruta anterior ya no es
+					# válida y debe recalcularse desde esta nueva casilla.
+					path.clear()
+					path_index = 0
+					path_replan_count = 0
+					has_moved_this_tick = true
+					stats_tracker["distance_traveled"] += 1
 					found_alt = true
 					break
 			if not found_alt:
 				return
 		else:
-			tile_pos = next_step
+			world.move_entity(self, next_step)
 			# Fatigue from movement
 			fatigue_level = minf(1.0, fatigue_level + 0.002)
 		path_index += 1
@@ -2584,13 +3329,15 @@ func _move_toward(world, target: Vector3i) -> void:
 		stats_tracker["distance_traveled"] += 1
 
 func get_display_char() -> String:
+	if is_possessed:
+		return "@"
 	if current_job != null and task_progress > 0:
-		return "W"
+		return "&"
 	if is_sleeping:
 		return "z"
 	if mood == MoodState.BESERK or mood == MoodState.TANTRUM:
-		return "Y"
-	return "d" if gender == "Male" else "w"
+		return "!"
+	return "@"
 
 func get_display_color() -> Color:
 	if not is_alive:
@@ -2620,10 +3367,16 @@ func get_needs_string() -> String:
 	var thirst_pct = int(thirst * 100)
 	var health_pct = int(health * 100)
 	var fatigue_pct = int(fatigue * 100)
-	var result = "H:%d%% S:%d%% " % [hunger_pct, thirst_pct]
+	var result = "H:%d%% S:%d%% V:%d%% I:%d%% " % [
+		hunger_pct, thirst_pct, int(bladder_fill * 100), int(bowel_fill * 100)
+	]
 	if is_pregnant:
 		result += "EMBARAZADA! "
-	if health_pct < 30:
+	if disease_phase == DiseasePhase.SYMPTOMATIC:
+		result += get_disease_status()
+	elif disease_phase == DiseasePhase.RECOVERING:
+		result += "Recuperándose"
+	elif health_pct < 30:
 		result += "MORIBUNDO!"
 	elif health_pct < 60:
 		result += "Herido grave"
@@ -2672,7 +3425,7 @@ func _check_personality_compatibility(other) -> bool:
 func _try_find_partner(world) -> void:
 	var best_candidate = null
 	var best_relation = 0.6
-	for e in world.entities:
+	for e in world.dwarves:
 		if e == self: continue
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		if not is_dwarf: continue
@@ -2724,7 +3477,7 @@ func _try_conceive(world) -> void:
 	if gender != "Female":
 		return
 	var husband = null
-	for e in world.entities:
+	for e in world.dwarves:
 		if e.id == family.spouse:
 			husband = e
 			break
@@ -2767,7 +3520,7 @@ func _give_birth(world) -> void:
 	child.family.mother = id
 	child.family.father = partner_id
 	var father = null
-	for e in world.entities:
+	for e in world.dwarves:
 		if e.id == partner_id:
 			father = e
 			break
@@ -2841,7 +3594,7 @@ func tick_child_growth(world) -> void:
 func _get_parent_from_world(world, parent_id: int):
 	if world == null:
 		return null
-	for e in world.entities:
+	for e in world.dwarves:
 		var is_dwarf = e.get("creature_type") == "dwarf"
 		if is_dwarf and e.id == parent_id and e.get("is_alive") == true:
 			return e
@@ -2901,7 +3654,7 @@ func get_health_bar() -> String:
 		else: result += "\u2591"
 	return result
 
-func _get_best_skill() -> Variant:
+func _get_best_skill() -> int:
 	var best = Skill.MINING
 	var best_val = -1
 	for s in skills:
@@ -2912,6 +3665,128 @@ func _get_best_skill() -> Variant:
 
 func get_body() -> Object:
 	return body
+
+func _workshop_item_matches(item: DFItem, requirement: Dictionary) -> bool:
+	if item == null or item.is_decayed or item.is_inside_container:
+		return false
+	var item_type_lower: String = item.item_type.to_lower()
+	var material_lower: String = item.material_name.to_lower()
+	if bool(requirement.get("fuel", false)):
+		return item_type_lower in ["fuel", "charcoal", "coal", "coal_ore", "wood"]
+	var required_type: String = str(requirement.get("type", "")).to_lower()
+	if not required_type.is_empty() and item_type_lower != required_type:
+		return false
+	var materials: Array = requirement.get("material", [])
+	if not materials.is_empty():
+		var material_ok: bool = false
+		for candidate in materials:
+			var candidate_lower: String = str(candidate).to_lower()
+			if candidate_lower == material_lower or candidate_lower == item_type_lower or item_type_lower.begins_with(candidate_lower + "_"):
+				material_ok = true
+				break
+		if not material_ok:
+			return false
+	var specifics: Array = requirement.get("specific", [])
+	if not specifics.is_empty():
+		var specific_ok: bool = false
+		for candidate in specifics:
+			var candidate_lower: String = str(candidate).to_lower()
+			if candidate_lower in item_type_lower or candidate_lower in material_lower or candidate_lower in item.name.to_lower():
+				specific_ok = true
+				break
+		if not specific_ok:
+			return false
+	return true
+
+func _prepare_workshop_inputs(world, recipe: Dictionary) -> bool:
+	var selected_indices: Array[int] = []
+	var missing_requirement: Dictionary = {}
+	for requirement in recipe.get("inputs", []):
+		var required_count: int = int(requirement.get("count", 1))
+		var matched_count: int = 0
+		for inventory_index in range(inventory.size()):
+			if inventory_index in selected_indices:
+				continue
+			var inventory_item = inventory[inventory_index]
+			if not inventory_item is DFItem:
+				continue
+			if _workshop_item_matches(inventory_item, requirement):
+				selected_indices.append(inventory_index)
+				matched_count += 1
+				if matched_count >= required_count:
+					break
+		if matched_count < required_count and not bool(requirement.get("optional", false)):
+			missing_requirement = requirement
+			break
+
+	if not missing_requirement.is_empty():
+		var nearest_item: DFItem = null
+		var nearest_distance: int = 999999
+		for ground_item in world.items:
+			if ground_item.carried_by_id >= 0:
+				continue
+			if not _workshop_item_matches(ground_item, missing_requirement):
+				continue
+			if ground_item.is_reserved_for_other(id, simulation_minute):
+				continue
+			var ground_distance: int = abs(ground_item.tile_pos.x - tile_pos.x) + abs(ground_item.tile_pos.z - tile_pos.z) + abs(ground_item.tile_pos.y - tile_pos.y) * 2
+			if ground_distance < nearest_distance:
+				nearest_distance = ground_distance
+				nearest_item = ground_item
+		if nearest_item == null:
+			current_task = "Esperando insumos para %s" % str(recipe.get("name", "el taller"))
+			return false
+		nearest_item.reserve_for(id, simulation_minute + 30)
+		if nearest_distance <= 1:
+			nearest_item.release_reservation(id)
+			nearest_item.carried_by_id = id
+			world.remove_entity(nearest_item)
+			inventory.append(nearest_item)
+			current_task = "Llevando insumo a %s" % operating_workshop.name
+		else:
+			current_task = "Recogiendo insumo para %s" % operating_workshop.name
+			_move_toward(world, nearest_item.tile_pos)
+		return false
+
+	selected_indices.sort()
+	selected_indices.reverse()
+	for inventory_index in selected_indices:
+		inventory.remove_at(inventory_index)
+	operating_workshop.current_recipe = recipe.duplicate(true)
+	needs_display_update = true
+	return true
+
+func _produce_workshop_outputs(world, recipe: Dictionary) -> void:
+	for output in recipe.get("outputs", []):
+		if bool(output.get("optional", false)):
+			continue
+		var output_count: int = int(output.get("count", 1))
+		for output_index in range(output_count):
+			var produced: DFItem = world._spawn_item(
+				operating_workshop.tile_pos,
+				str(output.get("name", "Producto")),
+				str(output.get("type", "craft")),
+				0,
+				"*",
+				Color("#FFD27F")
+			)
+			produced.created_by_entity_id = id
+			produced.production_recipe_id = str(recipe.get("id", ""))
+			produced.production_site = operating_workshop.tile_pos
+	stats_tracker["items_crafted"] = int(stats_tracker.get("items_crafted", 0)) + 1
+	add_thought("Fabricó %s usando insumos reales." % str(recipe.get("name", "un objeto")), 0.04)
+
+func _workshop_skill_from_recipe(recipe: Dictionary) -> int:
+	match str(recipe.get("skill", "CRAFTSMAN")).to_upper():
+		"MINING": return Skill.MINING
+		"CARPENTRY": return Skill.CARPENTRY
+		"MASONRY": return Skill.MASONRY
+		"SMITHING": return Skill.SMITHING
+		"COOKING": return Skill.COOKING
+		"BREWING": return Skill.BREWING
+		"FARMING": return Skill.FARMING
+		"WEAVING": return Skill.MECHANICS
+		_: return Skill.CRAFTSMAN
 
 func _operate_workshop(world) -> void:
 	if is_possessed:
@@ -2931,14 +3806,29 @@ func _operate_workshop(world) -> void:
 		current_task = "idle"
 		return
 
-	var dist = abs(tile_pos.x - operating_workshop.tile_pos.x) + abs(tile_pos.z - operating_workshop.tile_pos.z)
-	if dist <= 1 and tile_pos.y == operating_workshop.tile_pos.y:
-		current_task = "Operando " + operating_workshop.name
-		add_skill_xp(Skill.SMITHING, 1)
-		operating_workshop.operator_skill = get_skill_level(Skill.SMITHING)
-	else:
+	var dist: int = abs(tile_pos.x - operating_workshop.tile_pos.x) + abs(tile_pos.z - operating_workshop.tile_pos.z)
+	if dist > 1 or tile_pos.y != operating_workshop.tile_pos.y:
 		current_task = "Yendo a " + operating_workshop.name
 		_move_toward(world, operating_workshop.tile_pos)
+		return
+
+	var recipe: Dictionary = operating_workshop.production_queue[0]
+	if operating_workshop.current_recipe.is_empty() and not _prepare_workshop_inputs(world, recipe):
+		return
+
+	current_task = "Fabricando %s en %s" % [str(recipe.get("name", "producto")), operating_workshop.name]
+	var skill_id: int = _workshop_skill_from_recipe(recipe)
+	var operator_level: int = get_skill_level(skill_id)
+	operating_workshop.operator_skill = operator_level
+	var result: Dictionary = operating_workshop.tick(1.0)
+	if bool(result.get("completed", false)):
+		var completed_recipe: Dictionary = result.get("recipe", {})
+		_produce_workshop_outputs(world, completed_recipe)
+		add_skill_xp(skill_id, 8)
+		if operating_workshop.production_queue.is_empty():
+			operating_workshop.unassign_dwarf()
+			operating_workshop = null
+			current_task = "idle"
 
 func _check_workshops(world) -> void:
 	if is_possessed or operating_workshop != null:
@@ -2988,13 +3878,13 @@ func tick_autonomous_survival(world) -> void:
 		if not world.stockpiles.is_empty():
 			for sp in world.stockpiles:
 				for stock_tile in sp.tiles:
-					for e in world.entities:
-						if e is DFItem and e.tile_pos == stock_tile and e.get("item_type") in ["food", "drink", "seed"]:
+					for e in world.get_items_at(stock_tile):
+						if e.get("item_type") in ["food", "drink", "seed"]:
 							var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
 							if d < nearest_dist:
 								nearest_dist = d
 								nearest_food = e
-		for e_2770 in world.entities:
+		for e_2770 in world.items:
 			if e_2770 is DFItem and e_2770.get("item_type") in ["food", "drink", "seed"]:
 				var d_2772 = abs(e_2770.tile_pos.x - tile_pos.x) + abs(e_2770.tile_pos.z - tile_pos.z)
 				if d_2772 < nearest_dist:
@@ -3192,55 +4082,41 @@ func tick_autonomous_survival(world) -> void:
 
 
 func _has_tool_for_job(job_type: int) -> bool:
-	var eq_w = str(equipped_weapon).to_lower()
 	if job_type == DFJob.JobType.DIG:
-		if "pickaxe" in eq_w or "pico" in eq_w:
+		if "pickaxe" in equipped_weapon.to_lower():
 			return true
 		for item in inventory:
-			var iname = str(item.name).to_lower() if "name" in item else ""
-			var itype = str(item.item_type).to_lower() if "item_type" in item else ""
-			if "pickaxe" in iname or "pico" in iname or "pickaxe" in itype or "pico" in itype:
+			if "Pickaxe" in item.name:
 				return true
 		return false
 	elif job_type == DFJob.JobType.CHOP_TREE:
-		if "axe" in eq_w or "hacha" in eq_w:
+		if "axe" in equipped_weapon.to_lower():
 			return true
-		for item2 in inventory:
-			var iname2 = str(item2.name).to_lower() if "name" in item2 else ""
-			var itype2 = str(item2.item_type).to_lower() if "item_type" in item2 else ""
-			if "axe" in iname2 or "hacha" in iname2 or "axe" in itype2 or "hacha" in itype2:
+		for item_2978 in inventory:
+			if "Axe" in item_2978.name:
 				return true
 		return false
 	elif job_type == DFJob.JobType.HUNT:
 		if equipped_weapon != "" and equipped_weapon != "none":
 			return true
-		for item3 in inventory:
-			var iname3 = str(item3.name).to_lower() if "name" in item3 else ""
-			if "sword" in iname3 or "espada" in iname3 or "axe" in iname3 or "hacha" in iname3 or "spear" in iname3 or "lanza" in iname3 or "bow" in iname3 or "arco" in iname3 or "crossbow" in iname3 or "ballesta" in iname3 or "mace" in iname3 or "maza" in iname3 or "knife" in iname3 or "cuchillo" in iname3 or "dagger" in iname3 or "daga" in iname3 or "pickaxe" in iname3 or "pico" in iname3:
+		for item_2985 in inventory:
+			var iname = item_2985.name.to_lower()
+			if "sword" in iname or "axe" in iname or "spear" in iname or "bow" in iname or "crossbow" in iname or "mace" in iname or "knife" in iname or "dagger" in iname or "pickaxe" in iname:
 				return true
 		return false
 	elif job_type == DFJob.JobType.FISH:
 		return true
 	return true
 
-func _find_nearest_item_on_ground_matching(world, tokens: Array):
+func _find_nearest_item_on_ground_matching(world, item_substring: String):
 	var nearest_item = null
 	var nearest_dist = 9999.0
-	for e in world.entities:
-		if e is DFItem:
-			var ename = str(e.name).to_lower()
-			var etype = str(e.item_type).to_lower()
-			var matched = false
-			for tok in tokens:
-				var ltok = str(tok).to_lower()
-				if ltok in ename or ltok in etype:
-					matched = true
-					break
-			if matched:
-				var d = abs(tile_pos.x - e.tile_pos.x) + abs(tile_pos.z - e.tile_pos.z) + abs(tile_pos.y - e.tile_pos.y) * 2
-				if d < nearest_dist:
-					nearest_dist = d
-					nearest_item = e
+	for e in world.items:
+		if e is DFItem and item_substring in e.name:
+			var d = abs(tile_pos.x - e.tile_pos.x) + abs(tile_pos.z - e.tile_pos.z)
+			if d < nearest_dist:
+				nearest_dist = d
+				nearest_item = e
 	return nearest_item
 
 
@@ -3277,7 +4153,7 @@ func _find_nearest_mineable_wall(world) -> Vector3i:
 func _find_nearest_item_matching_type(world, it_type: String):
 	var nearest = null
 	var nearest_dist = 9999.0
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem and e.get("item_type") == it_type:
 			var d = abs(tile_pos.x - e.tile_pos.x) + abs(tile_pos.z - e.tile_pos.z)
 			if d < nearest_dist:
@@ -3561,12 +4437,14 @@ func _gather_mood_materials(world) -> void:
 func _find_material_on_ground(world, mat_id: String) -> Object:
 	var found = null
 	var best_dist = 9999
-	for e in world.entities:
+	for e in world.items:
 		if e is DFItem and e.get("item_type") != null:
 			var name_lower = e.name.to_lower()
 			var type_lower = e.item_type.to_lower()
 			var mat_lower = mat_id.to_lower()
-			var e_mat_name: String = str(e.material_name).to_lower()
+			# DFItem es un RefCounted, no un Dictionary: Object.get() solo recibe
+			# el nombre de la propiedad y no acepta un segundo valor por defecto.
+			var e_mat_name: String = e.material_name.to_lower()
 			if mat_lower in name_lower or mat_lower in type_lower or mat_lower == e_mat_name:
 				var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
 				if d < best_dist:
@@ -3627,7 +4505,7 @@ func _complete_strange_mood(world) -> void:
 	if strange_mood_type == StrangeMoodType.FELL:
 		world.messages.append("Un escalofrío recorre la fortaleza. El artefacto '%s' tiene un aura oscura..." % strange_mood_artifact_name)
 
-	for e in world.entities:
+	for e in world.dwarves:
 		if e.get("creature_type") == "dwarf" and e.get("is_alive") == true and e != self:
 			e.add_thought("Se maravilla ante la creación de %s: '%s'." % [name, strange_mood_artifact_name], 0.05)
 
@@ -3647,17 +4525,17 @@ func _execute_hunt_job(world) -> bool:
 	if hunting_target != null and hunting_target.get("is_alive") == true:
 		var d = abs(tile_pos.x - hunting_target.tile_pos.x) + abs(tile_pos.z - hunting_target.tile_pos.z)
 		if d <= 30:
-			current_task = "Cazando " + str(hunting_target.name)
+			current_task = "Cazando " + str(hunting_target.get("name"))
 			needs_display_update = true
 			return true
 	var target_creature_id = current_job.get_meta("creature_id", -1)
 	var target = null
-	for e in world.entities:
+	for e in world.creatures:
 		if e.get("id") == target_creature_id and e.get("is_alive") == true:
 			target = e
 			break
 	if target == null:
-		for e_3419 in world.entities:
+		for e_3419 in world.creatures:
 			if e_3419.get("creature_type") != null and e_3419.get("creature_type") != "dwarf" and e_3419.get("is_alive") == true:
 				var dist = abs(tile_pos.x - e_3419.tile_pos.x) + abs(tile_pos.z - e_3419.tile_pos.z)
 				if dist <= 20:
@@ -3666,8 +4544,11 @@ func _execute_hunt_job(world) -> bool:
 	if target == null:
 		return false
 	hunting_target = target
-	current_task = "Saliendo a cazar " + str(target.name)
-	add_thought("Salió a cazar " + str(target.name), 0.05)
+	var target_name: String = str(target.get("name"))
+	if target_name.is_empty():
+		target_name = "presa"
+	current_task = "Saliendo a cazar " + target_name
+	add_thought("Salió a cazar " + target_name, 0.05)
 	needs_display_update = true
 	return true
 
@@ -3739,7 +4620,7 @@ func _find_best_item_slot(world, type_filter: String, name_keyword: String = "",
 				best_inv_idx = i
 				break
 	if best_item == null:
-		for e in world.entities:
+		for e in world.items:
 			if e is DFItem and e.item_type == type_filter:
 				if e.is_decayed:
 					continue
@@ -3926,52 +4807,65 @@ func _execute_tan_hide_job(world) -> bool:
 	return true
 
 func _execute_store_in_container_job(world) -> bool:
+	var carried_food = null
+	for item in inventory:
+		if item.is_food or item.is_meat or item.is_drink or item.item_type == "fish":
+			carried_food = item
+			break
 	var target_food = null
 	var best_dist = 999999
-	for ent in world.entities:
-		if ent is DFItem and (ent.is_food or ent.is_meat) and not ent.is_inside_container and not ent.is_decayed:
-			var already_in_sp = false
-			for sp in world.stockpiles:
-				if sp.has_tile(ent.tile_pos):
-					already_in_sp = true
-					break
-			if already_in_sp:
-				continue
-			var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z)
-			if d < best_dist:
-				best_dist = d
-				target_food = ent
-	if target_food != null:
+	if carried_food == null:
+		var requested_item_id: int = int(current_job.get_meta("target_item_id", -1)) if current_job != null else -1
+		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
+		for ent in world.items:
+			if ent is DFItem and (ent.is_food or ent.is_meat or ent.is_drink or ent.item_type == "fish") and not ent.is_inside_container and not ent.is_decayed:
+				if requested_item_id >= 0 and ent.id != requested_item_id:
+					continue
+				if ent.is_reserved_for_other(id, current_tick):
+					continue
+				var already_in_sp = false
+				for sp in world.stockpiles:
+					if sp.has_tile(ent.tile_pos):
+						already_in_sp = true
+						break
+				if already_in_sp:
+					continue
+				var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z)
+				if d < best_dist:
+					best_dist = d
+					target_food = ent
+		if target_food != null:
+			target_food.reserve_for(id, current_tick + 600)
+	if carried_food == null and target_food != null:
 		var dist = abs(tile_pos.x - target_food.tile_pos.x) + abs(tile_pos.z - target_food.tile_pos.z)
 		if dist > 1:
 			_move_toward(world, target_food.tile_pos)
 			current_task = "Yendo a recoger comida"
 			if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
 			return false
+		_detach_item_from_container(world, target_food)
 		inventory.append(target_food)
+		target_food.carried_by_id = id
+		target_food.is_in_stockpile = false
 		world.remove_entity(target_food)
 		needs_display_update = true
 		current_task = "Recogiendo comida para almacenar"
 		return false
-	var carried_food = null
-	for item in inventory:
-		if item.is_food or item.is_meat:
-			carried_food = item
-			break
 	if carried_food == null:
 		return false
 	var best_fs_pos = Vector3i(-1, -1, -1)
 	var best_fs_dist = 999999
 	for b in world.buildings:
 		if b.type == DFBuilding.BuildingType.FOOD_STORE:
+			var container = _find_container_at(world, b.tile_pos)
+			if container == null or not container.has_container_space(carried_food):
+				continue
 			var d_3722 = abs(b.tile_pos.x - tile_pos.x) + abs(b.tile_pos.z - tile_pos.z)
 			if d_3722 < best_fs_dist:
 				best_fs_dist = d_3722
 				best_fs_pos = b.tile_pos
 	if best_fs_pos.y == -1:
-		carried_food.tile_pos = tile_pos
-		world.add_entity(carried_food)
-		inventory.erase(carried_food)
+		current_task = "Esperando espacio de almacenamiento"
 		return false
 	var dist_to_fs = abs(tile_pos.x - best_fs_pos.x) + abs(tile_pos.z - best_fs_pos.z)
 	if dist_to_fs > 1:
@@ -3981,137 +4875,160 @@ func _execute_store_in_container_job(world) -> bool:
 		return false
 	carried_food.tile_pos = best_fs_pos
 	carried_food.is_in_stockpile = true
+	carried_food.carried_by_id = -1
+	if not _put_item_in_container_at(world, carried_food, best_fs_pos):
+		# Otro transportista pudo llenar el cofre durante el trayecto. Se conserva
+		# el objeto en el inventario y se busca otro destino en el siguiente tick.
+		carried_food.carried_by_id = id
+		carried_food.is_in_stockpile = false
+		current_task = "Buscando otro cofre con espacio"
+		return false
+	carried_food.release_reservation(id)
 	world.add_entity(carried_food)
 	inventory.erase(carried_food)
 	add_thought("Guardó " + carried_food.name + " en el almacén de comida.", 0.04)
 	needs_display_update = true
 	return true
 
-func _execute_collect_job(world, item_type_to_collect: String) -> bool:
-	# 1. Si no tenemos el objeto en el inventario, buscarlo e ir a recogerlo
-	var carried_item = null
-	for item in inventory:
-		if item.item_type == item_type_to_collect:
-			carried_item = item
+func _find_container_at(world: Object, pos: Vector3i):
+	for entity in world.items:
+		if (
+			entity is DFItem
+			and entity.is_container
+			and entity.tile_pos == pos
+			and entity.contained_volume < entity.container_volume
+		):
+			return entity
+	return null
+
+func _detach_item_from_container(world: Object, item: DFItem) -> void:
+	if not item.is_inside_container:
+		return
+	for entity in world.items:
+		if entity is DFItem and entity.is_container and entity.id == item.container_id:
+			entity.container_contents.erase(item)
+			entity.contained_volume = maxf(
+				0.0,
+				entity.contained_volume - item.get_item_volume()
+			)
 			break
-			
+	item.remove_from_container()
+
+func _put_item_in_container_at(world: Object, item: DFItem, pos: Vector3i) -> bool:
+	item.is_inside_container = false
+	item.container_id = -1
+	var container = _find_container_at(world, pos)
+	if container == null or not container.has_container_space(item):
+		return false
+	item.put_in_container(container)
+	return true
+
+func _execute_collect_job(world, item_type_to_collect: String) -> bool:
+	var carried_item: DFItem = null
+	for inventory_item in inventory:
+		if inventory_item is DFItem and inventory_item.item_type == item_type_to_collect:
+			carried_item = inventory_item
+			break
+
 	if carried_item == null:
-		# Verificar si hay espacio en algún stockpile antes de ir a buscarlo
-		var has_stockpile_space = false
-		for sp in world.stockpiles:
-			var free_pos = sp.get_free_tile(world)
-			if free_pos.y != -1:
-				has_stockpile_space = true
+		var has_storage_space: bool = false
+		for capacity_stockpile in world.stockpiles:
+			if capacity_stockpile.get_free_tile(world, item_type_to_collect).y != -1:
+				has_storage_space = true
 				break
-		if not has_stockpile_space and item_type_to_collect == "wood":
-			var ext_pos = _find_house_exterior_storage_pos(world)
-			if ext_pos != Vector3i(-1, -1, -1):
-				has_stockpile_space = true
-				
-		if not has_stockpile_space:
-			# No hay espacio de almacenamiento disponible, cancelar el trabajo
-			if current_job != null:
-				current_job.state = DFJob.JobState.CANCELLED
-			current_task = "idle"
+		if not has_storage_space:
+			_cancel_current_job("no hay espacio en ningún almacén")
 			return false
 
-		# Encontrar el item suelto mas cercano en el mundo
-		var target_item = null
-		var best_d = 999999
-		for ent in world.entities:
-			if ent is DFItem and ent.item_type == item_type_to_collect and not ent.is_inside_container:
-				# Verificar que no este ya en un stockpile
-				var already_in_sp = false
-				for sp_chk in world.stockpiles:
-					if sp_chk.has_tile(ent.tile_pos):
-						already_in_sp = true
-						break
-				if already_in_sp:
-					continue
-				var d = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
-				if d < best_d:
-					best_d = d
-					target_item = ent
+		var target_item: DFItem = null
+		var best_distance: int = 999999
+		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
+		for world_item in world.items:
+			if not world_item is DFItem:
+				continue
+			if world_item.item_type != item_type_to_collect or world_item.is_inside_container:
+				continue
+			if world_item.is_decayed or world_item.carried_by_id >= 0:
+				continue
+			if world_item.is_reserved_for_other(id, current_tick):
+				continue
+			var already_stored: bool = false
+			for occupied_stockpile in world.stockpiles:
+				if occupied_stockpile.has_tile(world_item.tile_pos) and world_item.is_in_stockpile:
+					already_stored = true
+					break
+			if already_stored:
+				continue
+			var item_distance: int = abs(world_item.tile_pos.x - tile_pos.x) + abs(world_item.tile_pos.z - tile_pos.z) + abs(world_item.tile_pos.y - tile_pos.y) * 2
+			if item_distance < best_distance:
+				best_distance = item_distance
+				target_item = world_item
+
 		if target_item == null:
-			# No hay items sueltos de este tipo para recolectar, cancelar el trabajo
-			if current_job != null:
-				current_job.state = DFJob.JobState.CANCELLED
-			current_task = "idle"
+			_cancel_current_job("ya no queda %s suelta para recoger" % item_type_to_collect)
 			return false
-			
-		var dist = abs(tile_pos.x - target_item.tile_pos.x) + abs(tile_pos.z - target_item.tile_pos.z) + abs(tile_pos.y - target_item.tile_pos.y) * 2
-		if dist > 1:
+
+		target_item.reserve_for(id, current_tick + 600)
+		if best_distance > 1 or target_item.tile_pos.y != tile_pos.y:
 			_move_toward(world, target_item.tile_pos)
 			current_task = "Yendo a recoger " + target_item.name
-			if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
-			return false # Aun no completado
-		else:
-			# Recoger el item
-			inventory.append(target_item)
-			world.remove_entity(target_item)
-			add_thought("Recogio un " + target_item.name + " para almacenar.", 0.02)
-			current_task = "Recolectando " + target_item.name
-			needs_display_update = true
-			return false # Siguiente tick para ir a guardarlo
-			
-	# 2. Si ya tenemos el objeto, buscar el stockpile mas cercano con espacio libre
-	var best_sp = null
-	var best_sp_pos = Vector3i(-1, -1, -1)
-	var best_sp_dist = 999999
-	for sp_3794 in world.stockpiles:
-		var free_pos2 = sp_3794.get_free_tile(world)
-		if free_pos2.y != -1:
-			var d_3797 = abs(free_pos2.x - tile_pos.x) + abs(free_pos2.z - tile_pos.z)
-			if d_3797 < best_sp_dist:
-				best_sp_dist = d_3797
-				best_sp_pos = free_pos2
-				best_sp = sp_3794
+			if current_job != null:
+				current_job.state = DFJob.JobState.IN_PROGRESS
+			return false
 
-	var target_drop_pos = best_sp_pos
-	var is_exterior_drop = false
-	
-	if best_sp == null or best_sp_pos.y == -1:
-		if item_type_to_collect == "wood":
-			var ext_pos2 = _find_house_exterior_storage_pos(world)
-			if ext_pos2 != Vector3i(-1, -1, -1):
-				target_drop_pos = ext_pos2
-				is_exterior_drop = true
-
-	if target_drop_pos.y == -1:
-		# No hay almacenes ni espacio exterior de casas, dejar caer aquí y completar
-		carried_item.tile_pos = tile_pos
-		world.add_entity(carried_item)
-		inventory.erase(carried_item)
-		if current_job != null:
-			current_job.state = DFJob.JobState.CANCELLED
-			current_job = null
-		current_task = "idle"
-		add_thought("Dejo " + carried_item.name + " en el suelo por falta de espacio.", -0.01)
-		return true
-
-	var dist_to_drop = abs(tile_pos.x - target_drop_pos.x) + abs(tile_pos.z - target_drop_pos.z)
-	if dist_to_drop > 1:
-		_move_toward(world, target_drop_pos)
-		current_task = "Llevando " + carried_item.name + (" al exterior" if is_exterior_drop else " al almacen")
-		if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
-		return false
-	else:
-		# Depositar en la posición destino
-		carried_item.tile_pos = target_drop_pos
-		world.add_entity(carried_item)
-		inventory.erase(carried_item)
-		if is_exterior_drop:
-			add_thought("Almacenó " + carried_item.name + " afuera de una casa.", 0.03)
-		else:
-			add_thought("Almaceno " + carried_item.name + " en el almacen.", 0.04)
-		current_task = "idle"
+		target_item.release_reservation(id)
+		target_item.carried_by_id = id
+		target_item.is_in_stockpile = false
+		world.remove_entity(target_item)
+		inventory.append(target_item)
+		add_thought("Recogió %s para almacenarlo." % target_item.name, 0.02)
+		current_task = "Transportando " + target_item.name
 		needs_display_update = true
-		return true
+		return false
+
+	var target_stockpile = null
+	var target_drop_pos: Vector3i = Vector3i(-1, -1, -1)
+	var best_stockpile_distance: int = 999999
+	for candidate_stockpile in world.stockpiles:
+		var candidate_pos: Vector3i = candidate_stockpile.get_free_tile(world, carried_item.item_type)
+		if candidate_pos.y == -1:
+			continue
+		var candidate_distance: int = abs(candidate_pos.x - tile_pos.x) + abs(candidate_pos.z - tile_pos.z) + abs(candidate_pos.y - tile_pos.y) * 2
+		if candidate_distance < best_stockpile_distance:
+			best_stockpile_distance = candidate_distance
+			target_drop_pos = candidate_pos
+			target_stockpile = candidate_stockpile
+
+	if target_stockpile == null:
+		current_task = "Esperando espacio para guardar " + carried_item.name
+		return false
+
+	if best_stockpile_distance > 1 or target_drop_pos.y != tile_pos.y:
+		_move_toward(world, target_drop_pos)
+		current_task = "Llevando " + carried_item.name + " al almacén"
+		if current_job != null:
+			current_job.state = DFJob.JobState.IN_PROGRESS
+		return false
+
+	carried_item.tile_pos = target_drop_pos
+	carried_item.carried_by_id = -1
+	carried_item.is_in_stockpile = true
+	carried_item.release_reservation(id)
+	var stored_in_container: bool = _put_item_in_container_at(world, carried_item, target_drop_pos)
+	world.add_entity(carried_item)
+	inventory.erase(carried_item)
+	if stored_in_container:
+		add_thought("Guardó %s dentro de un cofre." % carried_item.name, 0.05)
+	else:
+		add_thought("Apiló %s en el almacén." % carried_item.name, 0.03)
+	current_task = "idle"
+	needs_display_update = true
+	return true
 
 func _find_house_exterior_storage_pos(world) -> Vector3i:
 	# Recopilar todas las posiciones de puertas
 	var door_positions = []
-	for ent in world.entities:
+	for ent in world.items:
 		if ent is DFItem and ent.item_type == "door":
 			door_positions.append(ent.tile_pos)
 
@@ -4164,11 +5081,7 @@ func _find_house_exterior_storage_pos(world) -> Vector3i:
 						continue
 						
 					# No debe tener ya un objeto tirado en esa posición
-					var has_item = false
-					for ent_check in world.entities:
-						if ent_check is DFItem and ent_check.tile_pos == p:
-							has_item = true
-							break
+					var has_item: bool = not world.get_items_at(p).is_empty()
 					if has_item:
 						continue
 						
@@ -4280,7 +5193,7 @@ func _tick_hunting_behavior(world) -> bool:
 	# Validar target actual
 	if hunting_target != null:
 		var target_exists = false
-		for ent1 in world.entities:
+		for ent1 in world.creatures:
 			if ent1 == hunting_target:
 				target_exists = true
 				break
@@ -4288,7 +5201,7 @@ func _tick_hunting_behavior(world) -> bool:
 			# El target murió o desapareció, buscar si dejó un cadáver en su lugar para degollarlo
 			if hunting_target != null:
 				var corpse_found = null
-				for ent2 in world.entities:
+				for ent2 in world.items:
 					if ent2 is DFItem and ent2.item_type == "corpse" and ent2.tile_pos == hunting_target.tile_pos:
 						corpse_found = ent2
 						break
@@ -4318,7 +5231,7 @@ func _tick_hunting_behavior(world) -> bool:
 		# Buscar criatura viva más cercana (rango 30)
 		var best_prey = null
 		var best_d = 99999
-		for ent3 in world.entities:
+		for ent3 in world.creatures:
 			var c_type = ent3.get("creature_type")
 			var alive = ent3.get("is_alive")
 			if ent3 != self and c_type != null and c_type != "dwarf" and c_type != "" and alive == true:
