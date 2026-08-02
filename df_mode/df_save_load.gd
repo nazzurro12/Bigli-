@@ -147,6 +147,14 @@ static func _item_to_dict(item) -> Dictionary:
 		"is_inside_container": item.is_inside_container,
 		"is_in_stockpile": item.is_in_stockpile,
 		"container_id": item.container_id,
+		"carried_by_id": item.carried_by_id,
+		"reserved_by_id": item.reserved_by_id,
+		"reservation_expiry_tick": item.reservation_expiry_tick,
+		"created_at_minute": item.created_at_minute,
+		"created_by_entity_id": item.created_by_entity_id,
+		"source_item_ids": item.source_item_ids.duplicate(),
+		"production_recipe_id": item.production_recipe_id,
+		"production_site": _v3i_to_arr(item.production_site),
 		"weapon_damage": item.weapon_damage,
 		"weapon_type": item.weapon_type,
 		"armor_protection": item.armor_protection,
@@ -202,6 +210,14 @@ static func _dict_to_item(d: Dictionary):
 	item.is_inside_container = d.get("is_inside_container", false)
 	item.is_in_stockpile = d.get("is_in_stockpile", false)
 	item.container_id = d.get("container_id", -1)
+	item.carried_by_id = d.get("carried_by_id", -1)
+	item.reserved_by_id = d.get("reserved_by_id", -1)
+	item.reservation_expiry_tick = d.get("reservation_expiry_tick", 0)
+	item.created_at_minute = d.get("created_at_minute", 0)
+	item.created_by_entity_id = d.get("created_by_entity_id", -1)
+	item.source_item_ids = d.get("source_item_ids", []).duplicate()
+	item.production_recipe_id = d.get("production_recipe_id", "")
+	item.production_site = _arr_to_v3i(d.get("production_site", [-1, -1, -1]))
 	item.weapon_damage = d.get("weapon_damage", 1.0)
 	item.weapon_type = d.get("weapon_type", 0)
 	item.armor_protection = d.get("armor_protection", 0.0)

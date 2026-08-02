@@ -588,6 +588,8 @@ func _find_wood_spawn_pos(tree_pos: Vector3i, chopper_pos: Vector3i) -> Vector3i
 
 func _spawn_item(pos: Vector3i, iname: String, itype: String, mat: int, glyph: String, color: Color) -> DFItem:
 	var item = DFItem.new(pos, iname, itype, mat, glyph, color)
+	item.created_at_minute = int(get_meta("simulation_minute", 0))
+	item.production_site = pos
 	entities.append(item)
 	return item
 

@@ -52,6 +52,9 @@ func _resource_class(item_type: String) -> String:
 		_: return item_type
 
 func _is_reserved(item) -> bool:
+	var reserved_by = item.get("reserved_by_id")
+	if reserved_by != null and int(reserved_by) >= 0:
+		return true
 	if item.has_meta("reserved_by_job_id"):
 		return int(item.get_meta("reserved_by_job_id", -1)) >= 0
 	return false

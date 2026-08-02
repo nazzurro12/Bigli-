@@ -98,6 +98,14 @@ var reservation_expiry_tick: int = 0
 var tool_tags: Array = []
 var equipment_slot: String = ""
 
+# ---- PROCEDENCIA MATERIAL ----
+# Permite reconstruir por qué existe un objeto y qué insumos fueron consumidos.
+var created_at_minute: int = 0
+var created_by_entity_id: int = -1
+var source_item_ids: Array = []
+var production_recipe_id: String = ""
+var production_site: Vector3i = Vector3i(-1, -1, -1)
+
 # ---- QUALITY ----
 var quality: int = QualityLevel.NORMAL
 var quality_name: String = ""

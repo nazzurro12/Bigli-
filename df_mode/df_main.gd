@@ -330,7 +330,11 @@ func _recipe_input_matches_item(input_definition: Dictionary, candidate_item: DF
 				return true
 	return false
 
-func _workshop_has_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> bool:
+func _select_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> Dictionary:
+	var selected_amounts: Dictionary = {}
+	var selected_entries: Array = []
+	var current_tick := int(world_ref.get_meta("simulation_tick_total", 0))
+	var operator_id := int(workshop.dwarf_assigned)
 	for input_value: Variant in recipe.get("inputs", []):
 		if not (input_value is Dictionary):
 			continue
@@ -342,12 +346,51 @@ func _workshop_has_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> boo
 			var candidate_item: DFItem = world_entry
 			if candidate_item.tile_pos.distance_squared_to(workshop.tile_pos) > 2:
 				continue
+			if candidate_item.is_reserved_for_other(operator_id, current_tick):
+				continue
 			if _recipe_input_matches_item(input_definition, candidate_item):
-				remaining -= maxi(1, candidate_item.stack_size)
+				var already_selected := int(selected_amounts.get(candidate_item.id, 0))
+				var available_amount := maxi(0, candidate_item.stack_size - already_selected)
+				if available_amount <= 0:
+					continue
+				var selected_amount := mini(remaining, available_amount)
+				selected_amounts[candidate_item.id] = already_selected + selected_amount
+				remaining -= selected_amount
 				if remaining <= 0:
 					break
-		if remaining > 0:
-			return false
+		if remaining > 0 and not bool(input_definition.get("optional", false)):
+			return {"valid": false, "entries": []}
+	for item_id in selected_amounts:
+		selected_entries.append({"item_id": int(item_id), "amount": int(selected_amounts[item_id])})
+	return {"valid": true, "entries": selected_entries}
+
+func _find_recipe_item(world_ref, item_id: int) -> DFItem:
+	for world_entry: Variant in world_ref.entities:
+		if world_entry is DFItem and world_entry.id == item_id:
+			return world_entry
+	return null
+
+func _release_recipe_reservations(world_ref, recipe: Dictionary, operator_id: int = -1) -> void:
+	for entry_value: Variant in recipe.get("_reserved_inputs", []):
+		if not (entry_value is Dictionary):
+			continue
+		var item := _find_recipe_item(world_ref, int(entry_value.get("item_id", -1)))
+		if item != null:
+			item.release_reservation(operator_id)
+	recipe.erase("_reserved_inputs")
+
+func _workshop_has_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> bool:
+	var selection := _select_recipe_inputs(world_ref, workshop, recipe)
+	if not bool(selection.get("valid", false)):
+		_release_recipe_reservations(world_ref, recipe, int(workshop.dwarf_assigned))
+		return false
+	var current_tick := int(world_ref.get_meta("simulation_tick_total", 0))
+	var operator_id := int(workshop.dwarf_assigned)
+	recipe["_reserved_inputs"] = selection.get("entries", []).duplicate(true)
+	for entry_value: Variant in recipe["_reserved_inputs"]:
+		var item := _find_recipe_item(world_ref, int(entry_value.get("item_id", -1)))
+		if item != null:
+			item.reserve_for(operator_id, current_tick + 100)
 	return true
 
 func _workshop_operator_is_present(world_ref, workshop) -> bool:
@@ -377,29 +420,31 @@ func _workshop_assignment_is_valid(world_ref, workshop: DFWorkshop) -> bool:
 		return dwarf.is_alive and not dwarf.is_possessed and dwarf.operating_workshop == workshop
 	return false
 
-func _consume_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> void:
-	for input_value: Variant in recipe.get("inputs", []):
-		if not (input_value is Dictionary):
-			continue
-		var input_definition: Dictionary = input_value
-		var remaining: int = maxi(1, int(input_definition.get("count", 1)))
-		for world_entry: Variant in world_ref.entities.duplicate():
-			if remaining <= 0:
-				break
-			if not (world_entry is DFItem):
-				continue
-			var candidate_item: DFItem = world_entry
-			if candidate_item.tile_pos.distance_squared_to(workshop.tile_pos) > 2:
-				continue
-			if not _recipe_input_matches_item(input_definition, candidate_item):
-				continue
-			var item_amount: int = maxi(1, candidate_item.stack_size)
-			if item_amount > remaining:
-				candidate_item.stack_size = item_amount - remaining
-				remaining = 0
-			else:
-				remaining -= item_amount
-				world_ref.entities.erase(candidate_item)
+func _consume_recipe_inputs(world_ref, workshop, recipe: Dictionary) -> bool:
+	var reservations: Array = recipe.get("_reserved_inputs", [])
+	if reservations.is_empty() and not recipe.get("inputs", []).is_empty():
+		return false
+	for entry_value: Variant in reservations:
+		if not (entry_value is Dictionary):
+			return false
+		var item := _find_recipe_item(world_ref, int(entry_value.get("item_id", -1)))
+		var amount := int(entry_value.get("amount", 0))
+		if item == null or amount <= 0 or item.stack_size < amount:
+			_release_recipe_reservations(world_ref, recipe, int(workshop.dwarf_assigned))
+			return false
+	var consumed_ids: Array = []
+	for entry_value: Variant in reservations:
+		var item := _find_recipe_item(world_ref, int(entry_value.get("item_id", -1)))
+		var amount := int(entry_value.get("amount", 0))
+		consumed_ids.append(item.id)
+		if item.stack_size > amount:
+			item.stack_size -= amount
+			item.release_reservation(int(workshop.dwarf_assigned))
+		else:
+			world_ref.entities.erase(item)
+	recipe["_consumed_input_ids"] = consumed_ids
+	recipe.erase("_reserved_inputs")
+	return true
 
 func _add_message_async(msg: String) -> void:
 	add_message(msg)
@@ -1389,6 +1434,8 @@ func _tick() -> void:
 			# Recuperar automáticamente talleres cuyo operador murió, fue poseído,
 			# entró en crisis o dejó de reconocer este taller como su proyecto activo.
 			if workshop.dwarf_assigned >= 0 and not _workshop_assignment_is_valid(world, workshop):
+				if not workshop.production_queue.is_empty() and workshop.production_queue[0] is Dictionary:
+					_release_recipe_reservations(world, workshop.production_queue[0], workshop.dwarf_assigned)
 				workshop.unassign_dwarf()
 			if workshop.dwarf_assigned < 0 or workshop.production_queue.is_empty():
 				continue
@@ -1408,7 +1455,10 @@ func _tick() -> void:
 				var recipe: Dictionary = workshop_result.get("recipe", {})
 				var quality_bonus: int = int(recipe.get("quality_bonus", 0))
 				var quality_level: int = clampi(quality_bonus / 15, 0, 4)
-				_consume_recipe_inputs(world, workshop, recipe)
+				if not _consume_recipe_inputs(world, workshop, recipe):
+					workshop.production_queue.push_front(recipe)
+					add_message("Producción detenida: los insumos reservados ya no existen.")
+					continue
 				add_message("Taller completo: %s" % recipe.get("name", "Producto"))
 				for output_value: Variant in recipe.get("outputs", []):
 					if not (output_value is Dictionary):
@@ -1420,6 +1470,17 @@ func _tick() -> void:
 						var spawned: DFItem = world._spawn_item(workshop.tile_pos, output_name, output_type, 0, "*", workshop.get_display_color())
 						if spawned != null:
 							spawned.set_quality(quality_level)
+							spawned.created_by_entity_id = workshop.dwarf_assigned
+							spawned.source_item_ids = recipe.get("_consumed_input_ids", []).duplicate()
+							spawned.production_recipe_id = str(recipe.get("id", ""))
+							spawned.production_site = workshop.tile_pos
+							if world_simulation != null:
+								world_simulation.record(
+									"%s produjo %s" % [str(recipe.get("name", "Taller")), output_name],
+									"production",
+									[workshop.dwarf_assigned, spawned.id],
+									[workshop.tile_pos.x, workshop.tile_pos.y, workshop.tile_pos.z]
+								)
 							if "cama" in output_name.to_lower():
 								spawned.is_bed = true
 
