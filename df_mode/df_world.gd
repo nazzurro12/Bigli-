@@ -7,6 +7,7 @@ const DFCreature = preload("res://df_mode/df_creature.gd")
 const DFDwarf = preload("res://df_mode/df_dwarf.gd")
 const DFPathfinding = preload("res://df_mode/df_pathfinding.gd")
 const DFGeologyLayers = preload("res://core/world/df_geology_layers.gd")
+const DFConsequenceSystem = preload("res://df_mode/df_consequence_system.gd")
 
 
 enum TileType {
@@ -168,6 +169,7 @@ var workshops: Array = []
 var invasion_system = null
 var military_system = null
 var combat_system = null
+var consequence_system: DFConsequenceSystem = null
 
 # ---- WEATHER / CLIMATE SYSTEM ----
 var current_weather: int = WeatherType.CLEAR
@@ -288,6 +290,7 @@ func _init(w: int = 128, d: int = 128, h: int = 16):
 	entities = []
 	stockpiles = []
 	workshops = []
+	consequence_system = DFConsequenceSystem.new(self)
 
 # ---- TILE QUERIES ----
 func get_tile(pos: Vector3i) -> int:
