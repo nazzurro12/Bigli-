@@ -6,34 +6,26 @@ const DFWorld = preload("res://df_mode/df_world.gd")
 const DFDesignation = preload("res://df_mode/df_designation.gd")
 const DFTileset = preload("res://df_mode/df_tileset.gd")
 const DFJob = preload("res://df_mode/df_job.gd")
-const DFCorpse = preload("res://df_mode/df_corpse.gd")
-const UI = preload("res://df_mode/df_ui_theme.gd")
+const UI_CLASSIC_FACE := Color("#ECE9D8")
+const UI_CLASSIC_LIGHT := Color("#FFFFFF")
+const UI_CLASSIC_MID := Color("#ACA899")
+const UI_CLASSIC_SHADOW := Color("#716F64")
+const UI_CLASSIC_DARK := Color("#003C74")
+const UI_CLASSIC_TITLE := Color("#0A246A")
+const UI_CLASSIC_TITLE_LIGHT := Color("#3A6EA5")
+const UI_CLASSIC_TEXT := Color("#1A1A1A")
+const UI_CLASSIC_WORKSPACE := Color("#1B2430")
+const UI_CONTENT_TOP: int = 44
 const SUBSTANCE_COLORS: Dictionary = {
 	"blood":    Color(0.55, 0.0,  0.0,  1.0),
 	"beer":     Color(0.70, 0.55, 0.05, 1.0),
 	"vomit":    Color(0.45, 0.50, 0.08, 1.0),
+	"urine":    Color(0.75, 0.68, 0.12, 1.0),
+	"feces":    Color(0.35, 0.22, 0.10, 1.0),
 	"pathogen": Color(0.10, 0.60, 0.15, 1.0),
+	"compost": Color("#6B4F2A"),
 	"poison":   Color(0.45, 0.05, 0.65, 1.0),
 }
-
-# Windows Classic / XP-era palette. The game intentionally looks like a
-# simulation utility from 2001-2004 instead of a modern flat dashboard.
-const UI_BG := UI.SURFACE_0
-const UI_BG_RAISED := UI.SURFACE_2
-const UI_BORDER := UI.BORDER
-const UI_BORDER_SOFT := UI.BORDER_SOFT
-const UI_TEXT := UI.TEXT
-const UI_TEXT_MUTED := UI.TEXT_MUTED
-const UI_ACCENT := UI.ACCENT
-const UI_GOLD := UI.GOLD
-const UI_SUCCESS := UI.SUCCESS
-const UI_WARNING := UI.WARNING
-const WIN_FACE := UI.WIN_FACE
-const WIN_LIGHT := UI.WIN_LIGHT
-const WIN_SHADOW := UI.WIN_SHADOW
-const WIN_DARK_SHADOW := UI.WIN_DARK_SHADOW
-const WIN_TITLE_START := UI.WIN_TITLE_START
-const WIN_TITLE_END := UI.WIN_TITLE_END
 
 var world = null
 var camera_pos: Vector3i = Vector3i(64, 3, 64)
@@ -41,7 +33,6 @@ var view_width: int = 80
 var view_height: int = 25
 var show_sidebar: bool = true
 var sidebar_width: int = 32
-const SIDEBAR_PIXEL_WIDTH: int = 512
 var follow_dwarf: int = -1
 var paused: bool = false
 var designation: DFDesignation = null
@@ -57,9 +48,7 @@ var total_ticks: int = 0
 
 var _tileset: DFTileset = null
 var _font: Font = null
-const GAME_ZOOM_LEVELS: Array[int] = [16, 20, 24, 32]
-var _game_zoom_index: int = 2
-var _char_size: Vector2 = Vector2(24, 24)
+var _char_size: Vector2 = Vector2(16, 16)
 var _sidebar_text: String = ""
 var _message_log: Array = []
 var _tick_count: int = 0
@@ -67,14 +56,9 @@ var _designation_mode_name: String = "View"
 var _designation_mode_color: Color = Color.WHITE
 var _job_pending: int = 0
 var _job_active: int = 0
-var _teacher_count: int = 0
-var _student_count: int = 0
-var _school_count: int = 0
 var _highlighted_tile: Vector3i = Vector3i(-1, -1, -1)
 var _world_curse: String = ""
 var _world_curse_desc: String = ""
-var _world_age_label: String = ""
-var _legendary_beasts_alive: int = 0
 var _biome_at_cursor: String = ""
 var _layer_at_cursor: String = ""
 var _aquifer_at_cursor: bool = false
@@ -98,13 +82,11 @@ var _dialogue_greeting: String = ""
 var _dialogue_target_name: String = ""
 
 # ---- FAST TRAVEL STATE ----
-var _mode_switch_open: bool = false
 var _fast_travel_active: bool = false
 var _fast_travel_phase: int = 0
 var _fast_travel_distance: int = 0
 var _fast_travel_progress: float = 0.0
 var _fast_travel_current_message: String = ""
-var _dwarf_stats_open: bool = false
 var _fast_travel_biome: String = ""
 var _fast_travel_dest_x: int = 0
 var _fast_travel_dest_z: int = 0
@@ -115,13 +97,6 @@ var _quest_completed_count: int = 0
 var _quest_active_count: int = 0
 var _quest_notification: String = ""
 var _quest_selected: int = 0
-
-# ---- RECIPE SELECTOR STATE ----
-var _recipe_selector_active: bool = false
-var _recipe_workshop_name: String = ""
-var _recipe_list: Array = []
-var _recipe_sel_idx: int = 0
-var _recipe_qty: int = 1
 
 var _weather_name: String = "Despejado"
 var _weather_color: Color = Color("#87CEEB")
@@ -148,7 +123,7 @@ var _biome_map_cache: Dictionary = {}
 var _last_biome_refresh: int = 0
 
 # ---- CACHÉ DEL MAPA MUNDIAL ----
-# Un mundo de 1024² contiene más de un millón de regiones. Dibujarlas como
+# Un mundo planetario contiene cientos de miles de regiones. Dibujarlas como
 # rectángulos cada frame bloquearía la interfaz, así que el minimapa global se
 # rasteriza una sola vez a una textura compacta y luego se reutiliza.
 const WORLD_MINIMAP_CACHE_RESOLUTION: int = 192
@@ -157,8 +132,8 @@ var _world_minimap_cache_key: String = ""
 
 # El juego puede procesar a más de 60 FPS, pero reconstruir miles de tiles,
 # entidades y paneles 120 veces por segundo no aporta información nueva.
-const MAP_REDRAW_INTERVAL: float = 1.0 / 30.0
-const RENDERER_LOGIC_SYNC_INTERVAL: float = 1.0 / 20.0
+const MAP_REDRAW_INTERVAL: float = 1.0 / 60.0
+const RENDERER_LOGIC_SYNC_INTERVAL: float = 1.0 / 30.0
 var _map_redraw_accumulator: float = 0.0
 var _renderer_logic_accumulator: float = 0.0
 var performance_effects_enabled: bool = false
@@ -176,7 +151,7 @@ func _world_biome_color(biome: String) -> Color:
 		"lake": return Color("#367fc6")
 		"beach": return Color("#d7c47b")
 		"glacier": return Color("#e5f5f5")
-		"mountain": return Color("7d7a47ff")
+		"mountain": return Color("#777777")
 		"mountain_forest": return Color("#355f43")
 		"alpine_meadow": return Color("#7f9c62")
 		"tundra": return Color("#aab9b8")
@@ -274,7 +249,6 @@ func _nearest_world_civilizations(world_gen: Object, position: Vector2i, limit: 
 
 # ---- ENTITY CACHE (spatial hash para performance) ----
 var _entity_cache: Dictionary = {}
-var _item_metadata_cache: Dictionary = {}  # tile_pos → {is_precious: bool, is_fresh_corpse: bool}
 var _dwarf_animation_tick: int = 0
 var _animation_phase: bool = false
 
@@ -293,130 +267,496 @@ const TUTORIAL_STEPS: Array = [
 
 var legend_panel: Panel = null
 var legend_btn: Button = null
+var reference_tabs: TabContainer = null
+var management_panel: PanelContainer = null
+var management_tabs: TabContainer = null
+var management_pages: Array[RichTextLabel] = []
+var management_context_menu: PopupMenu = null
+var quit_confirmation: ConfirmationDialog = null
+var load_confirmation: ConfirmationDialog = null
+var _management_refresh_elapsed: float = 0.0
+var classic_title_label: Label = null
+var classic_menu_buttons: Array[MenuButton] = []
+var classic_window_buttons: Array[Button] = []
 
 
 func _ready() -> void:
 	_tileset = DFTileset.new()
 	_font = ThemeDB.fallback_font
-	_apply_game_zoom()
+	_char_size = Vector2(16, 16)
+	_apply_classic_control_theme()
+	_create_functional_classic_chrome()
+	_create_reference_window()
+	_create_management_window()
+	_create_confirmation_dialogs()
 
-	# Creacion de Leyenda interactiva (Lado Izquierdo)
+func _create_reference_window() -> void:
 	legend_panel = Panel.new()
-	legend_panel.name = "LegendPanel"
+	legend_panel.name = "ReferenceWindow"
 	legend_panel.anchor_left = 0.0
-	legend_panel.anchor_top = 0.1
-	legend_panel.anchor_right = 0.0
-	legend_panel.anchor_bottom = 0.9
-	legend_panel.offset_right = 250
+	legend_panel.anchor_top = 0.12
+	legend_panel.anchor_bottom = 0.88
+	legend_panel.offset_left = 8
+	legend_panel.offset_right = 390
 	legend_panel.visible = false
-	var legend_style := StyleBoxFlat.new()
-	legend_style.bg_color = UI_BG_RAISED
-	legend_style.border_color = UI_BORDER
-	legend_style.set_border_width_all(1)
-	legend_style.corner_radius_top_right = 6
-	legend_style.corner_radius_bottom_right = 6
-	legend_style.content_margin_left = 12.0
-	legend_style.content_margin_top = 12.0
-	legend_panel.add_theme_stylebox_override("panel", legend_style)
 	add_child(legend_panel)
-	
-	var legend_lbl = Label.new()
-	legend_lbl.text = "LEYENDA\n\n# : Muro (Gris)\n. : Suelo\n= : Agua\nT : Arbol\n\nITEMS & RECURSOS\nb : Cama de madera\nc : Cofre / Almacen\n¤ : Fogata encendida\n* : Cenizas de fogata\n% : Plump Helmet (Comida)\n~ : Alcohol / Bebida\n═ : Tronco de Madera\n■ : Bloque de Piedra\n/ : Pico de Minero\n\\ : Hacha de Leñador\n\nCONTROLES (Dios)\nFlechas: Camara\n1: Minar\n2: Talar\n3: Muro\n4: Suelo\nF: Seguir aldeano\nP: Poseer aldeano seguido\nQ: Salir de posesión\nESC: Cerrar una capa / Opciones"
-	legend_lbl.position = Vector2(10, 10)
-	legend_lbl.add_theme_color_override("font_color", UI_TEXT)
-	legend_lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
-	legend_lbl.add_theme_constant_override("shadow_offset_x", 1)
-	legend_lbl.add_theme_constant_override("shadow_offset_y", 1)
-	legend_lbl.add_theme_font_size_override("font_size", 12)
-	legend_panel.add_child(legend_lbl)
-	
+
+	var layout := VBoxContainer.new()
+	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 8)
+	legend_panel.add_child(layout)
+	var title_row := HBoxContainer.new()
+	layout.add_child(title_row)
+	var title := Label.new()
+	title.text = "Referencia de Bigli"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "×"
+	close_button.tooltip_text = "Cerrar referencia"
+	close_button.pressed.connect(func(): legend_panel.hide())
+	title_row.add_child(close_button)
+	reference_tabs = TabContainer.new()
+	reference_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(reference_tabs)
+	_add_reference_tab("Símbolos", _build_current_legend_text())
+	_add_reference_tab("Controles", """MOVIMIENTO
+WASD / Flechas   Mover cámara o habitante poseído
+F                Seguir habitante
+P / Q            Poseer / abandonar
+
+SIMULACIÓN
+Espacio          Pausar o continuar
+F3               Diagnóstico de rendimiento
+F5 / F9          Guardar / cargar
+J / L            Misiones / crónicas
+H                Ayuda completa""")
+	_add_reference_tab("Sistemas", """NECESIDADES
+Los habitantes organizan comida, agua, sueño, higiene y salud.
+
+ECONOMÍA
+Los recursos deben recogerse, transportarse y almacenarse.
+
+SOCIEDAD
+Relaciones, memoria, rumores, creencias y conflictos tienen consecuencias.
+
+CLIMA
+La estación limita el clima posible; la nieve requiere suficiente frío.""")
+
 	legend_btn = Button.new()
-	legend_btn.name = "LegendBtn"
-	legend_btn.text = "|||"
-	legend_btn.anchor_left = 0.0
+	legend_btn.name = "ReferenceBtn"
+	legend_btn.text = "Referencia"
+	legend_btn.tooltip_text = "Abrir símbolos, controles y explicación de sistemas"
 	legend_btn.anchor_top = 0.5
 	legend_btn.anchor_bottom = 0.5
-	legend_btn.offset_left = 0
-	legend_btn.offset_top = -40
-	legend_btn.offset_right = 30
-	legend_btn.offset_bottom = 40
+	legend_btn.offset_left = 4
+	legend_btn.offset_top = -14
+	legend_btn.offset_right = 88
+	legend_btn.offset_bottom = 14
 	legend_btn.pressed.connect(func(): legend_panel.visible = not legend_panel.visible)
 	add_child(legend_btn)
 
-	# Arreglar el boton: darle tamano fijo con anchor correcto
-	legend_btn.anchor_left = 0.0
-	legend_btn.anchor_top = 0.5
-	legend_btn.anchor_right = 0.0
-	legend_btn.anchor_bottom = 0.5
-	legend_btn.offset_left = 0
-	legend_btn.offset_top = -60
-	legend_btn.offset_right = 26
-	legend_btn.offset_bottom = 60
-	legend_btn.tooltip_text = "Abrir o cerrar la leyenda"
-	legend_btn.add_theme_color_override("font_color", UI_TEXT)
-	legend_btn.add_theme_color_override("font_hover_color", Color.WHITE)
-	var legend_button_style := StyleBoxFlat.new()
-	legend_button_style.bg_color = UI_BG_RAISED
-	legend_button_style.border_color = UI_BORDER
-	legend_button_style.set_border_width_all(1)
-	legend_button_style.corner_radius_top_right = 5
-	legend_button_style.corner_radius_bottom_right = 5
-	legend_btn.add_theme_stylebox_override("normal", legend_button_style)
-	var legend_button_hover := legend_button_style.duplicate()
-	legend_button_hover.bg_color = UI_BORDER_SOFT
-	legend_button_hover.border_color = UI_ACCENT
-	legend_btn.add_theme_stylebox_override("hover", legend_button_hover)
+func _add_reference_tab(tab_name: String, contents: String) -> void:
+	var page := RichTextLabel.new()
+	page.name = tab_name
+	page.bbcode_enabled = false
+	page.fit_content = false
+	page.scroll_active = true
+	page.text = contents
+	page.tooltip_text = "Desplaza la rueda para leer toda la sección"
+	reference_tabs.add_child(page)
+
+func _create_management_window() -> void:
+	management_panel = PanelContainer.new()
+	management_panel.name = "ManagementCenter"
+	management_panel.anchor_left = 0.18
+	management_panel.anchor_top = 0.14
+	management_panel.anchor_right = 0.82
+	management_panel.anchor_bottom = 0.86
+	management_panel.visible = false
+	management_panel.gui_input.connect(_on_management_gui_input)
+	add_child(management_panel)
+	var layout := VBoxContainer.new()
+	management_panel.add_child(layout)
+	var title_row := HBoxContainer.new()
+	layout.add_child(title_row)
+	var title := Label.new()
+	title.text = "Centro de gestión de la colonia"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(title)
+	var refresh_button := Button.new()
+	refresh_button.text = "Actualizar"
+	refresh_button.tooltip_text = "Actualizar ahora los datos de gestión"
+	refresh_button.pressed.connect(_refresh_management_pages)
+	title_row.add_child(refresh_button)
+	var close_button := Button.new()
+	close_button.text = "×"
+	close_button.tooltip_text = "Cerrar centro de gestión"
+	close_button.pressed.connect(func(): management_panel.hide())
+	title_row.add_child(close_button)
+	management_tabs = TabContainer.new()
+	management_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(management_tabs)
+	for page_name in ["Habitantes", "Trabajos", "Almacenes", "Salud", "Economía"]:
+		var page := RichTextLabel.new()
+		page.name = page_name
+		page.scroll_active = true
+		page.selection_enabled = true
+		page.tooltip_text = "Clic derecho para opciones; rueda para desplazarte"
+		management_tabs.add_child(page)
+		management_pages.append(page)
+	management_context_menu = PopupMenu.new()
+	management_context_menu.add_item("Actualizar información", 0)
+	management_context_menu.add_item("Cerrar ventana", 1)
+	management_context_menu.id_pressed.connect(_on_management_context_action)
+	add_child(management_context_menu)
+
+func _create_confirmation_dialogs() -> void:
+	quit_confirmation = ConfirmationDialog.new()
+	quit_confirmation.title = "Salir de Bigli"
+	quit_confirmation.dialog_text = "¿Deseas salir? Guarda la partida antes si quieres conservar el progreso."
+	quit_confirmation.ok_button_text = "Salir"
+	quit_confirmation.confirmed.connect(func(): get_tree().quit())
+	add_child(quit_confirmation)
+	load_confirmation = ConfirmationDialog.new()
+	load_confirmation.title = "Cargar partida"
+	load_confirmation.dialog_text = "Cargar reemplazará el mundo actual no guardado. ¿Continuar?"
+	load_confirmation.ok_button_text = "Cargar"
+	load_confirmation.confirmed.connect(func(): _dispatch_main_key(KEY_F9))
+	add_child(load_confirmation)
+
+func _open_management_tab(tab_index: int = 0) -> void:
+	management_panel.show()
+	management_tabs.current_tab = clampi(tab_index, 0, management_tabs.get_tab_count() - 1)
+	_refresh_management_pages()
+
+func _on_management_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		management_context_menu.position = Vector2i(get_global_mouse_position())
+		management_context_menu.popup()
+
+func _on_management_context_action(item_id: int) -> void:
+	if item_id == 0:
+		_refresh_management_pages()
+	else:
+		management_panel.hide()
+
+func _refresh_management_pages() -> void:
+	if world == null or management_pages.size() < 5:
+		return
+	var living: int = 0
+	var hungry: int = 0
+	var thirsty: int = 0
+	var sick: int = 0
+	var stressed: int = 0
+	var inhabitant_lines: Array[String] = ["HABITANTES"]
+	for dwarf_value in world.dwarves:
+		var dwarf = dwarf_value
+		if not dwarf.is_alive:
+			continue
+		living += 1
+		hungry += 1 if float(dwarf.hunger) > 0.65 else 0
+		thirsty += 1 if float(dwarf.thirst) > 0.65 else 0
+		sick += 1 if int(dwarf.disease_phase) != 0 else 0
+		stressed += 1 if float(dwarf.stress) > 0.65 else 0
+		if inhabitant_lines.size() <= 24:
+			var inhabitant_name: String = str(dwarf.get_entity_name()) if dwarf.has_method("get_entity_name") else str(dwarf.get("name"))
+			var inhabitant_task: String = str(dwarf.get("current_task"))
+			inhabitant_lines.append("%-18s  %-12s  ánimo %3d%%" % [inhabitant_name, inhabitant_task, int((1.0 - float(dwarf.stress)) * 100.0)])
+	management_pages[0].text = "\n".join(inhabitant_lines) + "\n\nVivos: %d  Con hambre: %d  Con sed: %d" % [living, hungry, thirsty]
+	management_pages[1].text = "TRABAJOS\n\nActivos: %d\nPendientes: %d\n\nLa cola se actualiza sin recorrerla cada fotograma." % [_job_active, _job_pending]
+	var stored_items: int = 0
+	var loose_items: int = 0
+	for item_value in world.items:
+		if item_value.container_id >= 0:
+			stored_items += 1
+		else:
+			loose_items += 1
+	management_pages[2].text = "ALMACENES\n\nObjetos guardados: %d\nObjetos sin almacenar: %d\nEdificios: %d" % [stored_items, loose_items, world.buildings.size()]
+	management_pages[3].text = "SALUD\n\nEnfermos: %d\nCon estrés alto: %d\nHabitantes estables: %d" % [sick, stressed, maxi(0, living - sick - stressed)]
+	management_pages[4].text = "ECONOMÍA\n\nPoblación activa: %d\nObjetos totales: %d\nInfraestructura: %d\n\nEl inventario distingue recursos almacenados y abandonados." % [living, world.items.size(), world.buildings.size()]
+
+func _build_current_legend_text() -> String:
+	return """LEYENDA ACTUAL
+
+TERRENO
+#  muro natural
+▲  afloramiento de roca minable
+·  suelo despejado o piedra trabajada
+,  pasto o suelo de cueva
+♣  árbol
+~  agua profunda
+≈  agua poco profunda
+=  puente
+•  arena
+∙  nieve
+░  hielo o camino
+:  tierra
+▒  parcela cultivable
+█  magma, fuego o muro construido
+─ │ ┌ ┐ └ ┘ ┼  muros construidos conectados
+< > □  escaleras
+
+HABITANTES Y ANIMALES
+@  habitante
+&  habitante trabajando
+z  durmiendo
+!  alerta o crisis
+X  criatura hostil
+
+EDIFICIOS
+C  carpintería    M  albañilería
+K  cocina         F  forja
+W  pozo           O  almacén de comida
+B  dormitorio     R  barracas
+*  fogata
+
+OBJETOS
+%  comida o cuerpo
+~  bebida
+O  cofre o contenedor
+/  arma o herramienta
+[  armadura
++  puerta
+=  cama
+*  piedra, mineral o lingote
+|  madera
+;  semilla
+x  objeto roto
+
+CONTROLES PRINCIPALES
+WASD/Flechas  mover cámara o poseído
+Espacio       pausar
+F             seguir habitante
+P / Q         poseer / abandonar
+H             ayuda completa
+F3            diagnóstico de rendimiento
+F5 / F9       guardar / cargar ranura 0
+J             misiones
+L             crónicas"""
+
+func _create_functional_classic_chrome() -> void:
+	classic_title_label = Label.new()
+	classic_title_label.name = "ClassicTitle"
+	classic_title_label.text = "Bigli - Simulador de mundo"
+	classic_title_label.position = Vector2(11, 5)
+	classic_title_label.size = Vector2(600, 22)
+	classic_title_label.add_theme_color_override("font_color", Color.WHITE)
+	classic_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(classic_title_label)
+
+	var menu_specs: Array = [
+		["Archivo", ["Guardar|0", "Cargar|1", "-|99", "Salir|2"]],
+		["Ver", ["Leyenda actual|0", "Ayuda completa|1", "Rendimiento (F3)|2"]],
+		["Simulación", ["Pausar/Reanudar|0", "Velocidad lenta|1", "Velocidad normal|2", "Velocidad rápida|3"]],
+		["Gestión", ["Habitantes|0", "Trabajos|1", "Almacenes|2", "Salud|3", "Economía|4", "-|99", "Misiones|10", "Crónicas|11", "Hablar|12"]],
+		["Ayuda", ["Controles|0", "Leyenda de símbolos|1"]],
+	]
+	var menu_x: float = 8.0
+	for menu_index in range(menu_specs.size()):
+		var spec: Array = menu_specs[menu_index]
+		var menu := MenuButton.new()
+		menu.name = "ClassicMenu%d" % menu_index
+		menu.text = str(spec[0])
+		menu.flat = true
+		menu.position = Vector2(menu_x, 29)
+		menu.size = Vector2(105 if menu_index in [2, 3] else 78, 19)
+		menu.add_theme_font_size_override("font_size", 10)
+		var popup := menu.get_popup()
+		for item_spec_value in spec[1]:
+			var item_spec: String = str(item_spec_value)
+			var parts: PackedStringArray = item_spec.split("|")
+			var item_id: int = int(parts[1])
+			if parts[0] == "-":
+				popup.add_separator()
+			else:
+				popup.add_item(parts[0], item_id)
+		popup.set_meta("classic_menu_index", menu_index)
+		popup.id_pressed.connect(_on_classic_popup_id_pressed.bind(popup))
+		add_child(menu)
+		classic_menu_buttons.append(menu)
+		menu_x += menu.size.x
+
+	var window_specs: Array = [["_", 0], ["□", 1], ["×", 2]]
+	for window_index in range(window_specs.size()):
+		var window_button := Button.new()
+		window_button.name = "ClassicWindowButton%d" % window_index
+		window_button.text = str(window_specs[window_index][0])
+		window_button.anchor_left = 1.0
+		window_button.anchor_right = 1.0
+		window_button.offset_left = -70 + window_index * 22
+		window_button.offset_right = -49 + window_index * 22
+		window_button.offset_top = 6
+		window_button.offset_bottom = 25
+		window_button.pressed.connect(_on_classic_window_button.bind(int(window_specs[window_index][1])))
+		add_child(window_button)
+		classic_window_buttons.append(window_button)
+
+func _on_classic_popup_id_pressed(item_id: int, popup: PopupMenu) -> void:
+	_on_classic_menu_pressed(int(popup.get_meta("classic_menu_index", -1)), item_id)
+
+func _on_classic_menu_pressed(menu_index: int, item_id: int) -> void:
+	match menu_index:
+		0:
+			if item_id == 0:
+				_dispatch_main_key(KEY_F5)
+			elif item_id == 1:
+				load_confirmation.popup_centered()
+			elif item_id == 2:
+				quit_confirmation.popup_centered()
+		1:
+			if item_id == 0:
+				legend_panel.visible = not legend_panel.visible
+			elif item_id == 1:
+				_dispatch_main_key(KEY_H)
+			elif item_id == 2:
+				performance_overlay_enabled = not performance_overlay_enabled
+		2:
+			var main_node = get_parent()
+			if item_id == 0:
+				_dispatch_main_key(KEY_SPACE)
+			elif main_node != null and "tick_interval" in main_node:
+				main_node.tick_interval = 0.20 if item_id == 1 else 0.10 if item_id == 2 else 0.05
+		3:
+			if item_id <= 4:
+				_open_management_tab(item_id)
+			else:
+				_dispatch_main_key(KEY_J if item_id == 10 else KEY_L if item_id == 11 else KEY_T)
+		4:
+			if item_id == 0:
+				_dispatch_main_key(KEY_H)
+			else:
+				legend_panel.visible = true
+	queue_redraw()
+
+func _dispatch_main_key(keycode: Key) -> void:
+	var main_node = get_parent()
+	if main_node == null or not main_node.has_method("_handle_key"):
+		return
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.pressed = true
+	main_node._handle_key(event)
+
+func _on_classic_window_button(action_id: int) -> void:
+	if action_id == 0:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MINIMIZED)
+	elif action_id == 1:
+		var current_mode := DisplayServer.window_get_mode()
+		DisplayServer.window_set_mode(
+			DisplayServer.WINDOW_MODE_WINDOWED
+			if current_mode == DisplayServer.WINDOW_MODE_MAXIMIZED
+			else DisplayServer.WINDOW_MODE_MAXIMIZED
+		)
+	else:
+		quit_confirmation.popup_centered()
+
+func _apply_classic_control_theme() -> void:
+	var classic_theme := Theme.new()
+	var panel_box := _make_classic_style(UI_CLASSIC_FACE, 2, false)
+	var button_box := _make_classic_style(UI_CLASSIC_FACE, 2, false)
+	var button_hover := _make_classic_style(Color("#F5F3E8"), 2, false)
+	var button_pressed := _make_classic_style(Color("#D6D2C7"), 2, true)
+	classic_theme.set_stylebox("panel", "Panel", panel_box)
+	classic_theme.set_stylebox("panel", "PanelContainer", panel_box)
+	classic_theme.set_stylebox("panel", "PopupMenu", panel_box)
+	classic_theme.set_stylebox("panel", "Tree", _make_classic_style(Color.WHITE, 2, true))
+	classic_theme.set_stylebox("normal", "RichTextLabel", _make_classic_style(Color.WHITE, 2, true))
+	classic_theme.set_stylebox("panel", "TabContainer", _make_classic_style(UI_CLASSIC_FACE, 2, true))
+	classic_theme.set_stylebox("tab_unselected", "TabBar", button_box)
+	classic_theme.set_stylebox("tab_hovered", "TabBar", button_hover)
+	classic_theme.set_stylebox("tab_selected", "TabBar", button_pressed)
+	classic_theme.set_stylebox("normal", "Button", button_box)
+	classic_theme.set_stylebox("hover", "Button", button_hover)
+	classic_theme.set_stylebox("pressed", "Button", button_pressed)
+	classic_theme.set_stylebox("focus", "Button", _make_classic_style(Color.TRANSPARENT, 1, true))
+	classic_theme.set_color("font_color", "Button", UI_CLASSIC_TEXT)
+	classic_theme.set_color("font_hover_color", "Button", Color.BLACK)
+	classic_theme.set_color("font_pressed_color", "Button", Color.BLACK)
+	classic_theme.set_color("font_color", "Label", UI_CLASSIC_TEXT)
+	classic_theme.set_color("default_color", "RichTextLabel", UI_CLASSIC_TEXT)
+	classic_theme.set_color("font_selected_color", "TabBar", UI_CLASSIC_TEXT)
+	classic_theme.set_color("font_unselected_color", "TabBar", UI_CLASSIC_TEXT)
+	theme = classic_theme
+
+func _make_classic_style(fill: Color, border_width: int, pressed: bool) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = fill
+	var top_left: Color = UI_CLASSIC_SHADOW if pressed else UI_CLASSIC_LIGHT
+	var bottom_right: Color = UI_CLASSIC_LIGHT if pressed else UI_CLASSIC_SHADOW
+	box.border_width_left = border_width
+	box.border_width_top = border_width
+	box.border_width_right = border_width
+	box.border_width_bottom = border_width
+	box.border_color = bottom_right
+	box.corner_radius_top_left = 0
+	box.corner_radius_top_right = 0
+	box.corner_radius_bottom_left = 0
+	box.corner_radius_bottom_right = 0
+	box.shadow_color = top_left
+	box.shadow_size = 1
+	return box
+
+func _draw_classic_bevel(rect: Rect2, fill: Color = UI_CLASSIC_FACE, sunken: bool = false) -> void:
+	draw_rect(rect, fill, true)
+	var top_left: Color = UI_CLASSIC_SHADOW if sunken else UI_CLASSIC_LIGHT
+	var bottom_right: Color = UI_CLASSIC_LIGHT if sunken else UI_CLASSIC_SHADOW
+	draw_line(rect.position, Vector2(rect.end.x, rect.position.y), top_left, 1.0)
+	draw_line(rect.position, Vector2(rect.position.x, rect.end.y), top_left, 1.0)
+	draw_line(Vector2(rect.position.x, rect.end.y - 1), rect.end - Vector2(0, 1), bottom_right, 1.0)
+	draw_line(Vector2(rect.end.x - 1, rect.position.y), rect.end - Vector2(1, 0), bottom_right, 1.0)
+
+func _draw_classic_titlebar(rect: Rect2, title: String, active: bool = true) -> void:
+	var title_color: Color = UI_CLASSIC_TITLE if active else UI_CLASSIC_MID
+	draw_rect(rect, title_color, true)
+	draw_rect(Rect2(rect.position, Vector2(rect.size.x, 2)), UI_CLASSIC_TITLE_LIGHT, true)
+	draw_string(_font, rect.position + Vector2(7, rect.size.y - 5), title,
+		HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 72, 11, Color.WHITE)
+	var button_size: float = maxf(12.0, rect.size.y - 6.0)
+	var button_y: float = rect.position.y + 3.0
+	for index in range(3):
+		var button_x: float = rect.end.x - (3 - index) * (button_size + 3.0)
+		var button_rect := Rect2(button_x, button_y, button_size, button_size)
+		_draw_classic_bevel(button_rect, UI_CLASSIC_FACE, false)
+		var symbol: String = "_" if index == 0 else "□" if index == 1 else "×"
+		draw_string(_font, button_rect.position + Vector2(1, button_size - 2), symbol,
+			HORIZONTAL_ALIGNMENT_CENTER, button_size - 2, 9, UI_CLASSIC_TEXT)
+
+func _draw_application_frame(rect: Rect2) -> void:
+	var outer := rect.grow(4)
+	# Solo se pinta el marco; rellenar todo el rectángulo ocultaría el mapa.
+	draw_rect(Rect2(outer.position, Vector2(outer.size.x, 4)), UI_CLASSIC_LIGHT, true)
+	draw_rect(Rect2(outer.position, Vector2(4, outer.size.y)), UI_CLASSIC_LIGHT, true)
+	draw_rect(Rect2(Vector2(outer.position.x, outer.end.y - 4), Vector2(outer.size.x, 4)), UI_CLASSIC_SHADOW, true)
+	draw_rect(Rect2(Vector2(outer.end.x - 4, outer.position.y), Vector2(4, outer.size.y)), UI_CLASSIC_SHADOW, true)
+	_draw_classic_titlebar(Rect2(outer.position + Vector2(3, 3), Vector2(outer.size.x - 6, 20)),
+		"Bigli World Simulator")
+	var menu_y: float = outer.position.y + 23
+	draw_rect(Rect2(outer.position.x + 3, menu_y, outer.size.x - 6, 18), UI_CLASSIC_FACE, true)
+	draw_string(_font, Vector2(outer.position.x + 10, menu_y + 13),
+		"Archivo   Ver   Simulación   Colonos   Ventana   Ayuda",
+		HORIZONTAL_ALIGNMENT_LEFT, outer.size.x - 20, 9, UI_CLASSIC_TEXT)
+	draw_line(Vector2(outer.position.x + 3, menu_y + 17), Vector2(outer.end.x - 3, menu_y + 17),
+		UI_CLASSIC_SHADOW, 1.0)
+
+func _draw_fullscreen_desktop_shell(caption: String, status: String) -> void:
+	var viewport_rect := Rect2(Vector2.ZERO, size)
+	draw_rect(Rect2(0, 0, size.x, 4), UI_CLASSIC_LIGHT, true)
+	draw_rect(Rect2(0, 0, 4, size.y), UI_CLASSIC_LIGHT, true)
+	draw_rect(Rect2(0, size.y - 4, size.x, 4), UI_CLASSIC_SHADOW, true)
+	draw_rect(Rect2(size.x - 4, 0, 4, size.y), UI_CLASSIC_SHADOW, true)
+	_draw_classic_titlebar(Rect2(4, 4, size.x - 8, 24), caption)
+	draw_rect(Rect2(4, 28, size.x - 8, 20), UI_CLASSIC_FACE, true)
+	draw_string(_font, Vector2(12, 42), "Archivo   Ver   Simulación   Herramientas   Ayuda",
+		HORIZONTAL_ALIGNMENT_LEFT, size.x - 24, 10, UI_CLASSIC_TEXT)
+	var status_rect := Rect2(5, size.y - 25, size.x - 10, 20)
+	_draw_classic_bevel(status_rect, UI_CLASSIC_FACE, true)
+	draw_string(_font, Vector2(11, size.y - 10), status,
+		HORIZONTAL_ALIGNMENT_LEFT, size.x - 22, 9, UI_CLASSIC_TEXT)
 
 func _apply_night_lighting(color: Color) -> Color:
-	# Iluminación nocturna sutil. Los colores se oscurecen gradualmente
-	# según la hora del día, pero el mapa sigue siendo perfectamente legible.
-	if _is_daytime:
-		return color
-	# Noche: oscurecer ligeramente los colores exteriores
-	var night_factor: float = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.0005)  # Parpadeo suave de estrellas
-	return Color(color.r * night_factor, color.g * night_factor, color.b * night_factor, color.a)
-
-func _draw_classic_frame(rect: Rect2, title: String, active: bool = true) -> Rect2:
-	# Four-line bevel used by Windows Classic controls.
-	draw_rect(rect, WIN_FACE, true)
-	draw_line(rect.position, Vector2(rect.end.x, rect.position.y), WIN_LIGHT, 1.0)
-	draw_line(rect.position, Vector2(rect.position.x, rect.end.y), WIN_LIGHT, 1.0)
-	draw_line(Vector2(rect.position.x, rect.end.y - 1), rect.end - Vector2(0, 1), WIN_DARK_SHADOW, 1.0)
-	draw_line(Vector2(rect.end.x - 1, rect.position.y), rect.end - Vector2(1, 0), WIN_DARK_SHADOW, 1.0)
-	draw_line(rect.position + Vector2(1, 1), Vector2(rect.end.x - 2, rect.position.y + 1), Color("#dfdfdf"), 1.0)
-	draw_line(rect.position + Vector2(1, 1), Vector2(rect.position.x + 1, rect.end.y - 2), Color("#dfdfdf"), 1.0)
-	var title_rect := Rect2(rect.position + Vector2(3, 3), Vector2(rect.size.x - 6, 21))
-	var title_color := WIN_TITLE_START if active else WIN_SHADOW
-	draw_rect(title_rect, title_color, true)
-	# Subtle period-correct title gradient.
-	var gradient_steps := 18
-	for step in range(gradient_steps):
-		var ratio := float(step) / float(gradient_steps - 1)
-		var strip_x := title_rect.position.x + title_rect.size.x * ratio
-		draw_line(
-			Vector2(strip_x, title_rect.position.y),
-			Vector2(strip_x, title_rect.end.y),
-			title_color.lerp(WIN_TITLE_END, ratio),
-			maxf(1.0, title_rect.size.x / float(gradient_steps))
-		)
-	draw_string(_font, title_rect.position + Vector2(6, 15), title,
-		HORIZONTAL_ALIGNMENT_LEFT, title_rect.size.x - 70, 11, Color.WHITE)
-	for button_index in range(3):
-		var button_rect := Rect2(
-			title_rect.end.x - 17.0 * float(3 - button_index),
-			title_rect.position.y + 3,
-			15,
-			15
-		)
-		draw_rect(button_rect, WIN_FACE, true)
-		draw_line(button_rect.position, Vector2(button_rect.end.x, button_rect.position.y), WIN_LIGHT, 1.0)
-		draw_line(button_rect.position, Vector2(button_rect.position.x, button_rect.end.y), WIN_LIGHT, 1.0)
-		draw_line(Vector2(button_rect.position.x, button_rect.end.y - 1), button_rect.end - Vector2(0, 1), WIN_DARK_SHADOW, 1.0)
-		draw_line(Vector2(button_rect.end.x - 1, button_rect.position.y), button_rect.end - Vector2(1, 0), WIN_DARK_SHADOW, 1.0)
-	var close_center := Vector2(title_rect.end.x - 9.5, title_rect.position.y + 10.5)
-	draw_line(close_center - Vector2(3, 3), close_center + Vector2(3, 3), Color.BLACK, 1.0)
-	draw_line(close_center + Vector2(3, -3), close_center + Vector2(-3, 3), Color.BLACK, 1.0)
-	return Rect2(rect.position + Vector2(3, 27), rect.size - Vector2(6, 30))
+	# Sin filtro global de noche. La hora sigue visible en el HUD, pero los
+	# colores del mapa permanecen nítidos y con su brillo original.
+	return color
 
 func _is_daytime_alt() -> float:
 	# Returns 0.0 (midnight) to 1.0 (noon)
@@ -435,38 +775,39 @@ func _draw_tile(pos: Vector2, char_str: String, fg: Color, bg: Color) -> void:
 	fg = _apply_night_lighting(fg)
 	bg = _apply_night_lighting(bg)
 	
-	if bg.a > 0.01 and (bg.r > 0.01 or bg.g > 0.01 or bg.b > 0.01):
+	# También hay que pintar el negro. Saltarlo dejaba visible el color gris del
+	# Control cuando la cámara alcanzaba el borde de una región.
+	if bg.a > 0.01:
 		var bg_rect = Rect2(pos.x, pos.y, _char_size.x, _char_size.y)
 		draw_rect(bg_rect, bg, true)
 
-	if char_str != " " and char_str != "":
-		if _tileset != null and _tileset.texture != null:
-			var region = _tileset.get_tile_region(char_str)
-			if region.size.x > 0:
-				var mod = Color(fg.r, fg.g, fg.b, 1.0)
-				draw_texture_rect_region(_tileset.texture, Rect2(pos, _char_size), region, mod)
-		elif _font != null:
-			draw_string(_font, pos + Vector2(0, _char_size.y * 0.8), char_str, HORIZONTAL_ALIGNMENT_LEFT, -1, int(_char_size.y), fg)
-
-
-func _apply_game_zoom() -> void:
-	var tile_pixels: int = GAME_ZOOM_LEVELS[clampi(_game_zoom_index, 0, GAME_ZOOM_LEVELS.size() - 1)]
-	_char_size = Vector2(tile_pixels, tile_pixels)
-	queue_redraw()
-
-
-func adjust_game_zoom(direction: int) -> void:
-	_game_zoom_index = clampi(_game_zoom_index + direction, 0, GAME_ZOOM_LEVELS.size() - 1)
-	_apply_game_zoom()
+	if char_str != " " and _tileset != null and _tileset.texture != null:
+		var region = _tileset.get_tile_region(char_str)
+		if region.size.x > 0:
+			var mod = Color(fg.r, fg.g, fg.b, 1.0)
+			draw_texture_rect_region(_tileset.texture, Rect2(pos, Vector2(16, 16)), region, mod)
 
 func _process(delta: float) -> void:
-	queue_redraw()
+	# El estado lógico sigue actualizándose cada frame, pero el mapa se redibuja
+	# como máximo a 60 Hz. Esto elimina el doble redibujado que hundía los FPS al
+	# materializar aldeas con muchas casas, muebles y residentes.
+	_map_redraw_accumulator += delta
+	_renderer_logic_accumulator += delta
+	if management_panel != null and management_panel.visible:
+		_management_refresh_elapsed += delta
+		if _management_refresh_elapsed >= 1.0:
+			_management_refresh_elapsed = 0.0
+			_refresh_management_pages()
+	_sync_classic_control_availability()
+	if _map_redraw_accumulator >= MAP_REDRAW_INTERVAL:
+		_map_redraw_accumulator = fmod(_map_redraw_accumulator, MAP_REDRAW_INTERVAL)
+		queue_redraw()
 	
 	if _renderer_logic_accumulator < RENDERER_LOGIC_SYNC_INTERVAL:
 		return
 	_renderer_logic_accumulator = fmod(_renderer_logic_accumulator, RENDERER_LOGIC_SYNC_INTERVAL)
 
-	# Datos ambientales y cursor: 20 Hz son suficientes y evitan trabajo repetido.
+	# Datos ambientales y cursor: 30 Hz son suficientes y evitan trabajo repetido.
 	if world != null:
 		# Tiempo desde el nodo principal
 		var main_nd = get_parent()
@@ -485,6 +826,31 @@ func _process(delta: float) -> void:
 		_temperature = world.ambient_temperature
 		_wind_strength = world.wind_strength
 		_is_daytime = world.is_daytime
+
+func _sync_classic_control_availability() -> void:
+	if classic_menu_buttons.size() < 5:
+		return
+	var main_node = get_parent()
+	var state: int = int(main_node.get("current_state")) if main_node != null else -1
+	var playing: bool = state == 5
+	var generating: bool = state in [1, 6]
+	classic_menu_buttons[2].disabled = not playing
+	classic_menu_buttons[3].disabled = not playing
+	var file_popup: PopupMenu = classic_menu_buttons[0].get_popup()
+	file_popup.set_item_disabled(0, not playing)
+	file_popup.set_item_disabled(1, not playing)
+	var state_titles: Dictionary = {
+		0: "Bigli - Crear un mundo",
+		1: "Bigli - Generador de mundos",
+		2: "Bigli - Seleccionar modo",
+		3: "Bigli - Ubicación de expedición",
+		4: "Bigli - Preparar expedición",
+		5: "Bigli - Simulador de colonia",
+		6: "Bigli - Cargando colonia",
+	}
+	classic_title_label.text = str(state_titles.get(state, "Bigli - Simulador de mundo"))
+	if generating:
+		classic_title_label.text += " (procesando)"
 		
 		# Animacion: alternar fase cada ~0.5 segundos
 		_dwarf_animation_tick += 1
@@ -499,9 +865,8 @@ func _process(delta: float) -> void:
 		var viewport_size = get_viewport_rect().size
 		var max_chars_x = int(viewport_size.x / cs_x)
 		var max_chars_y = int(viewport_size.y / cs_y)
-		var reserved_sidebar: int = ceili(float(SIDEBAR_PIXEL_WIDTH) / cs_x) if show_sidebar and not show_help else 0
-		var vw = max_chars_x - reserved_sidebar - 2 if max_chars_x > reserved_sidebar + 10 else 40
-		var vh = max_chars_y - 6 if max_chars_y > 8 else 20
+		var vw = max_chars_x - sidebar_width - 2 if max_chars_x > sidebar_width + 10 else 40
+		var vh = max_chars_y - 9 if max_chars_y > 11 else 20
 		
 		var cam_x = camera_pos.x - vw / 2
 		var cam_z = camera_pos.z - vh / 2
@@ -509,7 +874,7 @@ func _process(delta: float) -> void:
 		var border_x = _draw_border(vw, vh)
 		
 		var vx_x = int((mouse_pos.x - border_x) / cs_x)
-		var vz_z = int(mouse_pos.y / cs_y)
+		var vz_z = int((mouse_pos.y - UI_CONTENT_TOP) / cs_y)
 		
 		if vx_x >= 0 and vx_x < vw and vz_z >= 0 and vz_z < vh:
 			_highlighted_tile = Vector3i(cam_x + vx_x, cam_y, cam_z + vz_z)
@@ -527,7 +892,7 @@ func add_message(msg: String) -> void:
 
 func _draw() -> void:
 	if _tileset == null:
-		_tileset = DFTileset.new()
+		return
 	var effect_time_ms: float = float(Time.get_ticks_msec())
 
 	var main_node = get_parent()
@@ -536,21 +901,27 @@ func _draw() -> void:
 		match state:
 			0: # GameState.SETTINGS_MENU
 				_draw_settings_menu()
+				_draw_fullscreen_desktop_shell("Bigli - Crear un mundo", "Listo")
 				return
 			1: # GameState.GENERATING_WORLD
 				_draw_generating_screen()
+				_draw_fullscreen_desktop_shell("Bigli - Generador de mundos", "Procesando simulación histórica...")
 				return
 			2: # GameState.MODE_SELECT
 				_draw_mode_select_menu()
+				_draw_fullscreen_desktop_shell("Bigli - Seleccionar modo", "Seleccione una opción para continuar")
 				return
 			3: # GameState.EMBARK_MAP_SELECT
 				_draw_embark_map_select()
+				_draw_fullscreen_desktop_shell("Bigli - Ubicación de expedición", "Seleccione una región del mapa")
 				return
 			4: # GameState.EMBARK_PREPARE
 				_draw_embark_prepare()
+				_draw_fullscreen_desktop_shell("Bigli - Preparar expedición", "Configure habitantes y suministros")
 				return
 			6: # GameState.LOADING_PLAYING
 				_draw_loading_playing_screen()
+				_draw_fullscreen_desktop_shell("Bigli - Cargando colonia", "Espere mientras se prepara el asentamiento")
 				return
 
 	var legends_active = false
@@ -564,27 +935,26 @@ func _draw() -> void:
 	var viewport_size = get_viewport_rect().size
 	var max_chars_x = int(viewport_size.x / _char_size.x)
 	var max_chars_y = int(viewport_size.y / _char_size.y)
-
-	# Al ocultar el panel lateral, el mapa recupera inmediatamente todo ese
-	# ancho. Antes se reservaban 32 columnas invisibles incluso con el panel
-	# cerrado, haciendo que el mundo pareciera pequeño.
-	var reserved_sidebar: int = ceili(float(SIDEBAR_PIXEL_WIDTH) / _char_size.x) if show_sidebar and not show_help else 0
-	if max_chars_x > reserved_sidebar + 10:
-		view_width = max_chars_x - reserved_sidebar - 2
+	
+	if max_chars_x > sidebar_width + 10:
+		view_width = max_chars_x - sidebar_width - 2
 	else:
 		view_width = 40
 		
-	if max_chars_y > 8:
-		view_height = max_chars_y - 6
+	if max_chars_y > 11:
+		view_height = max_chars_y - 9
 	else:
 		view_height = 20
 
 	var vw = view_width
 	var vh = view_height
-	var cam_x: int = clampi(camera_pos.x - vw / 2, 0, maxi(0, world.width - vw)) if world != null else camera_pos.x - vw / 2
-	var cam_z: int = clampi(camera_pos.z - vh / 2, 0, maxi(0, world.depth - vh)) if world != null else camera_pos.z - vh / 2
+	var cam_x = camera_pos.x - vw / 2
+	var cam_z = camera_pos.z - vh / 2
 	var cam_y = camera_pos.y
 	var border_x = _draw_border(vw, vh)
+	# Fondo único del visor para que nunca aparezcan huecos entre el terreno,
+	# una transición regional y la barra lateral.
+	draw_rect(Rect2(border_x, UI_CONTENT_TOP, vw * _char_size.x, vh * _char_size.y), Color.BLACK, true)
 
 	# Solo se indexan las entidades visibles. Antes se recorría y convertía todo
 	# el mundo local en cada redibujado aunque la cámara mostrara una fracción.
@@ -660,8 +1030,7 @@ func _draw() -> void:
 				var ch = " "
 				var fg = Color.WHITE
 				var bg = Color.BLACK
-				var char_pos = Vector2(border_x + x * _char_size.x, z * _char_size.y)
-
+				var char_pos = Vector2(border_x + x * _char_size.x, UI_CONTENT_TOP + z * _char_size.y)
 				if wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth:
 					var tile_type = world.get_tile(pos)
 					var tile_char = world.get_tile_char(pos)
@@ -693,19 +1062,10 @@ func _draw() -> void:
 						else:
 							fg = world.get_tile_color(pos)
 							bg = world.get_tile_bg_color(pos)
-							# Colores por altura REAL usando elevación del mundo
-							# Las zonas más altas se ven más claras y cálidas; las bajas más oscuras y frías
-							if tile_type in [DFWorld.TileType.FLOOR, DFWorld.TileType.GRASS, DFWorld.TileType.DIRT, DFWorld.TileType.SOIL, DFWorld.TileType.STONE_FLOOR, DFWorld.TileType.CONSTRUCTED_FLOOR]:
-								var elev: int = world.get_surface_height(wx, wz)
-								var elev_factor: float = clampf(float(elev) / 8.0, 0.0, 1.0)
-								if elev_factor > 0.5:
-									fg = fg.lightened((elev_factor - 0.5) * 0.25)
-								else:
-									fg = fg.darkened((0.5 - elev_factor) * 0.35)
 					else:
 						var found = false
 						var scan_start = max(cam_y - 1, 0)
-						var scan_end = max(-1, cam_y - 2)
+						var scan_end = -1
 						for check_y in range(scan_start, scan_end, -1):
 							var check_pos = Vector3i(wx, check_y, wz)
 							var c = world.get_tile_char(check_pos)
@@ -779,28 +1139,6 @@ func _draw() -> void:
 					ch = entity_data[0]
 					fg = entity_data[1]
 
-				# === RESALTADO DE ITEMS EN EL SUELO ===
-				# Brillo sutil en items valiosos (artefactos, gemas, tesoros)
-				# === RESALTADO DE ITEMS (cache espacial, O(1)) ===
-				var item_meta: Dictionary = _item_metadata_cache.get(pos, {})
-				if not item_meta.is_empty():
-					if item_meta.get("precious", false) and _is_daytime:
-						var sparkle: float = 0.08 + 0.06 * sin(effect_time_ms * 0.005 + pos.x * 3.0 + pos.z * 7.0)
-						var glow_color: Color = Color(1.0, 0.85, 0.3, sparkle)
-						draw_rect(Rect2(char_pos.x - 1, char_pos.y - 1, _char_size.x + 2, _char_size.y + 2), glow_color, false, 1.0)
-					if item_meta.get("corpse", false):
-						var decay_pulse: float = 0.04 + 0.04 * sin(effect_time_ms * 0.002 + pos.x)
-						draw_rect(Rect2(char_pos.x, char_pos.y, _char_size.x, _char_size.y), Color(0.0, 1.0, 0.0, decay_pulse), false, 1.0)
-					if item_meta.get("ghost_glow", 0.0) > 0.0:
-						var ghost_glow_intensity: float = item_meta.get("ghost_glow", 0.0)
-						# Bruma espectral pulsante alrededor del fantasma
-						var ghost_glow_color: Color = Color(0.6, 0.6, 1.0, ghost_glow_intensity * 0.5)
-						draw_rect(Rect2(char_pos.x - 2, char_pos.y - 2, _char_size.x + 4, _char_size.y + 4), ghost_glow_color, false, 2.0)
-						# Circulo luminiscente difuso detras del fantasma
-						if performance_effects_enabled:
-							var ghost_aura: float = 0.08 + 0.06 * sin(effect_time_ms * 0.003 + pos.x * 1.7 + pos.z * 2.3)
-							draw_circle(char_pos + _char_size / 2.0, _char_size.x * 0.8, Color(0.5, 0.5, 1.0, ghost_aura))
-
 				if show_job_overlay and designation != null:
 					var job_overlay = _get_job_overlay_at(wx, cam_y, wz)
 					if job_overlay[0] != "":
@@ -818,19 +1156,21 @@ func _draw() -> void:
 
 				# Sin viñeta ni oscurecimiento artificial: colores completos en toda la vista.
 
-				char_pos = Vector2(border_x + x * _char_size.x, z * _char_size.y)
+				char_pos = Vector2(border_x + x * _char_size.x, UI_CONTENT_TOP + z * _char_size.y)
 				_draw_tile(char_pos, ch, fg, bg)
 
-				# === SOMBRAS AMBIENTALES (Solo si performance_effects_enabled) ===
-				if performance_effects_enabled and wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth and not world.is_blocked(pos):
-					var cell_rect = Rect2(char_pos.x, char_pos.y, _char_size.x, _char_size.y)
-					var shadow_alpha: float = 0.3 if _is_daytime else 0.5
-					if wz > 0 and world.is_blocked(Vector3i(wx, cam_y, wz - 1)):
-						draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.position.y), Color(0.0, 0.0, 0.0, shadow_alpha), 1.0)
-					if wz < world.depth - 1 and world.is_blocked(Vector3i(wx, cam_y, wz + 1)):
-						draw_line(Vector2(cell_rect.position.x, cell_rect.end.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, shadow_alpha * 0.7), 1.0)
-					if wx > 0 and world.is_blocked(Vector3i(wx - 1, cam_y, wz)):
-						draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.position.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, shadow_alpha * 0.5), 1.0)
+				if performance_effects_enabled:
+					# Draw ambient occlusion (3D wall shadows) on floor tiles next to walls
+					if wx >= 0 and wx < world.width and wz >= 0 and wz < world.depth and not world.is_blocked(pos):
+						var cell_rect = Rect2(char_pos.x, char_pos.y, _char_size.x, _char_size.y)
+						if wz > 0 and world.is_blocked(Vector3i(wx, cam_y, wz - 1)):
+							draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.position.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
+						if wz < world.depth - 1 and world.is_blocked(Vector3i(wx, cam_y, wz + 1)):
+							draw_line(Vector2(cell_rect.position.x, cell_rect.end.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
+						if wx > 0 and world.is_blocked(Vector3i(wx - 1, cam_y, wz)):
+							draw_line(Vector2(cell_rect.position.x, cell_rect.position.y), Vector2(cell_rect.position.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
+						if wx < world.width - 1 and world.is_blocked(Vector3i(wx + 1, cam_y, wz)):
+							draw_line(Vector2(cell_rect.end.x, cell_rect.position.y), Vector2(cell_rect.end.x, cell_rect.end.y), Color(0.0, 0.0, 0.0, 0.55), 1.2)
 
 				if performance_effects_enabled:
 					# Draw pulsating miasma gas cloud particles on top
@@ -851,27 +1191,17 @@ func _draw() -> void:
 						draw_rect(Rect2(bar_x, bar_y, bar_w, bar_h), Color(0.0, 0.0, 0.0, 0.7), true)
 						draw_rect(Rect2(bar_x, bar_y, bar_w * ehp, bar_h), Color(0.8, 0.15, 0.15).lerp(Color(0.3, 0.85, 0.3), ehp), true)
 
-				# Precise cursor: steady color and corner registration marks.
+				# Cursor highlight with animated glow
 				if pos == _highlighted_tile:
-					var selection_rect := Rect2(char_pos, _char_size)
-					draw_rect(selection_rect, Color(UI.ACCENT.r, UI.ACCENT.g, UI.ACCENT.b, 0.12), true)
-					draw_rect(selection_rect.grow(-1), UI.ACCENT, false, 1.0)
-					draw_line(selection_rect.position, selection_rect.position + Vector2(5, 0), Color.WHITE, 1.0)
-					draw_line(selection_rect.position, selection_rect.position + Vector2(0, 5), Color.WHITE, 1.0)
+					var pulse = 0.3 + 0.3 * sin(effect_time_ms * 0.006)
+					draw_rect(Rect2(char_pos.x - 1, char_pos.y - 1, _char_size.x + 2, _char_size.y + 2), Color(1.0, 1.0, 1.0, pulse), false, 1.5)
+					draw_rect(Rect2(char_pos.x - 1, char_pos.y - 1, _char_size.x + 2, 1), Color(0.8, 0.9, 1.0, pulse * 0.5), true)
 
 	if _dialogue_active:
 		_draw_dialogue_overlay()
 	_draw_quest_notification()
 	if _quest_log_open:
 		_draw_quest_log_overlay()
-	if _recipe_selector_active:
-		_draw_recipe_selector_overlay()
-	if _mode_switch_open:
-		_draw_mode_switch_menu()
-		return
-	if _dwarf_stats_open:
-		_draw_dwarf_stats_overlay()
-		return
 	if _fast_travel_active:
 		_draw_fast_travel_overlay()
 	if show_help:
@@ -884,17 +1214,16 @@ func _draw() -> void:
 	if performance_overlay_enabled:
 		_draw_performance_overlay()
 
-	# Windows Classic recessed frame around the playable workspace.
+	# Marco de aplicación de escritorio clásico: la simulación se presenta
+	# como una herramienta de administración, no como un HUD flotante.
 	if world != null and not show_help:
 		var outline_w = vw * _char_size.x
 		if show_sidebar:
-			outline_w += SIDEBAR_PIXEL_WIDTH + 8
-		var outline_rect = UI.snapped_rect(Rect2(border_x - 4, 2, outline_w + 8, vh * _char_size.y + 4))
-		draw_rect(outline_rect, UI.WIN_DARK_SHADOW, false, 1.0)
-		draw_line(outline_rect.position + Vector2(1, 1), Vector2(outline_rect.end.x - 1, outline_rect.position.y + 1), UI.WIN_SHADOW, 1.0)
-		draw_line(outline_rect.position + Vector2(1, 1), Vector2(outline_rect.position.x + 1, outline_rect.end.y - 1), UI.WIN_SHADOW, 1.0)
+			outline_w += sidebar_width * _char_size.x + 8
+		var outline_rect = Rect2(border_x - 4, 2, outline_w + 8, UI_CONTENT_TOP + vh * _char_size.y + 2)
+		_draw_application_frame(outline_rect)
 
-	var msg_y = vh * _char_size.y + 4
+	var msg_y = UI_CONTENT_TOP + vh * _char_size.y + 4
 	_draw_message_log(msg_y)
 
 	# In-game tutorial overlay (first few minutes, for new players)
@@ -908,7 +1237,7 @@ func _draw() -> void:
 func _draw_border(vw: int, vh: int) -> int:
 	var total_w = vw * _char_size.x
 	if show_sidebar and not show_help:
-		total_w += SIDEBAR_PIXEL_WIDTH + 8
+		total_w += sidebar_width * _char_size.x + 8
 	total_w += 20
 	var start_x = maxf((size.x - total_w) / 2, 4)
 	return int(start_x)
@@ -924,100 +1253,52 @@ func _get_entity_at(wx: int, wy: int, wz: int) -> Array:
 
 func _rebuild_entity_cache(cam_x: int, cam_z: int, vw: int, vh: int, cam_y: int) -> Array:
 	_entity_cache.clear()
-	_item_metadata_cache.clear()
 	var visible_entities: Array = []
 	if world == null:
 		return visible_entities
-	var min_x: int = max(0, cam_x - 2)
-	var max_x: int = min(world.width - 1, cam_x + vw + 2)
-	var min_z: int = max(0, cam_z - 2)
-	var max_z: int = min(world.depth - 1, cam_z + vh + 2)
-	var min_y: int = max(0, cam_y - 1)
-	var max_y: int = min(world.height - 1, cam_y + 1)
-
-	for y in range(min_y, max_y + 1):
-		for z in range(min_z, max_z + 1):
-			for x in range(min_x, max_x + 1):
-				var pos = Vector3i(x, y, z)
-				var at_pos = world._entity_grid.get(pos)
-				if at_pos == null: continue
-				for e in at_pos:
-					var is_alive: Variant = e.get("is_alive")
-					if is_alive != null and is_alive == false:
-						continue
-					var is_creature = (e.get("creature_type") == "dwarf" or e.get("creature_type") == "ghost" or (is_alive != null and is_alive == true and not (e is DFItem) and not (e is DFCorpse)))
-					var should_render = not _entity_cache.has(pos) or is_creature
-					if should_render:
-						var ch: String = e.get_display_char()
-						var col: Color = e.get_display_color()
-						# Animación básica solo para lo que realmente aparece en pantalla.
-						if e.get("creature_type") == "ghost":
-							# === FANTASMA: glifo espectral parpadeante y semitransparente ===
-							ch = "♱" if _animation_phase else "†"
-							var ghost_alpha: float = 0.45 + 0.25 * sin(Time.get_ticks_msec() * 0.003 + pos.x * 1.3 + pos.z * 2.7)
-							col = Color(0.7, 0.7, 1.0, ghost_alpha)
-							# Pulso de luz espectral alrededor del fantasma
-							var glow_intensity: float = 0.15 + 0.12 * sin(Time.get_ticks_msec() * 0.004 + pos.x * 0.7 + pos.z * 1.1)
-							if _animation_phase:
-								_item_metadata_cache[pos] = {"ghost_glow": glow_intensity}
-						elif e.get("creature_type") == "dwarf":
-							if _animation_phase:
-								ch = "☻"
-								col = col.lightened(0.1)
-							else:
-								ch = "☺"
-						elif e is DFCorpse:
-							# === CADÁVER DE ENANO ===
-							ch = e.get_display_char()
-							col = e.get_display_color()
-							if _animation_phase and e.state < DFCorpse.CorpseState.SKELETON:
-								# Animación de pulso para cadáveres frescos
-								col = col.lightened(0.1)
-							if e.has_miasma():
-								# Efecto de miasma: tinte verdoso pulsante
-								var miasma_pulse: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.002)
-								col = Color(0.3, 0.7, 0.2, 1.0).lerp(col, miasma_pulse)
-							# Cache para metadata del hover
-							if e.tile_pos.y == cam_y and not e.is_skeleton():
-								_item_metadata_cache[pos] = {"corpse": true}
-						elif e is DFItem:
-							# === GLIFOS DIFERENCIADOS POR TIPO DE ITEM ===
-							# Cada categoría tiene un glifo único para identificación visual rápida
-							if e.is_corpse:
-								ch = "☠" if _animation_phase else "%"
-								col = col.lightened(0.1)
-							elif e.is_meat:
-								ch = "¤" if not _animation_phase else "¥"
-							elif e.is_food:
-								ch = "%" if not _animation_phase else "§"
-							elif e.is_drink:
-								ch = "~" if not _animation_phase else "≈"
-							elif e.is_tool:
-								ch = "⛏" if not _animation_phase else "⚒"
-							elif e.is_weapon:
-								ch = "↑" if not _animation_phase else "†"
-							elif e.is_armor:
-								ch = "[" if not _animation_phase else "]"
-							elif e.is_container:
-								ch = "◘" if not _animation_phase else "O"
-							elif e.get("is_artifact") == true:
-								ch = "✦" if _animation_phase else "◆"
-								var art_pulse: float = 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.005)
-								col = Color(1.0, 0.85, 0.3, 1.0).lerp(Color(1.0, 1.0, 0.6, 1.0), art_pulse)
-							elif e.total_value > 50:
-								# Items de valor medio-alto: brillo dorado tenue
-								ch = "♦" if _animation_phase else "♢"
-								col = Color(1.0, 0.8, 0.2, 1.0)
-							elif _animation_phase:
-								ch = "•"
-								col = col.lightened(0.2)
-						# Item metadata cache for ground highlighting (evita O(n²) en el loop de dibujo)
-						if e is DFItem and e.tile_pos.y == cam_y:
-							var is_precious: bool = e.get("is_artifact") == true or e.total_value > 100
-							var is_fresh_corpse: bool = e.is_corpse and e.get("is_decayed") == false
-							if is_precious or is_fresh_corpse:
-								_item_metadata_cache[pos] = {"precious": is_precious, "corpse": is_fresh_corpse}
-						_entity_cache[pos] = [ch, col]
+	var min_x: int = cam_x - 2
+	var max_x: int = cam_x + vw + 2
+	var min_z: int = cam_z - 2
+	var max_z: int = cam_z + vh + 2
+	for e in world.entities:
+		var is_alive: Variant = e.get("is_alive")
+		if is_alive != null and is_alive == false:
+			continue
+		var pos: Vector3i = e.tile_pos
+		if pos.x < min_x or pos.x > max_x or pos.z < min_z or pos.z > max_z:
+			continue
+		if absi(pos.y - cam_y) > 1:
+			continue
+		visible_entities.append(e)
+		if not _entity_cache.has(pos):
+			var ch: String = e.get_display_char()
+			var col: Color = e.get_display_color()
+			# Animación básica solo para lo que realmente aparece en pantalla.
+			if e.get("creature_type") == "dwarf":
+				if _animation_phase:
+					ch = "☻"
+					col = col.lightened(0.1)
+				else:
+					ch = "☺"
+			elif e is DFItem:
+				if e.is_food:
+					ch = "%" if not _animation_phase else "§"
+				elif e.is_drink:
+					ch = "~" if not _animation_phase else "≈"
+				elif e.is_weapon:
+					ch = "/" if not _animation_phase else "↑"
+				elif e.is_armor:
+					ch = "[" if not _animation_phase else "]"
+				elif e.is_corpse:
+					ch = "%"
+				elif e.get("is_artifact") == true:
+					ch = "✦" if _animation_phase else "◆"
+					var art_pulse: float = 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.005)
+					col = Color(1.0, 0.85, 0.3, 1.0).lerp(Color(1.0, 1.0, 0.6, 1.0), art_pulse)
+				elif _animation_phase:
+					ch = "•"
+					col = col.lightened(0.2)
+			_entity_cache[pos] = [ch, col]
 	return visible_entities
 
 func _get_job_overlay_at(wx: int, wy: int, wz: int) -> Array:
@@ -1040,52 +1321,37 @@ func _draw_sidebar(side_x: int) -> void:
 		return
 
 	var lh  = int(_char_size.y)
-	var mw  = SIDEBAR_PIXEL_WIDTH
+	var x   = side_x
+	var mw  = sidebar_width * _char_size.x
+	var y   = UI_CONTENT_TOP + 27
 	var sh = size.y
-	var content_rect := _draw_classic_frame(
-		Rect2(side_x, 2, mw + 10, sh - 4),
-		"Propiedades de la colonia"
-	)
-	draw_rect(content_rect, UI_BG, true)
-	draw_rect(content_rect, UI_BORDER_SOFT, false, 1.0)
-	var x := int(content_rect.position.x + 8)
-	var y := int(content_rect.position.y + 7)
-	mw = int(content_rect.size.x - 16)
-	
+	_draw_classic_bevel(Rect2(x - 3, UI_CONTENT_TOP, mw + 3, sh - UI_CONTENT_TOP), UI_CLASSIC_FACE, false)
+	_draw_classic_titlebar(Rect2(x, UI_CONTENT_TOP + 3, mw - 3, 21), "Propiedades de la colonia")
+	draw_rect(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), UI_CLASSIC_WORKSPACE, true)
+	_draw_classic_bevel(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), Color.TRANSPARENT, true)
+
 	# ── helper: draw section header with underline ──────────────────────────
 	# (GDScript closures can't modify outer y; we handle y inline after each call)
 
 	# ═══════════════════════════════════════════════
 	# 1. GAME TITLE
 	# ═══════════════════════════════════════════════
-	var title_col = UI_GOLD
+	var title_col = Color(0.85, 0.72, 0.20)
 	if _designation_mode_name not in ["View","Vista",""]:
 		title_col = _designation_mode_color
-	draw_string(_font, Vector2(x, y + lh), "BIGLI WORLD", HORIZONTAL_ALIGNMENT_LEFT, mw, 14, title_col)
+	draw_string(_font, Vector2(x + 7, y + lh), "BIGLI WORLD", HORIZONTAL_ALIGNMENT_LEFT, mw - 14, 12, title_col)
 	y += lh
-	draw_string(_font, Vector2(x, y + lh), "SIMULADOR DE COLONIA", HORIZONTAL_ALIGNMENT_LEFT, mw, 9, UI_TEXT_MUTED)
-	y += int(lh * 1.5)
+	draw_string(_font, Vector2(x + 7, y + lh), "Administrador de simulación", HORIZONTAL_ALIGNMENT_LEFT, mw - 14, 8, Color(0.68, 0.72, 0.78))
+	y += int(lh * 1.3)
 
 	# ═══════════════════════════════════════════════
 	# 2. PAUSE STATUS
 	# ═══════════════════════════════════════════════
-	var pause_col = UI_WARNING if paused else UI_SUCCESS
-	var pause_str = "  PAUSADO" if paused else "  SIMULACIÓN ACTIVA"
-	draw_rect(Rect2(x, y + 2, mw - 14, lh + 4), UI_BG_RAISED, true)
-	draw_rect(Rect2(x, y + 2, 3, lh + 4), pause_col, true)
+	var pause_col = Color(1.0, 0.85, 0.0) if paused else Color(0.3, 0.9, 0.4)
+	var pause_str = "■ PAUSADO" if paused else "▶ ACTIVO"
+	_draw_classic_bevel(Rect2(x + 5, y + 2, mw - 14, lh + 2), Color("#313A46"), true)
 	draw_string(_font, Vector2(x + 4, y + lh), pause_str, HORIZONTAL_ALIGNMENT_LEFT, mw, 10, pause_col)
 	y += int(lh * 1.6)
-	if _world_age_label != "":
-		draw_string(
-			_font,
-			Vector2(x, y + lh),
-			"ERA: %s · %d BESTIAS" % [_world_age_label.to_upper(), _legendary_beasts_alive],
-			HORIZONTAL_ALIGNMENT_LEFT,
-			mw,
-			9,
-			UI_GOLD
-		)
-		y += lh
 
 	# ═══════════════════════════════════════════════
 	# 3. TIME / SEASON
@@ -1106,9 +1372,6 @@ func _draw_sidebar(side_x: int) -> void:
 		"  %s  Año %d" % [_season_name, game_year],
 		HORIZONTAL_ALIGNMENT_LEFT, mw, 9, s_col)
 	y += lh
-
-
-
 	var schedule_name: String = "Sueño"
 	var schedule_end: int = 6
 	var schedule_color: Color = Color(0.55, 0.65, 1.0)
@@ -1147,13 +1410,78 @@ func _draw_sidebar(side_x: int) -> void:
 	# ═══════════════════════════════════════════════
 	var zlevel_names = {0:"Cavernas",1:"Sub",2:"Superficie",3:"Cielo",4:"Alto",5:"Cima"}
 	var zname = zlevel_names.get(camera_pos.y, "Z:%d" % camera_pos.y)
+	var main_node = get_parent()
+	var region: Vector2i = main_node.active_planet_region if main_node != null and "active_planet_region" in main_node else Vector2i.ZERO
+	var planet_x: int = region.x * world.width + camera_pos.x
+	var planet_z: int = region.y * world.depth + camera_pos.z
 	draw_string(_font, Vector2(x, y + lh),
-		"  [%d,%d]  %s" % [camera_pos.x, camera_pos.z, zname],
+		"  Planeta [%d,%d]  %s" % [planet_x, planet_z, zname],
 		HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(0.5, 0.5, 0.65))
 	y += int(lh * 1.3)
+	draw_string(_font, Vector2(x, y + lh),
+		"  Región %d,%d · Local %d,%d" % [region.x, region.y, camera_pos.x, camera_pos.z],
+		HORIZONTAL_ALIGNMENT_LEFT, mw, 8, Color(0.45, 0.50, 0.60))
+	y += int(lh * 1.2)
 
 	# ═══════════════════════════════════════════════
-	# 5. DESIGNATION MODE (only if active)
+	# 5. HISTORIA EMERGENTE: el gancho visible de la simulación
+	# ═══════════════════════════════════════════════
+	var story_hook: Dictionary = main_node.active_story_hook if main_node != null and "active_story_hook" in main_node else {}
+	var possession_report: Dictionary = main_node.last_possession_report if main_node != null and "last_possession_report" in main_node else {}
+	if not possession_report.is_empty():
+		draw_string(_font, Vector2(x, y + lh), "CONSECUENCIAS", HORIZONTAL_ALIGNMENT_LEFT, mw, 10, Color(0.90,0.58,0.95))
+		draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.52,0.24,0.60), 1.0)
+		y += int(lh * 1.3)
+		var report_name: String = str(possession_report.get("actor_name", "Habitante"))
+		var resolved_label: String = "OBJETIVO CUMPLIDO" if bool(possession_report.get("objective_resolved", false)) else "CONSECUENCIA ABIERTA"
+		draw_string(_font, Vector2(x + 4, y + lh), "%s · %s" % [report_name, resolved_label], HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 8, Color(0.88,0.82,0.92))
+		y += lh
+		var report_lines: Array = possession_report.get("consequences", [])
+		for report_line_value: Variant in report_lines.slice(0, 2):
+			var report_line: String = str(report_line_value)
+			if report_line.length() > 30:
+				report_line = report_line.substr(0, 27) + "..."
+			draw_string(_font, Vector2(x + 8, y + lh), "• " + report_line, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.76,0.68,0.82))
+			y += lh
+		y += int(lh * 0.4)
+	elif not story_hook.is_empty():
+		var campaign: Dictionary = story_hook.get("campaign", {})
+		if not campaign.is_empty():
+			var campaign_objective: Dictionary = campaign.get("objective", {})
+			var campaign_progress: int = int(campaign.get("progress", 0))
+			var campaign_target: int = int(campaign_objective.get("target", 1))
+			draw_string(_font, Vector2(x, y + lh), "CAMPAÑA PROCEDURAL", HORIZONTAL_ALIGNMENT_LEFT, mw, 10, Color(0.42,0.82,1.0))
+			y += lh
+			draw_string(_font, Vector2(x + 4, y + lh), str(campaign.get("title", "Crónica")), HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 8, Color(0.72,0.88,1.0))
+			y += lh
+			draw_string(_font, Vector2(x + 8, y + lh), "%s  %d/%d" % [str(campaign_objective.get("label", "Objetivo")), campaign_progress, campaign_target], HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.62,0.82,0.92))
+			y += int(lh * 1.3)
+		draw_string(_font, Vector2(x, y + lh), "HISTORIA EN CURSO", HORIZONTAL_ALIGNMENT_LEFT, mw, 10, Color(0.95,0.68,0.28))
+		draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.55,0.36,0.12), 1.0)
+		y += int(lh * 1.3)
+		var story_name: String = str(story_hook.get("actor_name", "Habitante"))
+		var story_problem: String = str(story_hook.get("problem", ""))
+		var story_desire: String = str(story_hook.get("desire", ""))
+		var story_objective: String = str(story_hook.get("objective", "Intervén en su vida."))
+		if story_problem.length() > 31:
+			story_problem = story_problem.substr(0, 28) + "..."
+		if story_desire.length() > 31:
+			story_desire = story_desire.substr(0, 28) + "..."
+		if story_objective.length() > 31:
+			story_objective = story_objective.substr(0, 28) + "..."
+		draw_string(_font, Vector2(x + 4, y + lh), "★ %s" % story_name, HORIZONTAL_ALIGNMENT_LEFT, mw - 8, 9, Color(1.0,0.82,0.40))
+		y += lh
+		draw_string(_font, Vector2(x + 8, y + lh), story_problem, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.82,0.78,0.68))
+		y += lh
+		draw_string(_font, Vector2(x + 8, y + lh), "Desea: " + story_desire, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.62,0.82,0.66))
+		y += lh
+		draw_string(_font, Vector2(x + 8, y + lh), "Objetivo: " + story_objective, HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.90,0.78,0.45))
+		y += lh
+		draw_string(_font, Vector2(x + 8, y + lh), "Y: seguir · P: poseer", HORIZONTAL_ALIGNMENT_LEFT, mw - 12, 7, Color(0.95,0.72,0.35))
+		y += int(lh * 1.4)
+
+	# ═══════════════════════════════════════════════
+	# 6. DESIGNATION MODE (only if active)
 	# ═══════════════════════════════════════════════
 	if _designation_mode_name not in ["View","Vista",""]:
 		draw_rect(Rect2(x, y, mw - 4, lh + 4), Color(0.08,0.05,0.15), true)
@@ -1174,23 +1502,6 @@ func _draw_sidebar(side_x: int) -> void:
 		"  Act: %d   Cola: %d" % [_job_active, _job_pending],
 		HORIZONTAL_ALIGNMENT_LEFT, mw, 9, jcol)
 	y += int(lh * 1.6)
-
-	# ═══════════════════════════════════════════════
-	# 7. EDUCATION
-	# ═══════════════════════════════════════════════
-	if _teacher_count > 0 or _school_count > 0:
-		draw_string(_font, Vector2(x, y + lh), "EDUCACIÓN", HORIZONTAL_ALIGNMENT_LEFT, mw, 10, Color(0.45,0.65,0.85))
-		draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.22,0.35,0.50), 1.0)
-		y += int(lh * 1.3)
-		if _school_count > 0:
-			draw_string(_font, Vector2(x + 4, y + lh),
-				"  Escuelas: %d" % _school_count,
-				HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(0.55,0.75,0.95))
-			y += lh
-		draw_string(_font, Vector2(x + 4, y + lh),
-			"  Maestros: %d   Alumnos: %d" % [_teacher_count, _student_count],
-			HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(0.50,0.70,0.90))
-		y += int(lh * 1.4)
 
 	# ═══════════════════════════════════════════════
 	# 7. TILE UNDER CURSOR
@@ -1247,8 +1558,8 @@ func _draw_sidebar(side_x: int) -> void:
 
 		# Items at cursor (compact)
 		var items_here: Array = []
-		for ent in world.get_items_at(_highlighted_tile):
-			if ent is DFItem and not ent.is_decayed:
+		for ent in world.items:
+			if ent.tile_pos == _highlighted_tile and not ent.is_decayed:
 				items_here.append(ent)
 		if not items_here.is_empty():
 			draw_string(_font, Vector2(x + 4, y + lh),
@@ -1283,6 +1594,11 @@ func _draw_sidebar(side_x: int) -> void:
 	var followed_entity: Variant = null
 	if follow_dwarf >= 0:
 		for followed_candidate: Variant in world.dwarves:
+			if followed_candidate is DFItem:
+				continue
+			var followed_type_value: Variant = followed_candidate.get("creature_type")
+			if str(followed_type_value) != "dwarf":
+				continue
 			var followed_id_value: Variant = followed_candidate.get("id")
 			var followed_alive_value: Variant = followed_candidate.get("is_alive")
 			if followed_id_value != null and int(followed_id_value) == follow_dwarf and followed_alive_value != false:
@@ -1389,8 +1705,8 @@ func _draw_sidebar(side_x: int) -> void:
 			y += lh
 
 		var stored_items: int = 0
-		for stored_candidate: Variant in world.items:
-			if stored_candidate.get("is_in_stockpile") == true:
+		for stored_candidate: Variant in world.entities:
+			if stored_candidate is DFItem and stored_candidate.get("is_in_stockpile") == true:
 				stored_items += 1
 		var growing_crops_value: Variant = world.get("growing_crops")
 		var crop_count: int = growing_crops_value.size() if growing_crops_value is Dictionary else 0
@@ -1412,9 +1728,10 @@ func _draw_sidebar(side_x: int) -> void:
 	draw_line(Vector2(x, y + lh + 2), Vector2(x + mw - 4, y + lh + 2), Color(0.12,0.38,0.48), 1.0)
 	y += int(lh * 1.3)
 
-	var living_dwarves: Array = world.dwarves.filter(
-		func(dwarf): return dwarf.get("is_alive") != false
-	)
+	var living_dwarves: Array = []
+	for ent2 in world.entities:
+		if ent2.get("creature_type") == "dwarf" and ent2.get("is_alive") != false:
+			living_dwarves.append(ent2)
 
 	if living_dwarves.is_empty():
 		draw_string(_font, Vector2(x + 4, y + lh), "  ¡Sin supervivientes!", HORIZONTAL_ALIGNMENT_LEFT, mw, 9, Color(1.0,0.3,0.3))
@@ -1472,7 +1789,15 @@ func _draw_sidebar(side_x: int) -> void:
 			var badges: Array = []
 			if dwarf.get("is_bleeding") == true:  badges.append(["SANGRA", Color(0.9,0.2,0.2)])
 			if dwarf.get("is_in_pain") == true:   badges.append(["DOLOR",  Color(0.9,0.5,0.1)])
-			if dwarf.get("has_infection") == true: badges.append(["INFEC",  Color(0.2,0.9,0.3)])
+			var disease_phase = int(dwarf.get("disease_phase")) if dwarf.get("disease_phase") != null else 0
+			var disease_severity = float(dwarf.get("disease_severity")) if dwarf.get("disease_severity") != null else 0.0
+			if disease_phase == 1:
+				badges.append(["INCUBA", Color(0.75,0.75,0.25)])
+			elif disease_phase == 2:
+				var disease_color = Color(0.95,0.25,0.18) if disease_severity >= 0.70 else Color(0.95,0.65,0.15)
+				badges.append(["ENFERM %d%%" % int(disease_severity * 100.0), disease_color])
+			elif disease_phase == 3:
+				badges.append(["RECUP", Color(0.20,0.80,0.55)])
 			var dwarf_mood = dwarf.get("mood") if dwarf.get("mood") != null else 0
 			var dwarf_sm_phase = dwarf.get("strange_mood_phase") if dwarf.get("strange_mood_phase") != null else 0
 			if dwarf_mood >= 7 and dwarf_mood <= 10:
@@ -1484,7 +1809,6 @@ func _draw_sidebar(side_x: int) -> void:
 				var ebr = bref.get("ebriety") if bref.get("ebriety") != null else 0.0
 				if ebr > 0.5: badges.append(["EBRIO", Color(1.0,0.80,0.0)])
 				if bref.get("is_vomiting") == true: badges.append(["VOMITO", Color(0.5,0.65,0.1)])
-				if bref.get("disease_type") not in [null,""]: badges.append(["ENFERM", Color(0.2,0.85,0.3)])
 				var ing = bref.get("ingested_substances")
 				if ing and ing.has("poison") and ing["poison"] > 0.0:
 					badges.append(["VENENO", Color(0.6,0.1,0.8)])
@@ -1532,7 +1856,7 @@ func _draw_sidebar(side_x: int) -> void:
 	# ═══════════════════════════════════════════════
 	# 9. INVASION ALERT (pinned near bottom)
 	# ═══════════════════════════════════════════════
-	var bottom_y = view_height * lh - int(lh * 5)
+	var bottom_y = UI_CONTENT_TOP + view_height * lh - int(lh * 5)
 	if _invasion_status.get("active", false):
 		draw_rect(Rect2(x, bottom_y - 4, mw - 4, lh + 6), Color(0.3,0.02,0.02), true)
 		draw_rect(Rect2(x, bottom_y - 4, mw - 4, lh + 6), Color(0.9,0.1,0.1), false, 1.5)
@@ -1584,12 +1908,11 @@ func _draw_sidebar(side_x: int) -> void:
 			bottom_y += lh
 
 	# Footer hint strip
-	var footer_rect := Rect2(content_rect.position.x, content_rect.end.y - 21, content_rect.size.x, 21)
-	draw_rect(footer_rect, Color("#ece9d8"), true)
-	draw_line(footer_rect.position, Vector2(footer_rect.end.x, footer_rect.position.y), WIN_LIGHT, 1.0)
-	draw_string(_font, footer_rect.position + Vector2(6, 14),
+	var footer_rect := Rect2(x + 3, UI_CONTENT_TOP + view_height * lh - 18, mw - 9, 18)
+	_draw_classic_bevel(footer_rect, UI_CLASSIC_FACE, true)
+	draw_string(_font, Vector2(x + 8, UI_CONTENT_TOP + view_height * lh - 5),
 		"H=Ayuda   F=Seguir   ESC=Menú",
-		HORIZONTAL_ALIGNMENT_LEFT, footer_rect.size.x - 12, 8, Color("#202020"))
+		HORIZONTAL_ALIGNMENT_LEFT, mw - 18, 8, UI_CLASSIC_TEXT)
 
 
 
@@ -1599,18 +1922,16 @@ func _draw_message_log(start_y: int) -> void:
 	var bx  = _draw_border(view_width, view_height)
 	var mw  = view_width * _char_size.x
 	var lh  = int(_char_size.y)
-	var num = mini(4, _message_log.size())
+	var num = mini(5, _message_log.size())
 
-	var msg_h = num * int(lh * 1.25) + 49
-	var log_content := _draw_classic_frame(
-		Rect2(bx, start_y - 2, mw, msg_h),
-		"Registro de sucesos",
-		false
-	)
-	draw_rect(log_content, Color("#fbfbfb"), true)
-	draw_rect(log_content, WIN_SHADOW, false, 1.0)
+	var msg_h = num * int(lh * 1.18) + 6
+	var log_rect := Rect2(bx, start_y - 22, mw, msg_h + 22)
+	_draw_classic_bevel(log_rect, UI_CLASSIC_FACE, false)
+	_draw_classic_titlebar(Rect2(bx + 2, start_y - 20, mw - 4, 18), "Registro de sucesos", false)
+	var output_rect := Rect2(bx + 5, start_y + 1, mw - 10, msg_h - 7)
+	_draw_classic_bevel(output_rect, Color("#FFFFFF"), true)
 
-	var y = int(log_content.position.y + 3)
+	var y = start_y
 	for i in range(num):
 		var idx = _message_log.size() - num + i
 		var msg = _message_log[idx]
@@ -1619,116 +1940,13 @@ func _draw_message_log(start_y: int) -> void:
 		if msg.length() > max_chars:
 			msg = msg.substr(0, max_chars - 3) + "..."
 		# Older messages fade, newest is fully bright
-		var alpha = 0.58 + 0.42 * float(i + 1) / float(num)
-		var col = Color(0.16, 0.16, 0.16, alpha)
+		var alpha = 0.45 + 0.55 * float(i + 1) / float(num)
+		var col = Color(0.20, 0.20, 0.20, alpha)
 		if i == num - 1:
-			col = Color(0.04, 0.04, 0.04, 1.0)
-			draw_circle(Vector2(log_content.position.x + 9, y + lh - 4), 2.0, WIN_TITLE_END)
-		var text_inset := 17.0 if i == num - 1 else 8.0
-		draw_string(_font, Vector2(log_content.position.x + text_inset, y + lh), msg,
-			HORIZONTAL_ALIGNMENT_LEFT, log_content.size.x - text_inset - 8, 10, col)
-		y += int(lh * 1.25)
-
-
-func _draw_recipe_selector_overlay() -> void:
-	"""Dibuja el selector de recetas para talleres."""
-	if _recipe_list.is_empty() or world == null:
-		return
-	var vw = view_width
-	var vh = view_height
-	var border_x = _draw_border(vw, vh)
-
-	# Ventana centrada, tamano fijo
-	var box_w = 520
-	var box_h = 380
-	var box_x = int((size.x - box_w) / 2)
-	var box_y = int((size.y - box_h) / 2)
-
-	# Sombra
-	draw_rect(Rect2(box_x + 4, box_y + 4, box_w, box_h), Color(0.0, 0.0, 0.0, 0.5), true)
-
-	# Fondo principal
-	draw_rect(Rect2(box_x, box_y, box_w, box_h), UI_BG, true)
-	draw_rect(Rect2(box_x, box_y, box_w, box_h), UI_BORDER, false, 1.0)
-
-	# Barra de titulo
-	var title_bar = Rect2(box_x, box_y, box_w, 24)
-	draw_rect(title_bar, WIN_TITLE_START, true)
-	draw_string(_font, Vector2(box_x + 8, box_y + 16), "SELECTOR DE RECETAS: %s" % _recipe_workshop_name,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
-
-	# Sub-header: controles
-	var header_y = box_y + 30
-	draw_string(_font, Vector2(box_x + 8, header_y + 10),
-		"UP/DOWN: Seleccionar | LEFT/RIGHT: Cantidad [%d] | ENTER: Encolar | R/ESC: Cerrar" % _recipe_qty,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 9, UI_TEXT_MUTED)
-
-	# Separador
-	draw_line(Vector2(box_x + 4, header_y + 16), Vector2(box_x + box_w - 4, header_y + 16), UI_BORDER_SOFT, 1.0)
-
-	# Lista de recetas
-	var list_y = header_y + 22
-	var item_h = 30
-	var visible_count = mini(_recipe_list.size(), int((box_h - 80) / item_h))
-	var max_visible = int((box_h - 80) / item_h)
-	var scroll_offset = 0
-	if _recipe_sel_idx >= max_visible:
-		scroll_offset = _recipe_sel_idx - max_visible + 1
-
-	for ri in range(visible_count):
-		var r = _recipe_list[ri + scroll_offset]
-		if not (r is Dictionary):
-			continue
-		var is_selected = (ri + scroll_offset) == _recipe_sel_idx
-		var ry = list_y + ri * item_h
-
-		# Fondo del item
-		if is_selected:
-			draw_rect(Rect2(box_x + 4, ry, box_w - 8, item_h - 2), UI_ACCENT, true)
-			draw_rect(Rect2(box_x + 4, ry, box_w - 8, item_h - 2), Color(1.0, 1.0, 1.0, 0.15), false, 1.0)
-		elif ri % 2 == 0:
-			draw_rect(Rect2(box_x + 4, ry, box_w - 8, item_h - 2), UI_BG_RAISED, true)
-
-		# Icono / glifo de la receta
-		var recipe_char = str(r.get("glyph", r.get("char", "?")))
-		var recipe_color = Color(r.get("color", r.get("fg", "#FFFFFF"))) if r.has("color") or r.has("fg") else UI_GOLD
-		var rname = str(r.get("name", r.get("id", "Receta")))
-		var rtime = float(r.get("time", 5.0))
-		var rskill = int(r.get("skill_req", 0))
-
-		# Nombre
-		var name_color = Color.WHITE if not is_selected else Color(1.0, 1.0, 1.0, 1.0)
-		draw_string(_font, Vector2(box_x + 12, ry + 12), recipe_char, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, recipe_color if not is_selected else Color(1.0, 0.9, 0.4, 1.0))
-		draw_string(_font, Vector2(box_x + 32, ry + 12), rname, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, name_color)
-
-		# Info: tiempo, skill requerido
-		var info = "T:%.1fs" % rtime
-		if rskill > 0:
-			info += " Skill:%d" % rskill
-		var inputs = r.get("inputs", [])
-		if inputs.size() > 0:
-			info += " [%d insumos]" % inputs.size()
-		var output = r.get("outputs", [])
-		if output.size() > 0 and output[0] is Dictionary:
-			info += " -> %s" % str(output[0].get("name", ""))
-		draw_string(_font, Vector2(box_x + 32, ry + 24), info, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UI_TEXT_MUTED if not is_selected else Color(0.9, 0.9, 0.9, 0.9))
-
-		# Indicador de seleccion
-		if is_selected:
-			# Flecha de seleccion
-			draw_string(_font, Vector2(box_x - 14, ry + 12), ">", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.9, 0.4, 1.0))
-			# Cantidad a producir
-			draw_string(_font, Vector2(box_x + box_w - 60, ry + 12), "x%d" % _recipe_qty, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.9, 0.4, 1.0))
-
-	# Footer: estado del taller seleccionado
-	var footer_y = list_y + visible_count * item_h + 4
-	if _recipe_sel_idx >= 0 and _recipe_sel_idx < _recipe_list.size():
-		var selected_recipe = _recipe_list[_recipe_sel_idx]
-		if selected_recipe is Dictionary:
-			var desc = str(selected_recipe.get("description", ""))
-			if not desc.is_empty():
-				draw_rect(Rect2(box_x + 4, footer_y, box_w - 8, 50), UI_BG_RAISED, true)
-				draw_string(_font, Vector2(box_x + 12, footer_y + 14), desc, HORIZONTAL_ALIGNMENT_LEFT, box_w - 24, 9, UI_TEXT_MUTED)
+			col = Color(0.0, 0.12, 0.35, 1.0)
+		draw_string(_font, Vector2(bx + 9, y + lh), msg,
+			HORIZONTAL_ALIGNMENT_LEFT, mw - 18, 10, col)
+		y += int(lh * 1.18)
 
 
 func _draw_help_overlay() -> void:
@@ -1749,43 +1967,49 @@ func _draw_help_overlay() -> void:
 		draw_rect(Rect2(box_x - 5, box_y - 3, box_w + 10, 3), Color(0.4, 0.4, 0.6, 0.8), true)
 
 	var lines = [
-		["== GUÍA DE CONTROLES Y MANDOS DE BIGLIWORLD ==", Color.GOLD],
+		["== WORLD CREATION BIGLI - HELP ==", Color.GOLD],
 		["", Color.WHITE],
-		["NAVEGACIÓN Y CÁMARA", Color.CYAN],
-		["  Flechas / WASD   Mover cámara por el mapa", Color.WHITE],
-		["  [ / ]             Bajar / Subir de nivel Z", Color.WHITE],
-		["  Home              Centrar cámara en la superficie", Color.WHITE],
-		["  F                 Seguir a un enano (ciclo entre colonos)", Color.WHITE],
+		["MOVEMENT", Color.CYAN],
+		["  Arrow keys    Move camera", Color.WHITE],
+		["  [ / ]         Z-level down/up", Color.WHITE],
+		["  Home          Center on surface", Color.WHITE],
 		["", Color.WHITE],
-		["CONTROLES DE JUEGO Y MODOS", Color.CYAN],
-		["  Espacio           Pausar / Reanudar simulación", Color.WHITE],
-		["  1 - 9             Ajustar velocidad del juego (1=lenta, 9=ultrarrápida)", Color.WHITE],
-		["  U                 Panel de inspección del enano / inventario", Color.WHITE],
-		["  M                 Menú de cambio de modo (Fortaleza / Aventura / Leyendas)", Color.WHITE],
-		["  Q                 Diario de misiones procedurales", Color.WHITE],
-		["  H / F1 / ?        Abrir / Cerrar esta guía de ayuda", Color.WHITE],
+		["GAME CONTROLS", Color.CYAN],
+		["  Space         Pause/Resume", Color.WHITE],
+		["  1-9           Speed (1=slow, 9=insane)", Color.WHITE],
+		["  F             Follow dwarf (cycle)", Color.WHITE],
+		["  G             Generate new world", Color.WHITE],
 		["", Color.WHITE],
-		["DESIGNACIÓN Y CONSTRUCCIÓN", Color.CYAN],
-		["  D                 Activar modo de designación", Color.WHITE],
-		["  1                 Modo Excavar pared (Dig)", Color.WHITE],
-		["  2                 Modo Talar árboles (Chop Tree)", Color.WHITE],
-		["  3                 Modo Alisar piedra (Smooth)", Color.WHITE],
-		["  4                 Modo Construir muro (Build Wall)", Color.WHITE],
-		["  5                 Modo Construir suelo (Build Floor)", Color.WHITE],
-		["  6                 Modo Desmantelar (Deconstruct)", Color.WHITE],
-		["  Enter / Clic      Confirmar área o selección", Color.WHITE],
-		["  Esc               Cancelar selección / Cerrar paneles", Color.WHITE],
+		["DESIGNATION MODE", Color.CYAN],
+		["  1             Dig mode (Excavar)", Color.WHITE],
+		["  2             Chop tree mode (Talar)", Color.WHITE],
+		["  3             Smooth stone mode (Alisar)", Color.WHITE],
+		["  4             Build wall mode (Muro)", Color.WHITE],
+		["  5             Build floor mode (Suelo)", Color.WHITE],
+		["  6             Deconstruct mode (Desmantelar)", Color.WHITE],
+		["  Enter         Confirm selection", Color.WHITE],
+		["  Esc           Cancel / exit mode", Color.WHITE],
+		["  Mouse click   Start/end selection", Color.WHITE],
 		["", Color.WHITE],
-		["GUARDADO Y CARGA", Color.CYAN],
-		["  F5 / F6 / F7      Guardar partida en Ranuras 0, 1 y 2", Color.WHITE],
-		["  F9 / F10 / F11    Cargar partida desde Ranuras 0, 1 y 2", Color.WHITE],
+		["SAVE / LOAD", Color.CYAN],
+		["  F5            Save slot 0", Color.WHITE],
+		["  F6            Save slot 1", Color.WHITE],
+		["  F7            Save slot 2", Color.WHITE],
+		["  F9            Load slot 0", Color.WHITE],
+		["  F10           Load slot 1", Color.WHITE],
+		["  F11           Load slot 2", Color.WHITE],
 		["", Color.WHITE],
-		["CONSEJOS DE SUPERVIVENCIA Y COLONIA", Color.GREEN],
-		["  1. Fabrica/Consigue Cerveza/Vino: El alcohol mantiene veloces y alegres a los enanos.", Color(0.8, 0.8, 0.8)],
-		["  2. Si un enano muere, construye una Tumba/Ataúd para evitar miasma y fantasmas.", Color(0.8, 0.8, 0.8)],
-		["  3. Enanos inspirados pueden entrar en Modo Extraño y forjar Artefactos Legendarios.", Color(0.8, 0.8, 0.8)],
+		["MISCELLANEOUS", Color.CYAN],
+		["  H / ?         Toggle this help", Color.WHITE],
+		["  Esc*2         Return to Amphibia", Color.WHITE],
 		["", Color.WHITE],
-		["Presiona F1, H, ? o Esc para cerrar esta guía", Color.GRAY],
+		["TIPS", Color.GREEN],
+		["  1. Pause the game (Space) before designating", Color(0.7, 0.7, 0.7)],
+		["  2. Press D, then click to mark tiles for digging", Color(0.7, 0.7, 0.7)],
+		["  3. Unpause and dwarves will do the work", Color(0.7, 0.7, 0.7)],
+		["  4. Use [ and ] to see different Z-levels", Color(0.7, 0.7, 0.7)],
+		["", Color.WHITE],
+		["Press H or ? to close", Color.GRAY],
 	]
 
 	var y = box_y + 8
@@ -2174,25 +2398,34 @@ func _draw_keycap(position: Vector2, key_text: String, description: String) -> f
 		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_SM, UI.TEXT_MUTED)
 	return key_width + 8.0 + float(description.length()) * 6.0 + 20.0
 
-func _draw_progress_bar(rect: Rect2, progress: float, label: String = "") -> void:
-	var snapped := UI.snapped_rect(rect)
-	draw_rect(snapped, UI.WIN_DARK_SHADOW, true)
-	draw_line(snapped.position, Vector2(snapped.end.x, snapped.position.y), Color("#202020"), 1.0)
-	draw_line(snapped.position, Vector2(snapped.position.x, snapped.end.y), Color("#202020"), 1.0)
-	var inner := snapped.grow(-3)
-	draw_rect(inner, Color("#F5F5F5"), true)
-	var pct := clampf(progress, 0.0, 1.0)
-	var fill := Rect2(inner.position, Vector2(inner.size.x * pct, inner.size.y))
-	if fill.size.x > 0:
-		draw_rect(fill, UI.WIN_TITLE_START, true)
-		var blocks := int(fill.size.x / 12.0)
-		for block in range(1, blocks + 1):
-			var line_x := fill.position.x + float(block) * 12.0
-			draw_line(Vector2(line_x, fill.position.y), Vector2(line_x, fill.end.y), UI.WIN_TITLE_END, 1.0)
-	if label != "":
-		draw_string(_font, Vector2(snapped.position.x + 4.0, snapped.position.y + snapped.size.y * 0.68),
-			label, HORIZONTAL_ALIGNMENT_CENTER, snapped.size.x - 8.0, UI.FONT_SM,
-			Color.WHITE if pct > 0.52 else Color("#18212A"))
+func get_settings_menu_hit_regions() -> Dictionary:
+	var viewport := size
+	var scale := UI.responsive_scale(viewport)
+	var left_margin := UI.snap(maxf(32.0, viewport.x * 0.065))
+	var top_margin := UI.snap(maxf(28.0, viewport.y * 0.07))
+	var panel_width := UI.content_width(viewport, 640.0 * scale, 24.0)
+	var panel_height := UI.snap(minf(480.0 * scale, viewport.y - top_margin - 88.0))
+	var panel_x := UI.snap(viewport.x - panel_width - left_margin)
+	var content := Rect2(
+		panel_x + 3.0,
+		top_margin + 27.0,
+		panel_width - 6.0,
+		panel_height - 30.0
+	)
+	var inner_x := content.position.x + UI.SPACE_LG
+	var inner_width := content.size.x - UI.SPACE_LG * 2.0
+	var row_y := content.position.y + UI.SPACE_LG + 28.0
+	var rows: Array[Rect2] = []
+	for option_index in range(4):
+		rows.append(Rect2(inner_x, row_y + option_index * UI.ROW_HEIGHT, inner_width, UI.ROW_HEIGHT))
+	var action_y := content.end.y - UI.BUTTON_HEIGHT - UI.SPACE_LG
+	var gap := UI.SPACE_SM
+	var button_width := (inner_width - gap) / 2.0
+	return {
+		"rows": rows,
+		"quick_start": Rect2(inner_x, action_y, button_width, UI.BUTTON_HEIGHT),
+		"create_world": Rect2(inner_x + button_width + gap, action_y, button_width, UI.BUTTON_HEIGHT),
+	}
 
 func _draw_settings_menu() -> void:
 	var main_node = get_parent()
@@ -2279,171 +2512,6 @@ func _draw_settings_menu() -> void:
 		footer_x += _draw_keycap(Vector2(footer_x, footer_y - 12.0), footer_item[0], footer_item[1])
 	draw_string(_font, Vector2(viewport.x - left_margin, footer_y + 4.0), "BIGLI · PRE-ALPHA",
 		HORIZONTAL_ALIGNMENT_RIGHT, -1, UI.FONT_XS, UI.TEXT_DISABLED)
-
-func get_settings_menu_hit_regions() -> Dictionary:
-	var viewport := size
-	var scale := UI.responsive_scale(viewport)
-	var left_margin := UI.snap(maxf(32.0, viewport.x * 0.065))
-	var top_margin := UI.snap(maxf(28.0, viewport.y * 0.07))
-	var panel_width := UI.content_width(viewport, 640.0 * scale, 24.0)
-	var panel_height := UI.snap(minf(480.0 * scale, viewport.y - top_margin - 88.0))
-	var panel_x := UI.snap(viewport.x - panel_width - left_margin)
-	var content := Rect2(
-		panel_x + 3.0,
-		top_margin + 27.0,
-		panel_width - 6.0,
-		panel_height - 30.0
-	)
-	var inner_x := content.position.x + UI.SPACE_LG
-	var inner_width := content.size.x - UI.SPACE_LG * 2.0
-	var row_y := content.position.y + UI.SPACE_LG + 28.0
-	var rows: Array[Rect2] = []
-	for option_index in range(4):
-		rows.append(Rect2(inner_x, row_y + option_index * UI.ROW_HEIGHT, inner_width, UI.ROW_HEIGHT))
-	var action_y := content.end.y - UI.BUTTON_HEIGHT - UI.SPACE_LG
-	var gap := UI.SPACE_SM
-	var button_width := (inner_width - gap) / 2.0
-	return {
-		"rows": rows,
-		"quick_start": Rect2(inner_x, action_y, button_width, UI.BUTTON_HEIGHT),
-		"create_world": Rect2(inner_x + button_width + gap, action_y, button_width, UI.BUTTON_HEIGHT),
-	}
-
-func _draw_settings_menu_legacy() -> void:
-	var main_node = get_parent()
-	if main_node == null: return
-
-	var line_h = _char_size.y
-	var center_x = size.x / 2
-	var vp = size
-
-	# ---- Premium background ----
-	_draw_premium_background(vp)
-
-	# Subtle top gradient bar
-	draw_rect(Rect2(0, 0, vp.x, 6), Color(0.15, 0.10, 0.30, 0.8), true)
-	draw_rect(Rect2(0, vp.y - 6, vp.x, 6), Color(0.15, 0.10, 0.30, 0.8), true)
-
-	# ---- ASCII LOGO (centered near top) ----
-	var logo_lines = [
-		"██████╗ ██╗ ██████╗ ██╗     ██╗",
-		"██╔══██╗██║██╔════╝ ██║     ██║",
-		"██████╔╝██║██║  ███╗██║     ██║",
-		"██╔══██╗██║██║   ██║██║     ██║",
-		"██████╔╝██║╚██████╔╝███████╗██║",
-		"╚═════╝ ╚═╝ ╚═════╝ ╚══════╝╚═╝"
-	]
-	var logo_y = 30
-	for logo_line in logo_lines:
-		draw_string(_font, Vector2(center_x, logo_y), logo_line,
-			HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(0.55, 0.35, 0.90))
-		logo_y += int(line_h * 1.1)
-
-	# Subtitle
-	logo_y += 4
-	draw_string(_font, Vector2(center_x, logo_y), "Un simulador de mundo vivo — inspirado en Dwarf Fortress",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.60, 0.55, 0.75))
-	logo_y += int(line_h * 0.9)
-	draw_string(_font, Vector2(center_x, logo_y), "~ Donde cada historia emerge de la simulación, no del guión ~",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(0.40, 0.38, 0.55))
-
-	# Horizontal divider
-	logo_y += int(line_h * 1.2)
-	draw_line(Vector2(center_x - 260, logo_y), Vector2(center_x + 260, logo_y), Color(0.30, 0.25, 0.55), 1.0)
-
-	# ---- QUICK START BOX (prominent) ----
-	var qs_y = logo_y + 14
-	var qs_w = 380
-	var qs_h = 64
-	var qs_x = center_x - qs_w / 2
-	_draw_rounded_rect(Rect2(qs_x - 2, qs_y - 2, qs_w + 4, qs_h + 4), Color(0.0, 0.0, 0.0, 0.2), 6)
-	_draw_rounded_rect(Rect2(qs_x, qs_y, qs_w, qs_h), Color(0.08, 0.05, 0.18), 6)
-	_draw_rounded_rect(Rect2(qs_x, qs_y, qs_w, qs_h), Color(0.55, 0.40, 0.90), 6, false, 2.0)
-	draw_string(_font, Vector2(center_x, qs_y + 18), "▶  INICIO RÁPIDO  ◀",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 15, Color(0.90, 0.80, 1.0))
-	draw_string(_font, Vector2(center_x, qs_y + 40), "Presiona  Q  o Haz Click para jugar ahora mismo",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.65, 0.60, 0.80))
-
-	# ---- CONFIG SECTION ----
-	var cfg_y = qs_y + qs_h + 18
-	draw_string(_font, Vector2(center_x, cfg_y), "── CONFIGURACIÓN DEL MUNDO ──",
-		HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.50, 0.45, 0.65))
-	cfg_y += int(line_h * 1.4)
-
-	var box_w = 520
-	var box_h = 145
-	var box_x = center_x - box_w / 2
-	_draw_rounded_rect(Rect2(box_x, cfg_y, box_w, box_h), Color(0.03, 0.03, 0.08, 0.9), 6)
-	_draw_rounded_rect(Rect2(box_x, cfg_y, box_w, box_h), Color(0.25, 0.20, 0.45), 6, false, 1.5)
-
-	var options = [
-		["Semilla del Mundo",     "%s" % ("Aleatoria" if main_node.generation_seed == -1 else str(main_node.generation_seed))],
-		["Duración de Historia",  "%d años" % main_node.setting_history_options[main_node.setting_history_idx]],
-		["Civilizaciones",        ["Baja", "Media", "Alta"][main_node.setting_civ_density]],
-		["Megabestias",           ["Pocas", "Moderadas", "Abundantes"][main_node.setting_beast_density]],
-	]
-
-	var opt_y = cfg_y + 10
-	for i in range(options.size()):
-		var is_sel = (main_node.setting_selected_index == i)
-		var key_col  = Color(0.80, 0.78, 0.90) if is_sel else Color(0.55, 0.52, 0.65)
-		var val_col  = Color(1.0, 0.90, 0.40) if is_sel else Color(0.75, 0.70, 0.85)
-		var arrow    = "▸ " if is_sel else "  "
-		
-		if is_sel:
-			_draw_rounded_rect(Rect2(box_x + 10, opt_y - 2, box_w - 20, 18), Color(0.20, 0.15, 0.40, 0.4), 4)
-
-		draw_string(_font, Vector2(box_x + 22, opt_y + 10), arrow + options[i][0],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 10, key_col)
-		draw_string(_font, Vector2(box_x + box_w - 22, opt_y + 10), options[i][1],
-			HORIZONTAL_ALIGNMENT_RIGHT, -1, 10, val_col)
-		opt_y += int(line_h * 1.25)
-
-	# ---- DESCRIPTION OF SELECTED SETTING ----
-	var s_desc_y = cfg_y + box_h + 8
-	var s_desc_w = 520
-	var s_desc_h = 38
-	var s_desc_x = center_x - s_desc_w / 2
-	_draw_rounded_rect(Rect2(s_desc_x, s_desc_y, s_desc_w, s_desc_h), Color(0.02, 0.02, 0.05, 0.85), 5)
-	_draw_rounded_rect(Rect2(s_desc_x, s_desc_y, s_desc_w, s_desc_h), Color(0.20, 0.16, 0.35, 0.6), 5, false, 1.0)
-	
-	var s_desc = ""
-	match main_node.setting_selected_index:
-		0: s_desc = "Semilla del Mundo: Establece el valor inicial generador. Si es aleatorio, cada partida generará un continente totalmente diferente."
-		1: s_desc = "Duración de Historia: Años simulados antes de jugar. A mayor historia, habrá más ruinas, reyes muertos, reliquias y megabestias."
-		2: s_desc = "Civilizaciones: Determina la densidad de reinos de enanos, elfos, humanos y goblins en el continente."
-		3: s_desc = "Megabestias: Cantidad de dragones y monstruos gigantescos iniciales. Afecta los ataques históricos a aldeas."
-	
-	var s_desc_lines = _wrap_text(s_desc, 65)
-	var s_dy = s_desc_y + 14
-	for s_line in s_desc_lines:
-		draw_string(_font, Vector2(center_x, s_dy), s_line, HORIZONTAL_ALIGNMENT_CENTER, s_desc_w - 20, 8, Color(0.70, 0.68, 0.80))
-		s_dy += int(line_h * 1.05)
-
-	# ---- Footer help bar ----
-	var foot_y = s_desc_y + s_desc_h + 20
-	var help_items = [
-		["↑↓", "Seleccionar"],
-		["←→", "Cambiar valor"],
-		["R", "Semilla aleatoria"],
-		["ENTER", "Crear Mundo"],
-		["Q", "Inicio Rápido"],
-	]
-	var help_x = center_x - 300
-	for hi in help_items:
-		_draw_rounded_rect(Rect2(help_x, foot_y - 10, 42, 16), Color(0.18, 0.15, 0.32), 3)
-		_draw_rounded_rect(Rect2(help_x, foot_y - 10, 42, 16), Color(0.40, 0.35, 0.65), 3, false, 1.0)
-		draw_string(_font, Vector2(help_x + 21, foot_y), hi[0],
-			HORIZONTAL_ALIGNMENT_CENTER, 42, 9, Color(0.90, 0.88, 1.0))
-		draw_string(_font, Vector2(help_x + 48, foot_y), hi[1],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.55, 0.52, 0.65))
-		help_x += 120
-
-	# Version tag
-	draw_string(_font, Vector2(vp.x - 10, vp.y - 10), "BIGLI alpha v0.1",
-		HORIZONTAL_ALIGNMENT_RIGHT, -1, 8, Color(0.25, 0.22, 0.38))
-
-
 
 func _draw_generating_screen() -> void:
 	var main_node = get_parent()
@@ -2591,95 +2659,6 @@ func _draw_generating_screen() -> void:
 	var footer: String = "CREANDO GEOGRAFÍA PERSISTENTE" if building_terrain else "ENTER · FINALIZAR HISTORIA Y ENTRAR"
 	draw_string(_font, Vector2(right_rect.position.x + inset, right_rect.end.y - inset),
 		footer, HORIZONTAL_ALIGNMENT_LEFT, inner_right_width, UI.FONT_XS, UI.TEXT_MUTED)
-
-func _draw_generating_screen_legacy() -> void:
-	_draw_premium_background(size)
-
-	var main_node = get_parent()
-	if main_node == null:
-		return
-
-	var line_h: int = int(_char_size.y)
-	var center_x: float = size.x / 2.0
-	var box_w: int = 680
-	var box_h: int = 470
-	var box_x: float = center_x - float(box_w) / 2.0
-	var box_y: float = (size.y - float(box_h)) / 2.0
-	var building_terrain: bool = int(main_node.gen_year) <= 0 and float(main_node.load_progress) < 0.18
-
-	draw_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.0, 0.04, 0.01, 0.9), true)
-	_draw_dashed_border(Rect2(box_x, box_y, box_w, box_h), Color(0.0, 2.5, 0.0), 4.0)
-
-	var y: float = box_y + 35.0
-	var pulse: float = 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.005)
-	var phase_title: String = "GENERANDO MUNDO FÍSICO" if building_terrain else "SIMULANDO HISTORIA Y CIVILIZACIONES"
-	draw_string(_font, Vector2(center_x, y), "◆ %s: %s ◆" % [phase_title, str(main_node.world_name).to_upper()], HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color(0.0, 2.5 * pulse, 0.0))
-	y += float(line_h) * 2.0
-
-	var pct: float = clampf(float(main_node.load_progress), 0.0, 1.0)
-	if not building_terrain and int(main_node.gen_max_years) > 0:
-		pct = maxf(pct, 0.18 + (float(main_node.gen_year) / float(main_node.gen_max_years)) * 0.70)
-	var bar_w: int = 520
-	var bar_h: int = 18
-	var bar_x: float = center_x - float(bar_w) / 2.0
-	draw_rect(Rect2(bar_x, y, bar_w, bar_h), Color(0.0, 0.1, 0.02), true)
-	draw_rect(Rect2(bar_x, y, bar_w, bar_h), Color(0.0, 1.2, 0.0), false, 1.0)
-	if pct > 0.0:
-		draw_rect(Rect2(bar_x + 2.0, y + 2.0, float(bar_w - 4) * pct, bar_h - 4), Color(0.0, 2.5, 0.0), true)
-	var pct_str: String = "%d%%" % int(pct * 100.0)
-	draw_string(_font, Vector2(center_x, y + 14.0), pct_str, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color.BLACK if pct > 0.5 else Color(0.0, 2.5, 0.0))
-	y += float(line_h) * 2.1
-
-	var status_text: String = str(main_node.load_status)
-	draw_string(_font, Vector2(center_x, y), status_text, HORIZONTAL_ALIGNMENT_CENTER, box_w - 70, 10, Color(0.65, 1.0, 0.68))
-	y += float(line_h) * 1.8
-
-	var world_width: int = 0
-	var world_depth: int = 0
-	if main_node.world_gen != null:
-		world_width = int(main_node.world_gen.world_width)
-		world_depth = int(main_node.world_gen.world_depth)
-	var stats: Array = [
-		["MAPA GLOBAL:", "%d × %d" % [world_width, world_depth]],
-		["REGIONES:", "%s" % _format_world_region_count(world_width * world_depth)],
-		["AÑO HISTÓRICO:", "%d / %d" % [main_node.gen_year, main_node.gen_max_years]],
-		["ERA ACTUAL:", str(main_node.gen_current_age).to_upper()],
-		["PERSONAJES:", "%d" % main_node.gen_historical_figures],
-		["ASENTAMIENTOS:", "%d" % main_node.gen_active_sites],
-		["CONFLICTOS:", "%d" % main_node.gen_active_wars],
-		["BESTIAS VIVAS:", "%d" % main_node.gen_beasts_alive]
-	]
-
-	var col_x1: float = box_x + 40.0
-	var col_x2: float = box_x + float(box_w) / 2.0 + 20.0
-	var col_w: float = float(box_w) / 2.0 - 60.0
-	for stat_index in range(stats.size()):
-		var stat: Array = stats[stat_index]
-		var sx: float = col_x1 if stat_index % 2 == 0 else col_x2
-		var sy: float = y + float(int(stat_index / 2)) * float(line_h) * 1.5
-		draw_string(_font, Vector2(sx, sy), str(stat[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.0, 1.2, 0.0, 0.7))
-		draw_string(_font, Vector2(sx + col_w, sy), str(stat[1]), HORIZONTAL_ALIGNMENT_RIGHT, -1, 10, Color(0.0, 2.5, 0.0))
-	y += float(int((stats.size() + 1) / 2) + 1) * float(line_h) * 1.5
-
-	draw_string(_font, Vector2(box_x + 40.0, y), "❯ CRÓNICA CAUSAL DEL MUNDO:", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.0, 2.0, 0.0))
-	y += float(line_h) * 1.2
-	var ev_box_h: int = 105
-	draw_rect(Rect2(box_x + 40.0, y, box_w - 80, ev_box_h), Color(0.0, 0.02, 0.0, 0.95), true)
-	draw_rect(Rect2(box_x + 40.0, y, box_w - 80, ev_box_h), Color(0.0, 1.5, 0.0), false, 1.0)
-	var ev_y: float = y + 18.0
-	if main_node.gen_rolling_events.is_empty():
-		draw_string(_font, Vector2(box_x + 50.0, ev_y), "░ Preparando topografía, cuencas y civilizaciones...", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.0, 1.8, 0.0, 0.95))
-	else:
-		for event_variant in main_node.gen_rolling_events:
-			var event_text: String = str(event_variant)
-			var display_event: String = event_text if event_text.length() <= 72 else event_text.substr(0, 69) + "..."
-			draw_string(_font, Vector2(box_x + 50.0, ev_y), "░ " + display_event, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.0, 1.8, 0.0, 0.95))
-			ev_y += float(line_h) * 0.82
-
-	var spinner: String = ["|", "/", "-", "\\"][int(Time.get_ticks_msec() / 150) % 4]
-	y = box_y + float(box_h) - 24.0
-	var footer: String = "PROCESANDO REGIONES... %s" % spinner if building_terrain else "SIMULANDO CRONOLOGÍA... %s  [ENTER: terminar en el año actual]" % spinner
-	draw_string(_font, Vector2(center_x, y), footer, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.0, 1.5, 0.0, 0.7))
 
 func _format_world_region_count(region_count: int) -> String:
 	if region_count >= 1000000:
@@ -3150,143 +3129,6 @@ func tick_tutorial(delta: float) -> void:
 		_tutorial_timer = 0.0
 		_tutorial_step += 1
 
-func _draw_dwarf_stats_overlay() -> void:
-	_draw_premium_background(size)
-	var main_node = get_parent()
-	if main_node == null:
-		return
-	var dwarf = main_node.possessed_dwarf
-	if dwarf == null:
-		return
-	
-	var cx: int = int(size.x / 2.0)
-	var cy: int = int(size.y / 2.0)
-	var pw: int = 620
-	var ph: int = 460
-	var px: int = cx - pw / 2
-	var py: int = cy - ph / 2
-
-	# Panel background
-	_draw_rounded_rect(Rect2(px - 2, py - 2, pw + 4, ph + 4), Color(0.0, 0.0, 0.0, 0.7), 8)
-	_draw_rounded_rect(Rect2(px, py, pw, ph), Color(0.04, 0.03, 0.10, 0.95), 8)
-	_draw_rounded_rect(Rect2(px, py, pw, ph), Color(0.40, 0.30, 0.70), 8, false, 2.0)
-	draw_rect(Rect2(px, py + 2, pw, 3), Color(0.50, 0.35, 0.80, 0.7), true)
-
-	# Title
-	draw_string(_font, Vector2(cx, py + 30), dwarf.name.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.GOLD)
-	var prof_list = ["MINERO", "LENADOR", "AGRICULTOR", "ARTESANO", "GUERRERO", "CAZADOR", "MEDICO", "NOBLE", "ALDEANO"]
-	var prof_name = prof_list[dwarf.profession] if dwarf.profession >= 0 and dwarf.profession < prof_list.size() else "ALDEANO"
-	draw_string(_font, Vector2(cx, py + 48), prof_name, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.6, 0.6, 0.8))
-
-	# Left column: Stats
-	var col1_x: int = px + 20
-	var stat_y: int = py + 70
-	var line_h: int = 16
-
-	draw_string(_font, Vector2(col1_x, stat_y), "== ESTADíSTICAS ==", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
-	stat_y += line_h + 4
-
-	# Health bar
-	var hp_pct: float = clamp(dwarf.health, 0.0, 1.0)
-	var hp_color: Color = Color(0.2, 0.8, 0.2) if hp_pct > 0.5 else Color(0.8, 0.6, 0.2) if hp_pct > 0.25 else Color(0.8, 0.2, 0.2)
-	draw_string(_font, Vector2(col1_x, stat_y), "Salud:", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
-	draw_rect(Rect2(col1_x + 55, stat_y - 8, 100, 10), Color(0.15, 0.1, 0.2), true)
-	draw_rect(Rect2(col1_x + 55, stat_y - 8, int(100 * hp_pct), 10), hp_color, true)
-	draw_string(_font, Vector2(col1_x + 160, stat_y), "%d%%" % int(hp_pct * 100.0), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
-	stat_y += line_h + 2
-
-	# Stats list
-	var stat_list: Array = [
-		["Fuerza", dwarf.strength], ["Agilidad", dwarf.agility], ["Resistencia", dwarf.toughness],
-		["Combate", dwarf.combat_skill], ["Arma", dwarf.weapon_skill], ["Escudo", dwarf.shield_skill],
-		["Esquiva", dwarf.dodge_skill], ["Armadura", dwarf.armor_value]
-	]
-	for stat_entry in stat_list:
-		draw_string(_font, Vector2(col1_x, stat_y), str(stat_entry[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
-		draw_string(_font, Vector2(col1_x + 120, stat_y), "%.1f" % float(stat_entry[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
-		stat_y += line_h
-
-	# Needs
-	stat_y += 4
-	draw_string(_font, Vector2(col1_x, stat_y), "== NECESIDADES ==", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
-	stat_y += line_h + 2
-	var needs_list: Array = [
-		["Hambre", dwarf.hunger], ["Sed", dwarf.thirst], ["Felicidad", dwarf.happiness]
-	]
-	for need_entry in needs_list:
-		var need_val: float = clamp(float(need_entry[1]), 0.0, 1.0)
-		var need_color: Color = Color(0.2, 0.8, 0.2) if need_val > 0.5 else Color(0.8, 0.6, 0.2) if need_val > 0.25 else Color(0.8, 0.2, 0.2)
-		draw_string(_font, Vector2(col1_x, stat_y), str(need_entry[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
-		draw_rect(Rect2(col1_x + 70, stat_y - 8, 80, 8), Color(0.15, 0.1, 0.2), true)
-		draw_rect(Rect2(col1_x + 70, stat_y - 8, int(80 * need_val), 8), need_color, true)
-		stat_y += line_h
-
-	# Right column: Equipment
-	var col2_x: int = px + 300
-	var eq_y: int = py + 70
-
-	draw_string(_font, Vector2(col2_x, eq_y), "== EQUIPO ==", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
-	eq_y += line_h + 4
-
-	var eq_list: Array = [
-		["Arma", dwarf.equipped_weapon],
-		["Armadura", dwarf.equipped_armor],
-		["Escudo", dwarf.equipped_shield if dwarf.has_shield else "Ninguno"],
-		["Casco", dwarf.equipped_helmet if not dwarf.equipped_helmet.is_empty() else "Ninguno"]
-	]
-	for eq_entry in eq_list:
-		draw_string(_font, Vector2(col2_x, eq_y), str(eq_entry[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
-		draw_string(_font, Vector2(col2_x + 90, eq_y), str(eq_entry[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
-		eq_y += line_h
-
-	# Combat stats
-	eq_y += 4
-	draw_string(_font, Vector2(col2_x, eq_y), "== COMBATE ==", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
-	eq_y += line_h + 2
-	var combat_data: Array = [
-		["Asesinatos", dwarf.kill_count],
-		["Dano infligido", int(dwarf.stats_tracker.get("damage_dealt", 0))],
-		["Dano recibido", int(dwarf.stats_tracker.get("damage_taken", 0))],
-		["Batallas", dwarf.stats_tracker.get("battles_fought", 0)]
-	]
-	for c_entry in combat_data:
-		draw_string(_font, Vector2(col2_x, eq_y), str(c_entry[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.65, 0.6, 0.75))
-		draw_string(_font, Vector2(col2_x + 120, eq_y), str(c_entry[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
-		eq_y += line_h
-
-	# Inventory list (full width at bottom)
-	var inv_y: int = py + 280
-	draw_string(_font, Vector2(px + 20, inv_y), "== INVENTARIO (%d items) ==" % dwarf.inventory.size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.GOLD)
-	inv_y += line_h + 4
-
-	var equip_slots: Dictionary = {
-		0: "(mano derecha)", 1: "(mano izquierda)", 2: "(cabeza)", 3: "(torso)"
-	}
-	var max_vis: int = mini(dwarf.inventory.size(), 8)
-	for inv_i in range(max_vis):
-		var item = dwarf.inventory[inv_i]
-		var selected: bool = (main_node._dwarf_stats_inv_idx == inv_i + 1)
-		var item_name: String = item.name if item is DFItem else "Item"
-		var item_type_info: String = ""
-		if item is DFItem:
-			if item.is_weapon or "weapon" in item.item_type: item_type_info = " [ARMA]"
-			elif item.is_armor or "armor" in item.item_type: item_type_info = " [ARMADURA]"
-			elif "tool" in item.item_type: item_type_info = " [HERRAMIENTA]"
-			elif "food" in item.item_type or "drink" in item.item_type: item_type_info = " [CONSUMIBLE]"
-
-		var sel_mark: String = "> " if selected else "  "
-		var txt_color: Color = Color(0.6, 0.9, 0.6) if selected else Color.WHITE
-		draw_string(_font, Vector2(px + 24, inv_y), sel_mark + item_name + item_type_info, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, txt_color)
-		inv_y += line_h
-
-	if dwarf.inventory.size() > max_vis:
-		draw_string(_font, Vector2(px + 24, inv_y), "... y %d items mas" % (dwarf.inventory.size() - max_vis), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.5, 0.5, 0.5))
-
-	# Footer
-	var foot_y: int = py + ph - 22
-	draw_line(Vector2(px + 16, foot_y - 4), Vector2(px + pw - 16, foot_y - 4), Color(0.4, 0.3, 0.6, 0.5), 1.0)
-	draw_string(_font, Vector2(cx, foot_y + 6), "FLECHAs: item  |  E: equipar  |  D: soltar  |  U/ESC: cerrar", HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(0.5, 0.45, 0.6))
-
 func _draw_tutorial_overlay() -> void:
 	if _tutorial_step < 0 or _tutorial_step >= TUTORIAL_STEPS.size():
 		return
@@ -3338,12 +3180,11 @@ func _draw_tutorial_overlay() -> void:
 # =============================================================================
 func _draw_context_bar() -> void:
 	var vp = size
-	var bar_h = 22
+	var bar_h = 18
 	var bar_y = vp.y - bar_h
 
-	draw_rect(Rect2(0, bar_y, vp.x, bar_h), UI.WIN_FACE, true)
-	draw_line(Vector2(0, bar_y), Vector2(vp.x, bar_y), UI.WIN_HIGHLIGHT, 1.0)
-	draw_line(Vector2(0, bar_y + 1), Vector2(vp.x, bar_y + 1), UI.WIN_DARK_SHADOW, 1.0)
+	_draw_rounded_rect(Rect2(0, bar_y, vp.x, bar_h), Color(0.04, 0.03, 0.10, 0.92), 4)
+	draw_rect(Rect2(0, bar_y, vp.x, 1), Color(0.30, 0.25, 0.50, 0.8), true)
 
 	var main_nd = get_parent()
 	var is_possessed = main_nd != null and main_nd.get("possessed_dwarf") != null
@@ -3363,7 +3204,7 @@ func _draw_context_bar() -> void:
 	elif _dialogue_active:
 		controls = [["↑↓", "Tema"], ["ENTER", "Seleccionar"], ["T", "Cerrar"]]
 	elif is_possessed:
-		controls = [["WASD", "Mover enano"], ["L", "Liberar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
+		controls = [["WASD", "Mover"], ["TAB", "Objeto"], ["U", "Usar/equipar"], ["F", "Atacar"], ["E", "Contexto"], ["R", "Soltar"], ["Q", "Liberar"]]
 	elif desg_mode != "" and desg_mode != "View" and desg_mode != "Vista":
 		controls = [["Clic", "Marcar"], ["ESC", "Cancelar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
 	else:
@@ -3378,96 +3219,63 @@ func _draw_context_bar() -> void:
 						talk_nearby = true
 						break
 		if talk_nearby:
-			controls = [["Flechas", "Cámara"], ["T", "Hablar"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["F1/H", "Ayuda"]]
+			controls = [["Flechas", "Cámara"], ["T", "Hablar"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"]]
 		else:
-			controls = [["Flechas", "Cámara"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["F1/H", "Ayuda"], ["ESC", "Menú"]]
+			controls = [["Flechas", "Cámara"], ["Y", "Historia"], ["F", "Seguir enano"], ["1-6", "Designar"], ["ESPACIO", "Pausar"], ["H", "Ayuda"], ["ESC", "Menú"]]
 
-	var cx = 6
+	var cx = 12
 	for ctrl in controls:
-		var kw = int(ctrl[0].length() * 6 + 12)
-		var key_rect := Rect2(cx, bar_y + 4, kw, bar_h - 8)
-		draw_rect(key_rect, UI.WIN_FACE, true)
-		draw_line(key_rect.position, Vector2(key_rect.end.x, key_rect.position.y), UI.WIN_HIGHLIGHT, 1.0)
-		draw_line(key_rect.position, Vector2(key_rect.position.x, key_rect.end.y), UI.WIN_HIGHLIGHT, 1.0)
-		draw_line(Vector2(key_rect.position.x, key_rect.end.y), key_rect.end, UI.WIN_DARK_SHADOW, 1.0)
-		draw_line(Vector2(key_rect.end.x, key_rect.position.y), key_rect.end, UI.WIN_DARK_SHADOW, 1.0)
-		draw_string(_font, Vector2(cx + 4, bar_y + bar_h - 6), ctrl[0],
-			HORIZONTAL_ALIGNMENT_CENTER, kw - 8, UI.FONT_XS, UI.TEXT)
+		var kw = int(ctrl[0].length() * 6 + 10)
+		_draw_rounded_rect(Rect2(cx, bar_y + 3, kw, bar_h - 6), Color(0.16, 0.13, 0.28), 3)
+		_draw_rounded_rect(Rect2(cx, bar_y + 3, kw, bar_h - 6), Color(0.38, 0.32, 0.60), 3, false, 1.0)
+		draw_string(_font, Vector2(cx + kw / 2, bar_y + bar_h - 4), ctrl[0],
+			HORIZONTAL_ALIGNMENT_CENTER, kw, 8, Color(0.90, 0.88, 1.0))
 		cx += kw + 4
-		draw_string(_font, Vector2(cx, bar_y + bar_h - 6), ctrl[1],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
+		# Label
+		draw_string(_font, Vector2(cx, bar_y + bar_h - 4), ctrl[1],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(0.50, 0.47, 0.62))
 		cx += int(ctrl[1].length() * 5.5 + 16)
 
-	# === MODO INDICATOR ===
-	# Draw current game mode at the right side of the context bar
-	var main_node = get_parent()
-	var is_legends: bool = main_node != null and main_node.legends_mode
-	var is_adventure: bool = main_node != null and main_node.possessed_dwarf != null and not is_legends
-
-	var mode_name: String = "FORTALEZA"
-	var mode_color: Color = Color("#73b359")
-	var mode_shortcut: String = "[M] Cambiar"
-	if is_legends:
-		mode_name = "LEYENDAS"
-		mode_color = Color("#e2c67d")
-		mode_shortcut = "[L]"
-	elif is_adventure:
-		mode_name = "AVENTURA"
-		mode_color = Color("#58b5eb")
-		mode_shortcut = "[P] Soltar"
-
-	var mode_text: String = "MODO: %s  %s" % [mode_name, mode_shortcut]
-	var mode_text_width: int = int(mode_text.length() * 5.5 + 20)
-	var mode_label_x: int = int(vp.x - mode_text_width - 8)
-	var mode_label_y: int = bar_y + bar_h - 6
-
-	# Background pill for mode indicator
-	var mode_bg := Rect2(mode_label_x - 4, bar_y + 4, mode_text_width + 8, bar_h - 8)
-	draw_rect(mode_bg, Color(0.08, 0.06, 0.15, 0.8), true)
-	draw_rect(mode_bg, mode_color, false, 1.0)
-
-	# Draw mode name in color
-	draw_string(_font, Vector2(mode_label_x, mode_label_y), "MODO: ",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
-	var mode_name_width: int = int("MODO: ".length() * 5.5)
-	draw_string(_font, Vector2(mode_label_x + mode_name_width, mode_label_y), mode_name,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, mode_color)
-	var after_name: int = int(("MODO: " + mode_name).length() * 5.5 + 6)
-	draw_string(_font, Vector2(mode_label_x + after_name, mode_label_y), mode_shortcut,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
-
 func _draw_loading_playing_screen() -> void:
+	_draw_premium_background(size)
+
 	var main_node = get_parent()
-	if main_node == null:
-		return
-	var viewport := size
-	_draw_menu_backdrop(viewport)
-	var width := UI.content_width(viewport, 680.0, 24.0)
-	var height := 280.0
-	var frame := Rect2(
-		UI.snap((viewport.x - width) * 0.5),
-		UI.snap((viewport.y - height) * 0.5),
-		width,
-		height
-	)
-	var content := _draw_classic_frame(frame, "Bigliworld")
-	draw_rect(content, UI.MENU_PANEL, true)
-	var x := content.position.x + UI.SPACE_XL
-	var inner_width := content.size.x - UI.SPACE_XL * 2.0
-	var y := content.position.y + 40.0
-	draw_string(_font, Vector2(x, y), "PREPARANDO EL DESEMBARCO",
-		HORIZONTAL_ALIGNMENT_CENTER, inner_width, UI.FONT_LG, UI.TEXT)
-	y += 28.0
-	draw_string(_font, Vector2(x, y), str(main_node.world_name).to_upper(),
-		HORIZONTAL_ALIGNMENT_CENTER, inner_width, UI.FONT_MD, UI.GOLD)
-	y += 36.0
-	var progress := clampf(float(main_node.load_progress), 0.0, 1.0)
-	_draw_progress_bar(Rect2(x, y, inner_width, 24.0), progress, "%d%%" % roundi(progress * 100.0))
-	y += 48.0
-	draw_string(_font, Vector2(x, y), str(main_node.load_status),
-		HORIZONTAL_ALIGNMENT_CENTER, inner_width, UI.FONT_SM, UI.TEXT_MUTED)
-	draw_string(_font, Vector2(x, content.end.y - 18.0), "Reconstruyendo terreno, población y sistemas persistentes",
-		HORIZONTAL_ALIGNMENT_CENTER, inner_width, UI.FONT_XS, UI.TEXT_DISABLED)
+	if main_node == null: return
+
+	var line_h = int(_char_size.y)
+	var center_x = size.x / 2
+
+	var box_w = 640
+	var box_h = 260
+	var box_x = center_x - box_w / 2
+	var box_y = (size.y - box_h) / 2
+	
+	draw_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.0, 0.04, 0.01, 0.9), true)
+	_draw_dashed_border(Rect2(box_x, box_y, box_w, box_h), Color(0.0, 2.5, 0.0), 4.0)
+
+	var y = box_y + 35
+	var pulse = 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.005)
+	draw_string(_font, Vector2(center_x, y), "◆ DESEMBARCANDO EN %s ◆" % main_node.world_name.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color(0.0, 2.5 * pulse, 0.0))
+	y += int(line_h * 2.0)
+
+	var pct = main_node.load_progress
+	var bar_w = 480
+	var bar_h = 18
+	var bar_x = center_x - bar_w / 2
+	
+	draw_rect(Rect2(bar_x, y, bar_w, bar_h), Color(0.0, 0.1, 0.02), true)
+	draw_rect(Rect2(bar_x, y, bar_w, bar_h), Color(0.0, 1.2, 0.0), false, 1.0)
+	
+	if pct > 0.0:
+		draw_rect(Rect2(bar_x + 2, y + 2, (bar_w - 4) * pct, bar_h - 4), Color(0.0, 2.5, 0.0), true)
+		
+	var pct_str = "%d%%" % int(pct * 100.0)
+	draw_string(_font, Vector2(center_x, y + 14), pct_str, HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.0, 0.0, 0.0) if pct > 0.5 else Color(0.0, 2.5, 0.0))
+	y += int(line_h * 2.5)
+
+	var spinner = ["▖", "▘", "▝", "▗"][int(Time.get_ticks_msec() / 120) % 4]
+	var status_text = "❯ %s... %s" % [main_node.load_status, spinner]
+	draw_string(_font, Vector2(center_x, y), status_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color(0.0, 2.5, 0.0))
 
 func _draw_dialogue_overlay() -> void:
 	if not _dialogue_active:
@@ -3484,73 +3292,71 @@ func _draw_dialogue_overlay() -> void:
 	if box_w <= 0 or box_h <= 0:
 		return
 
-	var content := _draw_classic_frame(
-		Rect2(box_x, box_y, box_w, box_h),
-		"Conversación — %s" % _dialogue_target_name
-	)
-	draw_rect(content, UI.WIN_WINDOW, true)
-	box_x = int(content.position.x)
-	box_y = int(content.position.y)
-	box_w = int(content.size.x)
-	box_h = int(content.size.y)
+	var rad = 8
+	_draw_rounded_rect(Rect2(box_x + 4, box_y + 4, box_w, box_h), Color(0.0, 0.0, 0.0, 0.25), rad)
+	_draw_rounded_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.03, 0.03, 0.08, 0.97), rad)
+	_draw_rounded_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.35, 0.25, 0.55, 0.7), rad, false, 2.0)
+	draw_rect(Rect2(box_x, box_y + 2, box_w, 3), Color(0.45, 0.35, 0.65, 0.6), true)
 
 	var lh = int(_char_size.y)
-	var y = box_y + 18
+	var y = box_y + 10
+	var name_col = Color(0.85, 0.72, 0.20)
 
-	draw_string(_font, Vector2(box_x + 10, y), _dialogue_target_name.to_upper(),
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_MD, UI.GOLD)
+	# Title with NPC name
+	draw_string(_font, Vector2(box_x + 10, y), "== DIALOGO: %s ==" % _dialogue_target_name,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, name_col)
 	y += int(lh * 1.8)
 
 	# Greeting
 	draw_string(_font, Vector2(box_x + 10, y), _dialogue_greeting,
-		HORIZONTAL_ALIGNMENT_LEFT, box_w - 20, UI.FONT_SM, UI.TEXT)
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.80, 0.78, 0.90))
 	y += int(lh * 1.5)
 
 	# Separator
-	draw_line(Vector2(box_x + 10, y), Vector2(box_x + box_w - 10, y), UI.WIN_SHADOW, 1.0)
+	draw_line(Vector2(box_x + 10, y), Vector2(box_x + box_w - 10, y), Color(0.35, 0.28, 0.45), 1.0)
 	y += int(lh * 0.8)
 
 	match _dialogue_state:
 		1:  # TOPIC_SELECT
 			draw_string(_font, Vector2(box_x + 10, y), "SELECCIONA UN TEMA:",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_SM, UI.WIN_TITLE_END)
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.55, 0.72, 0.90))
 			y += int(lh * 1.5)
 			for i in range(_dialogue_topics.size()):
 				var topic = _dialogue_topics[i]
 				var is_sel = (i == _dialogue_topic_selected)
 				var prefix = "▸ " if is_sel else "  "
-				var col = Color.WHITE if is_sel else UI.TEXT
-				var bg = UI.SELECTION if is_sel else Color(0, 0, 0, 0)
+				var col = Color(0.90, 0.85, 1.0) if is_sel else Color(0.55, 0.50, 0.65)
+				var bg = Color(0.12, 0.09, 0.20) if is_sel else Color(0, 0, 0, 0)
 				if is_sel:
 					draw_rect(Rect2(box_x + 8, y - 2, box_w - 16, lh + 4), bg, true)
 				draw_string(_font, Vector2(box_x + 16, y + lh), "%s %s %s" % [prefix, topic.get("icon", ""), topic.get("label", "")],
-					HORIZONTAL_ALIGNMENT_LEFT, box_w - 32, UI.FONT_SM, col)
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 11, col)
 				y += int(lh * 1.3)
 
-			draw_line(Vector2(box_x + 10, y), Vector2(box_x + box_w - 10, y), UI.WIN_SHADOW, 1.0)
+			draw_line(Vector2(box_x + 10, y), Vector2(box_x + box_w - 10, y), Color(0.25, 0.20, 0.35), 1.0)
 			y += int(lh * 0.6)
 			draw_string(_font, Vector2(box_x + 10, y + lh), "Presiona T para cerrar",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.40, 0.38, 0.50))
 
 		2:  # SHOW_RESPONSE
 			draw_string(_font, Vector2(box_x + 10, y), "RESPUESTA:",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_SM, UI.SUCCESS)
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.50, 0.85, 0.50))
 			y += int(lh * 1.5)
 
 			# Draw response text with word wrap
 			var response_lines = _wrap_text(_dialogue_response, int(box_w / 7.5))
 			for rl in response_lines:
 				draw_string(_font, Vector2(box_x + 10, y + lh), rl,
-					HORIZONTAL_ALIGNMENT_LEFT, box_w - 20, UI.FONT_XS, UI.TEXT)
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.75, 0.73, 0.85))
 				if y + lh > box_y + box_h - 30:
 					draw_string(_font, Vector2(box_x + 10, y + lh + 4), "...",
-						HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
+						HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.40, 0.38, 0.50))
 					break
 				y += int(lh * 1.1)
 
 			draw_string(_font, Vector2(box_x + 10, box_y + box_h - 14),
 				"T = Volver / Cerrar",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, UI.FONT_XS, UI.TEXT_MUTED)
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.40, 0.38, 0.50))
 
 func _wrap_text(text: String, max_chars: int) -> Array:
 	var lines: Array = []
@@ -3572,80 +3378,6 @@ func _wrap_text(text: String, max_chars: int) -> Array:
 		lines.append(current_line)
 	return lines
 
-
-func _draw_mode_switch_menu() -> void:
-	_draw_premium_background(size)
-	var cx: int = int(size.x / 2.0)
-	var cy: int = int(size.y / 2.0)
-	var menu_w: int = 500
-	var menu_h: int = 340
-	var menu_rect := Rect2(cx - menu_w / 2, cy - menu_h / 2, menu_w, menu_h)
-	var main_node = get_parent()
-
-	# Fondo del menu
-	_draw_rounded_rect(Rect2(cx - menu_w / 2 - 2, cy - menu_h / 2 - 2, menu_w + 4, menu_h + 4), Color(0.0, 0.0, 0.0, 0.7), 8)
-	_draw_rounded_rect(menu_rect, Color(0.04, 0.03, 0.10, 0.95), 8)
-	_draw_rounded_rect(menu_rect, Color(0.40, 0.30, 0.70), 8, false, 2.0)
-	draw_rect(Rect2(menu_rect.position.x, menu_rect.position.y + 2, menu_rect.size.x, 3), Color(0.50, 0.35, 0.80, 0.7), true)
-
-	# Titulo
-	var title_y: int = int(menu_rect.position.y + 40)
-	draw_string(_font, Vector2(cx, title_y), "=== CAMBIAR MODO DE JUEGO ===", HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.GOLD)
-	draw_string(_font, Vector2(cx, title_y + 20), "El mundo y tu colonia se conservan al cambiar de modo.", HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(0.6, 0.55, 0.7))
-
-	# Opciones
-	var options: Array = [
-		{
-			"name": "FORTALEZA",
-			"desc": "Gestiona tu colonia enana. Construye, designa trabajos, defiende tu fortaleza.",
-			"keys": "WASD/FLECHAS: mover camara | 1-6: designaciones | ESPACIO: pausa",
-			"color": Color("#73b359")
-		},
-		{
-			"name": "AVENTURA",
-			"desc": "Controla un enano directamente. Explora el mundo, combatelo y descubre secretos.",
-			"keys": "WASD: mover enano | P: poseer/liberar | V: viaje rapido | Q: salir",
-			"color": Color("#58b5eb")
-		},
-		{
-			"name": "LEYENDAS",
-			"desc": "Explora la historia del mundo: figuras historicas, artefactos, guerras y dinastias.",
-			"keys": "PgUp/PgDn: navegar | 0-9: categorias | L/ESC: cerrar",
-			"color": Color("#e2c67d")
-		}
-	]
-
-	var opt_y: int = title_y + 50
-	var opt_h: int = 72
-
-	for opt_idx in range(options.size()):
-		var opt: Dictionary = options[opt_idx]
-		var selected: bool = (main_node != null and main_node._mode_switch_selected_idx == opt_idx) if main_node != null else (opt_idx == 0)
-		var opt_rect := Rect2(menu_rect.position.x + 20, opt_y, menu_rect.size.x - 40, opt_h)
-
-		# Fondo de la opcion
-		var bg: Color = Color(0.12, 0.10, 0.20, 0.8) if not selected else Color(0.20, 0.15, 0.35, 0.9)
-		_draw_rounded_rect(opt_rect, bg, 6)
-		if selected:
-			_draw_rounded_rect(opt_rect, opt["color"], 6, false, 2.0)
-
-		# Nombre del modo
-		var opt_x: int = int(opt_rect.position.x + 16)
-		draw_string(_font, Vector2(opt_x, opt_rect.position.y + 22), "> " if selected else "  ", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, opt["color"] if selected else Color(0.5, 0.5, 0.5))
-		draw_string(_font, Vector2(opt_x + 16, opt_rect.position.y + 22), opt["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, opt["color"])
-
-		# Descripcion
-		draw_string(_font, Vector2(opt_x + 16, opt_rect.position.y + 40), opt["desc"], HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.7, 0.7, 0.8))
-
-		# Teclas
-		draw_string(_font, Vector2(opt_x + 16, opt_rect.position.y + 56), opt["keys"], HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(0.5, 0.5, 0.6))
-
-		opt_y += opt_h + 10
-
-	# Pie
-	var foot_y: int = int(menu_rect.position.y + menu_rect.size.y - 24)
-	draw_line(Vector2(menu_rect.position.x + 20, foot_y - 4), Vector2(menu_rect.position.x + menu_rect.size.x - 20, foot_y - 4), Color(0.4, 0.3, 0.6, 0.5), 1.0)
-	draw_string(_font, Vector2(cx, foot_y + 6), "FLECHA ARRIBA/ABAJO: navegar  |  ENTER: cambiar  |  M/ESC: cancelar", HORIZONTAL_ALIGNMENT_CENTER, -1, 9, Color(0.5, 0.45, 0.6))
 
 func _draw_fast_travel_overlay() -> void:
 	if not _fast_travel_active:
@@ -3755,25 +3487,25 @@ func _draw_quest_log_overlay() -> void:
 	var panel_h = int(vh * 0.75)
 	var panel_x = border_x
 	var panel_y = int(vh * 0.08)
-	var content := _draw_classic_frame(Rect2(panel_x, panel_y, panel_w, panel_h), "Registro de misiones")
-	draw_rect(content, UI.WIN_WINDOW, true)
-	panel_x = int(content.position.x)
-	panel_y = int(content.position.y)
-	panel_w = int(content.size.x)
-	panel_h = int(content.size.y)
+	var rad = 8
 	
-	draw_string(_font, Vector2(panel_x + 14, panel_y + 26), "REGISTRO DE MISIONES", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, UI.FONT_LG, UI.GOLD)
+	_draw_rounded_rect(Rect2(panel_x + 4, panel_y + 4, panel_w, panel_h), Color(0.0, 0.0, 0.0, 0.25), rad)
+	_draw_rounded_rect(Rect2(panel_x, panel_y, panel_w, panel_h), Color(0.02, 0.02, 0.08, 0.92), rad)
+	_draw_rounded_rect(Rect2(panel_x, panel_y, panel_w, panel_h), Color(0.4, 0.3, 0.15, 0.8), rad, false, 2.0)
+	draw_rect(Rect2(panel_x, panel_y + 2, panel_w, 3), Color(0.6, 0.45, 0.2, 0.8), true)
+	
+	draw_string(_font, Vector2(panel_x + 14, panel_y + 26), "REGISTRO DE MISIONES", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, 16, Color(1.0, 0.8, 0.3))
 	
 	var header = "Activas: %d  |  Completadas: %d" % [_quest_active_count, _quest_completed_count]
-	draw_string(_font, Vector2(panel_x + 14, panel_y + 50), header, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, UI.FONT_MD, UI.TEXT_MUTED)
+	draw_string(_font, Vector2(panel_x + 14, panel_y + 50), header, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, 14, Color(0.8, 0.8, 0.8))
 	
 	var content_y = panel_y + 68
 	var line_h = 20
 	var idx = 0
 	
 	if _quest_active_quests.size() > 0:
-		draw_string(_font, Vector2(panel_x + 14, content_y), "ACTIVAS", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 24, UI.FONT_MD, UI.SUCCESS)
-		draw_line(Vector2(panel_x + 14, content_y + 4), Vector2(panel_x + panel_w - 14, content_y + 4), UI.WIN_SHADOW, 1.0)
+		draw_string(_font, Vector2(panel_x + 14, content_y), "ACTIVAS", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 24, 14, Color(0.6, 1.0, 0.6))
+		draw_line(Vector2(panel_x + 14, content_y + 4), Vector2(panel_x + panel_w - 14, content_y + 4), Color(0.3, 0.5, 0.3, 0.4), 1.0)
 		content_y += line_h
 		for q in _quest_active_quests:
 			if content_y > panel_y + panel_h - 24:
@@ -3792,21 +3524,21 @@ func _draw_quest_log_overlay() -> void:
 			var cur = q.get("current_count", 0)
 			var line_color = Color(0.9, 0.9, 0.9)
 			if is_selected:
-				draw_rect(Rect2(panel_x + 6, content_y - 14, panel_w - 12, line_h), UI.SELECTION, true)
-				line_color = Color.WHITE
+				_draw_rounded_rect(Rect2(panel_x + 6, content_y - 14, panel_w - 12, line_h), Color(0.25, 0.25, 0.4, 0.5), 4)
+				line_color = Color(1.0, 1.0, 0.5)
 			var line_str = "%s - %s [%d/%d]" % [type_name, ttl, cur, tgt]
 			draw_string(_font, Vector2(panel_x + 16, content_y), line_str, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 40, 13, line_color)
 			content_y += line_h
 			idx += 1
 	else:
-		draw_string(_font, Vector2(panel_x + 14, content_y + 4), "(No hay misiones activas)", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 30, UI.FONT_SM, UI.TEXT_MUTED)
+		draw_string(_font, Vector2(panel_x + 14, content_y + 4), "(No hay misiones activas)", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 30, 13, Color(0.6, 0.6, 0.6))
 	
 	if _quest_completed_count > 0 and content_y < panel_y + panel_h - 30:
 		content_y += 16
-		draw_string(_font, Vector2(panel_x + 14, content_y), "COMPLETADAS (%d)" % _quest_completed_count, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 24, UI.FONT_MD, UI.WIN_TITLE_END)
-		draw_line(Vector2(panel_x + 14, content_y + 4), Vector2(panel_x + panel_w - 14, content_y + 4), UI.WIN_SHADOW, 1.0)
+		draw_string(_font, Vector2(panel_x + 14, content_y), "COMPLETADAS (%d)" % _quest_completed_count, HORIZONTAL_ALIGNMENT_LEFT, panel_w - 24, 14, Color(0.6, 0.6, 1.0))
+		draw_line(Vector2(panel_x + 14, content_y + 4), Vector2(panel_x + panel_w - 14, content_y + 4), Color(0.3, 0.3, 0.5, 0.4), 1.0)
 	
-	draw_string(_font, Vector2(panel_x + 14, panel_y + panel_h - 6), "Flechas: Navegar  |  J/ESC: Cerrar", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, UI.FONT_SM, UI.TEXT_MUTED)
+	draw_string(_font, Vector2(panel_x + 14, panel_y + panel_h - 6), "Flechas: Navegar  |  J/ESC: Cerrar", HORIZONTAL_ALIGNMENT_LEFT, panel_w - 20, 12, Color(0.6, 0.6, 0.6))
 func _draw_quest_notification() -> void:
 	if _quest_notification == "":
 		return
@@ -3817,10 +3549,9 @@ func _draw_quest_notification() -> void:
 	var notif_y = 4
 	var notif_h = 28
 	
-	draw_rect(Rect2(notif_x, notif_y, notif_w, notif_h), UI.WIN_FACE, true)
-	draw_rect(Rect2(notif_x, notif_y, notif_w, notif_h), UI.WIN_DARK_SHADOW, false, 1.0)
-	draw_rect(Rect2(notif_x + 3, notif_y + 3, 4, notif_h - 6), UI.WARNING, true)
-	draw_string(_font, Vector2(notif_x + 13, notif_y + 19), _quest_notification, HORIZONTAL_ALIGNMENT_LEFT, notif_w - 20, UI.FONT_MD, UI.TEXT)
+	_draw_rounded_rect(Rect2(notif_x, notif_y, notif_w, notif_h), Color(0.0, 0.0, 0.0, 0.7), 5)
+	_draw_rounded_rect(Rect2(notif_x, notif_y, notif_w, notif_h), Color(0.6, 0.5, 0.2, 0.9), 5, false, 1.5)
+	draw_string(_font, Vector2(notif_x + 8, notif_y + 18), _quest_notification, HORIZONTAL_ALIGNMENT_LEFT, notif_w - 16, 14, Color(1.0, 0.9, 0.5))
 
 func _draw_premium_background(vp: Vector2) -> void:
 	# 1. Dark deep night sky background
@@ -3911,9 +3642,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _draw_performance_overlay() -> void:
 	var total_entities: int = world.entities.size() if world != null else 0
+	var main_node = get_parent()
+	var metrics: Dictionary = main_node.performance_metrics if main_node != null and "performance_metrics" in main_node else {}
 	var lines: Array[String] = [
 		"FPS: %d" % Engine.get_frames_per_second(),
 		"Entidades visibles: %d / %d" % [_last_visible_entity_count, total_entities],
+		"Tick promedio: %.2f ms" % float(metrics.get("tick_ms", 0.0)),
+		"IA habitantes: %.2f ms" % float(metrics.get("citizens_ms", 0.0)),
+		"Otros sistemas: %.2f ms" % float(metrics.get("other_systems_ms", 0.0)),
+		"Pico reciente: %.2f ms" % float(metrics.get("tick_max_ms", 0.0)),
 		"Efectos costosos: %s" % ("ACTIVOS" if performance_effects_enabled else "DESACTIVADOS"),
 		"F3: cerrar diagnóstico"
 	]
