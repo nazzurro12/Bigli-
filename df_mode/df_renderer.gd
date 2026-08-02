@@ -2129,17 +2129,22 @@ func _draw_menu_backdrop(viewport: Vector2) -> void:
 	var horizon := viewport.y * 0.58
 	var seed_value := 23841
 	for ridge in range(4):
-		var points := PackedVector2Array()
-		points.append(Vector2(0, viewport.y))
 		var segment_width := maxf(32.0, viewport.x / 24.0)
-		for segment in range(25):
-			var px := float(segment) * segment_width
-			var noise_value := sin(float(segment * 17 + ridge * 31 + seed_value) * 0.21)
-			var py := horizon - float(ridge) * 34.0 - noise_value * (24.0 + ridge * 10.0)
-			points.append(Vector2(px, py))
-		points.append(Vector2(viewport.x, viewport.y))
 		var ridge_color := Color("#152635").darkened(float(3 - ridge) * 0.08)
-		draw_colored_polygon(points, ridge_color)
+		for segment in range(24):
+			var px_a := float(segment) * segment_width
+			var px_b := float(segment + 1) * segment_width
+			var noise_a := sin(float(segment * 17 + ridge * 31 + seed_value) * 0.21)
+			var noise_b := sin(float((segment + 1) * 17 + ridge * 31 + seed_value) * 0.21)
+			var py_a := horizon - float(ridge) * 34.0 - noise_a * (24.0 + ridge * 10.0)
+			var py_b := horizon - float(ridge) * 34.0 - noise_b * (24.0 + ridge * 10.0)
+			var quad := PackedVector2Array([
+				Vector2(px_a, viewport.y),
+				Vector2(px_a, py_a),
+				Vector2(px_b, py_b),
+				Vector2(px_b, viewport.y)
+			])
+			draw_colored_polygon(quad, ridge_color)
 	draw_rect(Rect2(0, viewport.y - 44, viewport.x, 44), Color("#090E14"), true)
 	draw_line(Vector2(0, viewport.y - 44), Vector2(viewport.x, viewport.y - 44), UI.GOLD.darkened(0.25), 1.0)
 
