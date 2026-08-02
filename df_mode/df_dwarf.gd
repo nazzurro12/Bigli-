@@ -92,6 +92,7 @@ var health: float = 1.0
 var inventory: Array = []
 var thoughts: Array = []
 var minutes_since_alcohol: int = 0
+var simulation_minute: int = 0
 
 var skills: Dictionary = {}
 var current_task: String = "idle"
@@ -425,7 +426,7 @@ func add_memory(category: String, text: String, intensity: float = 0.5) -> void:
 		memories.pop_front()
 
 func _get_turn_count() -> int:
-	return Time.get_ticks_msec()
+	return simulation_minute
 
 func has_relationship_with(other_id: int) -> bool:
 	return relationships.has(other_id)
@@ -852,6 +853,7 @@ func get_equipment_string() -> String:
 func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 	if not is_alive:
 		return
+	simulation_minute = int(world.get_meta("simulation_minute", simulation_minute))
 	has_moved_this_tick = false
 	needs_display_update = false
 	var delta_game_minute: float = 1.0

@@ -2,6 +2,7 @@ extends RefCounted
 class_name DFSaveLoad
 
 const SAVE_DIR = "user://saves/"
+const DFWorldSimulationScript = preload("res://df_mode/core/simulation/world_simulation.gd")
 
 static func _v3i_to_arr(v: Vector3i) -> Array:
 	return [v.x, v.y, v.z]
@@ -236,6 +237,7 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"inventory": [],
 		"thoughts": dwarf.thoughts.duplicate(),
 		"minutes_since_alcohol": dwarf.minutes_since_alcohol,
+		"simulation_minute": dwarf.simulation_minute,
 		"skills": dwarf.skills.duplicate(),
 		"current_task": dwarf.current_task,
 		"task_progress": dwarf.task_progress,
@@ -392,6 +394,7 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.health = d.get("health", 1.0)
 	df.thoughts = d.get("thoughts", []).duplicate()
 	df.minutes_since_alcohol = d.get("minutes_since_alcohol", 0)
+	df.simulation_minute = d.get("simulation_minute", 0)
 	df.skills = d.get("skills", {}).duplicate()
 	df.current_task = d.get("current_task", "idle")
 	df.task_progress = d.get("task_progress", 0.0)
@@ -871,6 +874,8 @@ static func save_game(main) -> bool:
 	data["embark_prepare_points"] = main.embark_prepare_points
 	data["embark_custom_skills"] = main.embark_custom_skills.duplicate()
 	data["embark_custom_items"] = main.embark_custom_items.duplicate()
+	if main.world_simulation != null:
+		data["world_simulation"] = main.world_simulation.serialize_state()
 	if main.world_gen != null:
 		data["world_seed"] = main.generation_seed
 	else:
@@ -1297,6 +1302,8 @@ static func _build_save_data(main) -> Dictionary:
 	data["embark_prepare_points"] = main.embark_prepare_points
 	data["embark_custom_skills"] = main.embark_custom_skills.duplicate()
 	data["embark_custom_items"] = main.embark_custom_items.duplicate()
+	if main.world_simulation != null:
+		data["world_simulation"] = main.world_simulation.serialize_state()
 
 	var w = main.world
 	data["world"] = {}
@@ -1591,6 +1598,12 @@ static func _apply_save_data(main, data: Dictionary) -> void:
 	main.embark_prepare_points = data.get("embark_prepare_points", 100)
 	main.embark_custom_skills = data.get("embark_custom_skills", {}).duplicate()
 	main.embark_custom_items = data.get("embark_custom_items", {}).duplicate()
+	if main.world_simulation == null:
+		var simulation_database = load("res://df_mode/resources/world_database.tres")
+		main.world_simulation = DFWorldSimulationScript.new(simulation_database)
+	if main.world_simulation != null:
+		main.world_simulation.restore_state(data.get("world_simulation", {}))
+		w.set_meta("simulation_minute", main.world_simulation.elapsed_minutes)
 
 	var follow_id = data.get("follow_dwarf", -1)
 	if main.renderer != null:

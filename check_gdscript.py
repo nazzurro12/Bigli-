@@ -1,5 +1,7 @@
 import os
 import re
+import sys
+from pathlib import Path
 
 def check_gdscript_file(filepath):
     with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
@@ -44,12 +46,16 @@ def check_gdscript_file(filepath):
     return errors
 
 if __name__ == '__main__':
-    dir_path = r"F:\cacaneitor3000\Bigliworld\df_mode"
+    project_root = Path(__file__).resolve().parent
+    dir_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else project_root / "df_mode"
+    if not dir_path.is_dir():
+        print(f"ERROR: no existe el directorio de GDScript: {dir_path}")
+        raise SystemExit(2)
     print(f"=== REVISANDO DUPLICADOS EN SCOPE DE GDSCRIPT ({dir_path}) ===")
     total_files = 0
     total_errors = 0
     
-    for root, dirs, files in os.walk(dir_path):
+    for root, dirs, files in os.walk(str(dir_path)):
         for file in files:
             if file.endswith('.gd'):
                 total_files += 1
@@ -62,3 +68,11 @@ if __name__ == '__main__':
                         total_errors += 1
                         
     print(f"\nRevisión terminada. {total_files} archivos comprobados. {total_errors} duplicaciones en scopes encontradas.")
+    if total_files == 0:
+        print("ERROR: el validador no examinó ningún archivo.")
+        raise SystemExit(2)
+    # El analizador es deliberadamente conservador: algunas reutilizaciones son
+    # válidas en bloques hermanos de GDScript. --strict permite convertir estos
+    # avisos en errores en ramas que ya hayan eliminado su deuda histórica.
+    strict = "--strict" in sys.argv[1:]
+    raise SystemExit(1 if strict and total_errors else 0)
