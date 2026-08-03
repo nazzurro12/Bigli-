@@ -78,6 +78,33 @@ static func find_path(world, from: Vector3i, to: Vector3i, use_dwarf_rules: bool
 	_store_cached_path(key, path)
 	return path
 
+## Encuentra una ruta hasta una casilla cardinal desde la que se puede trabajar
+## sobre target sin ocuparlo. Se usa para excavar, talar, recoger y construir.
+static func find_adjacent_path(world, from: Vector3i, target: Vector3i, use_dwarf_rules: bool = true) -> Array:
+	if from.y == target.y and _heuristic(from, target) <= 1:
+		return [from]
+	var candidates: Array[Vector3i] = []
+	for direction in [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1)]:
+		var candidate: Vector3i = target + direction
+		if candidate.x < 0 or candidate.x >= world.width or candidate.z < 0 or candidate.z >= world.depth:
+			continue
+		var passable: bool = not world.is_blocked(candidate)
+		if use_dwarf_rules:
+			passable = world.is_stair(candidate) or world.is_floor(candidate) or world.is_open_space(candidate)
+			if passable and world.get_tile(candidate) == world.TileType.TREE:
+				passable = false
+		if passable:
+			candidates.append(candidate)
+	var shortest: Array = []
+	for candidate: Vector3i in candidates:
+		var candidate_path: Array = find_path(world, from, candidate, use_dwarf_rules)
+		if from == candidate:
+			candidate_path = [from]
+		if not candidate_path.is_empty() and (shortest.is_empty() or candidate_path.size() < shortest.size()):
+			shortest = candidate_path
+	return shortest
+
+
 static func _store_cached_path(key: String, path: Array) -> void:
 	if _path_cache.size() >= _cache_max_size:
 		var keys = _path_cache.keys()
