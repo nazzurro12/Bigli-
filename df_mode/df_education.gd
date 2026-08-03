@@ -303,7 +303,7 @@ func _apply_teaching(teacher, student, lesson: Dictionary, world) -> void:
 	lesson["phase"] = "practice"
 	teacher.current_task = "Supervisando práctica de %s" % skill_name
 	student.current_task = "Practicando %s con %s" % [skill_name, teacher.name]
-	var xp_gain: int = maxi(1, TEACH_XP_BASE / 2 + maxi(0, teacher_level - student_level) + int(quality))
+	var xp_gain: int = maxi(1, floori(float(TEACH_XP_BASE) / 2.0) + maxi(0, teacher_level - student_level) + int(quality))
 	student.add_skill_xp(skill_id, xp_gain)
 	teacher.add_skill_xp(DFDwarf.Skill.LEADERSHIP, 1)
 	if randi() % 20 == 0:
