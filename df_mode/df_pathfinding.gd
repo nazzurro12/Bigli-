@@ -189,6 +189,10 @@ static func _reconstruct_path(came_from: Dictionary, current: Vector3i) -> Array
 	while came_from.has(current):
 		current = came_from[current]
 		p.push_front(current)
+	# El actor ya ocupa el primer nodo reconstruido. Devolverlo hacía que
+	# _move_toward intentara caminar hacia su propia casilla indefinidamente.
+	if p.size() > 1:
+		p.pop_front()
 	return p
 
 static func _key(v: Vector3i) -> Vector3i:
