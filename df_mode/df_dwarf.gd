@@ -1885,43 +1885,71 @@ func _work_on_job(world) -> void:
 		_execute_job(world)
 		return
 
-	if current_job.job_type == DFJob.JobType.BUILD_WALL or current_job.job_type == DFJob.JobType.BUILD_FLOOR or current_job.job_type == DFJob.JobType.BUILD_WORKSHOP:
-		var has_material = false
+	if current_job.job_type in [DFJob.JobType.BUILD_WALL, DFJob.JobType.BUILD_FLOOR, DFJob.JobType.BUILD_WORKSHOP]:
+		var has_material: bool = false
 		for item in inventory:
-			if item.item_type == "stone" or item.item_type == "wood":
+			if item is DFItem and item.item_type in ["stone", "wood"]:
 				has_material = true
 				break
 
 		if not has_material:
-			var best_item = null
-			var best_dist = 999999
-			for ent in world.items:
-				if ent.item_type != "stone" and ent.item_type != "wood":
+			var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
+			var requested_material_id: int = int(current_job.get_meta("construction_material_id", -1))
+			var material_candidates: Array = []
+			for material_item in world.items:
+				if not material_item is DFItem or material_item.item_type not in ["stone", "wood"]:
 					continue
-				if ent.is_decayed or ent.is_inside_container or ent.carried_by_id >= 0:
+				if material_item.is_decayed or material_item.is_inside_container or material_item.carried_by_id >= 0:
 					continue
-				if ent.is_reserved_for_other(id, simulation_minute):
+				if requested_material_id >= 0 and material_item.id != requested_material_id:
 					continue
-				var d: int = abs(ent.tile_pos.x - tile_pos.x) + abs(ent.tile_pos.z - tile_pos.z) + abs(ent.tile_pos.y - tile_pos.y) * 2
-				if d < best_dist:
-					best_dist = d
-					best_item = ent
+				if material_item.is_reserved_for_other(id, current_tick):
+					continue
+				var material_distance: int = abs(material_item.tile_pos.x - tile_pos.x) + abs(material_item.tile_pos.z - tile_pos.z) + abs(material_item.tile_pos.y - tile_pos.y) * 2
+				material_candidates.append({"item": material_item, "distance": material_distance})
+			# Si el material guardado desapareció, permitir seleccionar uno nuevo.
+			if material_candidates.is_empty() and requested_material_id >= 0:
+				current_job.erase_meta("construction_material_id")
+				requested_material_id = -1
+				for fallback_material in world.items:
+					if fallback_material is DFItem and fallback_material.item_type in ["stone", "wood"] and not fallback_material.is_decayed and not fallback_material.is_inside_container and fallback_material.carried_by_id < 0 and not fallback_material.is_reserved_for_other(id, current_tick):
+						var fallback_distance: int = abs(fallback_material.tile_pos.x - tile_pos.x) + abs(fallback_material.tile_pos.z - tile_pos.z) + abs(fallback_material.tile_pos.y - tile_pos.y) * 2
+						material_candidates.append({"item": fallback_material, "distance": fallback_distance})
+			material_candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+				return int(a["distance"]) < int(b["distance"])
+			)
 
-			if best_item != null:
-				best_item.reserve_for(id, simulation_minute + 30)
-				current_task = "Llevando material para %s" % current_job.get_description().to_lower()
-				var dist_to_item: int = abs(tile_pos.x - best_item.tile_pos.x) + abs(tile_pos.z - best_item.tile_pos.z) + abs(tile_pos.y - best_item.tile_pos.y) * 2
-				if dist_to_item <= 1:
-					best_item.release_reservation(id)
-					best_item.carried_by_id = id
-					world.remove_entity(best_item)
-					inventory.append(best_item)
-					needs_display_update = true
-					current_task = current_job.get_description()
-				else:
-					_move_toward(world, best_item.tile_pos)
-			else:
-				_cancel_current_job("no hay piedra o madera accesible")
+			var selected_material: DFItem = null
+			var selected_material_path: Array = []
+			for material_index in range(mini(8, material_candidates.size())):
+				var candidate_material: DFItem = material_candidates[material_index]["item"]
+				var material_is_adjacent: bool = candidate_material.tile_pos.y == tile_pos.y and _plan_distance(tile_pos, candidate_material.tile_pos) <= 1
+				var candidate_material_path: Array = [] if material_is_adjacent else DFPathfinding.find_adjacent_path(world, tile_pos, candidate_material.tile_pos, true)
+				if material_is_adjacent or not candidate_material_path.is_empty():
+					selected_material = candidate_material
+					selected_material_path = candidate_material_path
+					break
+			if selected_material == null:
+				_release_current_job(world, "no hay piedra o madera alcanzable", 300)
+				return
+
+			current_job.set_meta("construction_material_id", selected_material.id)
+			selected_material.reserve_for(id, current_tick + 180)
+			var selected_is_adjacent: bool = selected_material.tile_pos.y == tile_pos.y and _plan_distance(tile_pos, selected_material.tile_pos) <= 1
+			if not selected_is_adjacent:
+				if path.is_empty() or path_index >= path.size():
+					path = selected_material_path
+					path_index = 0
+				current_task = "Yendo por material para %s" % current_job.get_description().to_lower()
+				_move_toward(world, selected_material.tile_pos)
+				return
+			selected_material.release_reservation(id)
+			selected_material.carried_by_id = id
+			world.remove_entity(selected_material)
+			inventory.append(selected_material)
+			current_job.erase_meta("construction_material_id")
+			needs_display_update = true
+			current_task = "Material cargado para %s" % current_job.get_description().to_lower()
 			return
 
 	var dist = abs(tile_pos.x - current_job.tile_pos.x) + abs(tile_pos.z - current_job.tile_pos.z)
