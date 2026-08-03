@@ -4112,16 +4112,13 @@ func _auto_designate_initial_jobs(center: Vector3i) -> void:
 		if built_tiles >= 3:
 			break
 	
-	# 4. Trabajos de recogida de materiales (hauling)
-	var haul_count = min(8, trees_designated + dug_tiles + guaranteed_dig + 4)
-	for i in range(haul_count):
-		var rx = cx + (randi() % 20) - 10
-		var rz = cz + (randi() % 20) - 10
-		var haul_pos = Vector3i(clampi(rx, 2, world.width - 2), sy, clampi(rz, 2, world.depth - 2))
-		var job_type = DFJob.JobType.COLLECT_WOOD if randi() % 2 == 0 else DFJob.JobType.COLLECT_STONE
-		var haul_job = DFJob.new(job_type, haul_pos, 3)
-		designation.job_queue.append(haul_job)
-		haul_jobs += 1
+	# 4. Recolección ligada exclusivamente a objetos existentes.
+	# Antes se generaban coordenadas aleatorias sin recurso; esos trabajos falsos
+	# bloqueaban el cupo y evitaban crear trabajos para troncos y piedras reales.
+	var collection_jobs_before: int = designation.job_queue.size()
+	_queue_resource_collection_jobs("wood", DFJob.JobType.COLLECT_WOOD, 5, 8)
+	_queue_resource_collection_jobs("stone", DFJob.JobType.COLLECT_STONE, 5, 8)
+	haul_jobs = designation.job_queue.size() - collection_jobs_before
 	
 	# 5. Cazar criaturas cercanas (s?lo si hay un cazador disponible)
 	var has_hunter = false
