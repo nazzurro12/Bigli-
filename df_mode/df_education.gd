@@ -12,11 +12,15 @@ const SCHOOL_TEACH_BONUS: int = 3
 const AUTO_LEARN_XP: int = 1
 const SCAN_INTERVAL_TICKS: int = 12
 const MAX_SCHOOLS: int = 12
+const LESSON_DURATION_SCANS: int = 24
+const LESSON_COOLDOWN_SCANS: int = 36
 
 ## Edificios registrados como escuelas (posición -> {name, quality})
 var schools: Dictionary = {}
 ## Pares activos teacher_id -> {skill, student_ids, quality_timer}
 var active_lessons: Dictionary = {}
+## Evita que los mismos habitantes vuelvan a clase inmediatamente.
+var lesson_cooldowns: Dictionary = {}
 var scan_counter: int = 0
 var main_ref = null
 
@@ -75,6 +79,13 @@ func tick(world) -> Array[String]:
 	if scan_counter < SCAN_INTERVAL_TICKS:
 		return messages
 	scan_counter = 0
+
+	for cooldown_id: Variant in lesson_cooldowns.keys():
+		var remaining: int = int(lesson_cooldowns[cooldown_id]) - 1
+		if remaining <= 0:
+			lesson_cooldowns.erase(cooldown_id)
+		else:
+			lesson_cooldowns[cooldown_id] = remaining
 	
 	# 1. Asignar maestros automáticos (enanos con skill >= 5)
 	_auto_assign_teachers(world)
@@ -84,23 +95,39 @@ func tick(world) -> Array[String]:
 	for teacher_id: Variant in active_lessons.keys():
 		var lesson: Dictionary = active_lessons[teacher_id]
 		var teacher = _find_dwarf_by_id(world, int(teacher_id))
-		if teacher == null or not teacher.is_alive:
+		if teacher == null or not teacher.is_alive or not _is_available_for_lesson(teacher):
 			expired_lessons.append(teacher_id)
 			continue
 		lesson["quality_timer"] = int(lesson.get("quality_timer", 0)) + 1
+		if int(lesson["quality_timer"]) >= LESSON_DURATION_SCANS:
+			expired_lessons.append(teacher_id)
+			continue
 		
 		var students_alive: Array = []
 		for student_id: Variant in lesson.get("student_ids", []):
 			var student = _find_dwarf_by_id(world, int(student_id))
-			if student != null and student.is_alive:
+			if student != null and student.is_alive and _is_available_for_lesson(student):
 				students_alive.append(student_id)
 				_apply_teaching(teacher, student, lesson, world)
+			elif student != null:
+				lesson_cooldowns[student.id] = LESSON_COOLDOWN_SCANS
 		lesson["student_ids"] = students_alive
 		
 		if students_alive.is_empty():
 			expired_lessons.append(teacher_id)
 	
 	for expired_id: Variant in expired_lessons:
+		var expired_lesson: Dictionary = active_lessons.get(expired_id, {})
+		var expired_teacher = _find_dwarf_by_id(world, int(expired_id))
+		if expired_teacher != null:
+			lesson_cooldowns[expired_teacher.id] = LESSON_COOLDOWN_SCANS
+			if str(expired_teacher.current_task).begins_with("Enseñando") or str(expired_teacher.current_task).begins_with("Demostrando"):
+				expired_teacher.current_task = "Descansando de enseñar"
+		for expired_student_id: Variant in expired_lesson.get("student_ids", []):
+			lesson_cooldowns[int(expired_student_id)] = LESSON_COOLDOWN_SCANS
+			var expired_student = _find_dwarf_by_id(world, int(expired_student_id))
+			if expired_student != null and (str(expired_student.current_task).begins_with("Aprendiendo") or str(expired_student.current_task).begins_with("Practicando")):
+				expired_student.current_task = "Lección terminada"
 		active_lessons.erase(expired_id)
 	
 	# 3. Estimular aprendizaje autónomo en jóvenes
@@ -118,7 +145,9 @@ func _auto_assign_teachers(world) -> void:
 	var students: Array = []
 	
 	for dwarf in world.dwarves:
-		if not dwarf.is_alive or dwarf.is_possessed:
+		if not dwarf.is_alive or dwarf.is_possessed or not _is_available_for_lesson(dwarf):
+			continue
+		if lesson_cooldowns.has(dwarf.id):
 			continue
 		
 		var best_skill: int = -1
@@ -213,6 +242,7 @@ func _auto_assign_teachers(world) -> void:
 					"skill": t_info2["skill_id"],
 					"student_ids": [],
 					"quality_timer": 0,
+					"phase": "demonstration",
 					"school_key": "%d:%d:%d" % [school_pos.x, school_pos.y, school_pos.z] if school_pos.x >= 0 else "",
 				}
 			var lesson_data: Dictionary = active_lessons[best_teacher_id]
@@ -226,42 +256,59 @@ func _auto_assign_teachers(world) -> void:
 					main_ref.add_message("%s ahora enseña a %s." % [t_name, student.name])
 
 
+func _is_available_for_lesson(dwarf) -> bool:
+	if dwarf == null or not dwarf.is_alive or dwarf.is_possessed:
+		return false
+	if dwarf.current_job != null or dwarf.operating_workshop != null or dwarf.is_sleeping:
+		return false
+	# Comer, beber y dormir siempre ganan a una clase.
+	if float(dwarf.hunger) > 0.55 or float(dwarf.thirst) > 0.55 or float(dwarf.fatigue) > 0.70:
+		return false
+	return true
+
+
 func _apply_teaching(teacher, student, lesson: Dictionary, world) -> void:
 	if teacher == null or student == null:
 		return
 	var skill_id: int = int(lesson.get("skill", 0))
 	var student_level: int = student.get_skill_level(skill_id)
 	var teacher_level: int = teacher.get_skill_level(skill_id)
-	
 	if teacher_level <= student_level:
+		lesson_cooldowns[student.id] = LESSON_COOLDOWN_SCANS
 		return
-	
-	# La calidad de la enseñanza depende del nivel del maestro y la escuela
+
 	var quality: float = 1.0
 	var school_key: String = str(lesson.get("school_key", ""))
 	if not school_key.is_empty() and schools.has(school_key):
 		quality = float(schools[school_key].get("quality", 1.0))
-	
-	# Efectos sociales y de movimiento
+
 	var distance: int = abs(teacher.tile_pos.x - student.tile_pos.x) + abs(teacher.tile_pos.z - student.tile_pos.z)
-	
-	# Solo se gana XP cuando el estudiante está cerca del maestro
-	if distance <= TEACH_DISTANCE:
-		var xp_gain: int = TEACH_XP_BASE + maxi(0, teacher_level - student_level) + int(quality * 2.0)
-		student.add_skill_xp(skill_id, xp_gain)
-		# El maestro también aprende enseñando
-		teacher.add_skill_xp(DFDwarf.Skill.LEADERSHIP, 1)
-		# Alternar entre "aprendiendo" y el nombre de la skill que estudia
-		var skill_name: String = DFDwarf.Skill.keys()[skill_id].to_lower().capitalize()
-		student.current_task = "Aprendiendo %s de %s" % [skill_name, teacher.name]
-		if randi() % 20 == 0:
-			teacher.modify_relationship(student.id, 0.01)
-			student.modify_relationship(teacher.id, 0.02)
-	else:
-		# El estudiante se mueve hacia el maestro
+	var skill_name: String = DFDwarf.Skill.keys()[skill_id].to_lower().capitalize()
+	if distance > TEACH_DISTANCE:
 		student._move_toward(world, teacher.tile_pos)
 		student.current_task = "Yendo a clase con %s" % teacher.name
+		teacher.current_task = "Esperando a %s para enseñar %s" % [student.name, skill_name]
+		return
 
+	# La lección alterna una demostración visible y una práctica supervisada.
+	# La XP solo aparece durante la práctica: mirar una etiqueta ya no enseña.
+	var lesson_tick: int = int(lesson.get("quality_timer", 0))
+	var demonstration_phase: bool = posmod(lesson_tick, 4) < 2
+	if demonstration_phase:
+		lesson["phase"] = "demonstration"
+		teacher.current_task = "Demostrando %s a %s" % [skill_name, student.name]
+		student.current_task = "Observando cómo se hace %s" % skill_name
+		return
+
+	lesson["phase"] = "practice"
+	teacher.current_task = "Supervisando práctica de %s" % skill_name
+	student.current_task = "Practicando %s con %s" % [skill_name, teacher.name]
+	var xp_gain: int = maxi(1, floori(float(TEACH_XP_BASE) / 2.0) + maxi(0, teacher_level - student_level) + int(quality))
+	student.add_skill_xp(skill_id, xp_gain)
+	teacher.add_skill_xp(DFDwarf.Skill.LEADERSHIP, 1)
+	if randi() % 20 == 0:
+		teacher.modify_relationship(student.id, 0.01)
+		student.modify_relationship(teacher.id, 0.02)
 
 func _tick_autonomous_learning(world) -> void:
 	if world.dwarves.is_empty():
@@ -270,6 +317,10 @@ func _tick_autonomous_learning(world) -> void:
 		if not dwarf.is_alive or dwarf.is_possessed:
 			continue
 		if dwarf.current_job != null or dwarf.operating_workshop != null:
+			continue
+		if lesson_cooldowns.has(dwarf.id):
+			continue
+		if dwarf.hunger > 0.55 or dwarf.thirst > 0.55 or dwarf.fatigue > 0.70:
 			continue
 		if dwarf.is_child and randi() % 2 == 0:
 			# Los niños aprenden más rápido
@@ -319,6 +370,7 @@ func export_state() -> Dictionary:
 	return {
 		"schools": schools_data,
 		"active_lessons": lessons_data,
+		"lesson_cooldowns": lesson_cooldowns.duplicate(true),
 		"scan_counter": scan_counter,
 	}
 
@@ -337,4 +389,5 @@ func import_state(data: Dictionary) -> void:
 		for key2: Variant in lessons_raw:
 			active_lessons[int(key2) if str(key2).is_valid_int() else str(key2)] = (lessons_raw[key2] as Dictionary).duplicate(true)
 	
+	lesson_cooldowns = data.get("lesson_cooldowns", {}).duplicate(true)
 	scan_counter = int(data.get("scan_counter", 0))

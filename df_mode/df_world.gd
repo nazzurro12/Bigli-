@@ -615,7 +615,9 @@ func _spawn_item(pos: Vector3i, iname: String, itype: String, mat: int, glyph: S
 	var item = DFItem.new(pos, iname, itype, mat, glyph, color)
 	item.created_at_minute = int(get_meta("simulation_minute", 0))
 	item.production_site = pos
-	entities.append(item)
+	# Keep every item registry and the spatial index consistent. Appending only
+	# to entities made mined stone invisible to hauling, stockpiles and queries.
+	add_entity(item)
 	return item
 
 # ---- CONSTRUCTION ----
