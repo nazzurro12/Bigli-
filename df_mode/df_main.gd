@@ -3714,6 +3714,22 @@ func _find_sanitary_disposal_position() -> Vector3i:
 func _queue_resource_collection_jobs(item_type: String, job_type: int, max_jobs: int, priority: int) -> void:
 	if designation == null or world == null:
 		return
+	# Migración de partidas anteriores: los trabajos antiguos apuntaban a una
+	# coordenada aleatoria y no tenían identidad de recurso.
+	for legacy_job in designation.job_queue:
+		if legacy_job.job_type != job_type:
+			continue
+		if legacy_job.state not in [DFJob.JobState.UNASSIGNED, DFJob.JobState.ASSIGNED, DFJob.JobState.IN_PROGRESS]:
+			continue
+		if int(legacy_job.get_meta("target_item_id", -1)) >= 0:
+			continue
+		legacy_job.state = DFJob.JobState.CANCELLED
+		legacy_job.assigned_dwarf_id = -1
+		legacy_job.cancel_reason = "migrado: trabajo de recolección sin recurso real"
+		for legacy_worker in world.dwarves:
+			if legacy_worker.current_job == legacy_job:
+				legacy_worker.current_job = null
+				legacy_worker.current_task = "Buscando una tarea real"
 	var open_jobs: int = _count_open_jobs(job_type)
 	if open_jobs >= max_jobs:
 		return
