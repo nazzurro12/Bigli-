@@ -2579,6 +2579,39 @@ func tick_inspect(world) -> void:
 					needs_display_update = true
 					add_thought("Vio un cadáver y se sintió deprimido.", -0.06)
 					return
+func _chair_has_nearby_table(world, chair: DFItem) -> bool:
+	for furniture in world.items:
+		if furniture is DFItem and furniture.is_table and not furniture.is_broken:
+			if furniture.tile_pos.y == chair.tile_pos.y and _plan_distance(furniture.tile_pos, chair.tile_pos) <= 2:
+				return true
+	return false
+
+
+func _find_reachable_dining_chair(world):
+	var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
+	var candidates: Array = []
+	for furniture in world.items:
+		if not furniture is DFItem or not furniture.is_chair or furniture.is_broken:
+			continue
+		if furniture.is_reserved_for_other(id, current_tick):
+			continue
+		if not _chair_has_nearby_table(world, furniture):
+			continue
+		var distance: int = abs(furniture.tile_pos.x - tile_pos.x) + abs(furniture.tile_pos.z - tile_pos.z) + abs(furniture.tile_pos.y - tile_pos.y) * 2
+		if distance <= 30:
+			candidates.append({"chair": furniture, "distance": distance})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a["distance"]) < int(b["distance"])
+	)
+	for candidate_index in range(mini(8, candidates.size())):
+		var chair: DFItem = candidates[candidate_index]["chair"]
+		var adjacent: bool = chair.tile_pos.y == tile_pos.y and _plan_distance(tile_pos, chair.tile_pos) <= 1
+		var chair_path: Array = [] if adjacent else DFPathfinding.find_adjacent_path(world, tile_pos, chair.tile_pos, true)
+		if adjacent or not chair_path.is_empty():
+			return {"chair": chair, "path": chair_path, "adjacent": adjacent}
+	return {}
+
+
 func _satisfy_needs(world) -> bool:
 	var ate = false
 	var drank = false
@@ -2591,6 +2624,28 @@ func _satisfy_needs(world) -> bool:
 	if thirst > 0.8:
 		drink_threshold = 0.0  # Bebe aunque no tenga casi sed
 
+	# Con comida en mano y sin emergencia extrema, usar el comedor físico.
+	var carried_edible: bool = false
+	for carried_need_item in inventory:
+		if carried_need_item is DFItem and carried_need_item.is_edible and not carried_need_item.is_decayed:
+			carried_edible = true
+			break
+	if carried_edible and hunger > food_threshold and hunger < 0.85:
+		var dining_target: Dictionary = _find_reachable_dining_chair(world)
+		if not dining_target.is_empty():
+			var dining_chair: DFItem = dining_target["chair"]
+			var dining_tick: int = int(world.get_meta("simulation_tick_total", 0))
+			dining_chair.reserve_for(id, dining_tick + 90)
+			if not bool(dining_target["adjacent"]):
+				if path.is_empty() or path_index >= path.size():
+					path = dining_target["path"].duplicate()
+					path_index = 0
+				current_task = "Yendo al comedor con su comida"
+				_move_toward(world, dining_chair.tile_pos)
+				return true
+			dining_chair.release_reservation(id)
+			current_task = "Sentado a la mesa"
+
 	for i in range(inventory.size() - 1, -1, -1):
 		var item = inventory[i]
 		if item.is_decayed:
@@ -2602,7 +2657,10 @@ func _satisfy_needs(world) -> bool:
 			record_consumption(item)
 			inventory.remove_at(i)
 			ate = true
-			current_task = "Comiendo"
+			if current_task == "Sentado a la mesa":
+				current_task = "Comiendo sentado en el comedor"
+			else:
+				current_task = "Comiendo"
 			needs_display_update = true
 			if item.name == preferred_food:
 				add_thought("Disfrutó de su comida favorita: %s." % item.name, 0.06)
