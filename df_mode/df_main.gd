@@ -4780,8 +4780,8 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 				var panel_w = 380
 				var spacing = 24
 				var total_w = (map_grid_w * renderer._char_size.x) + spacing + panel_w
-				var start_x = int((renderer.size.x - total_w) / 2)
-				var start_y = int((renderer.size.y - map_grid_h * renderer._char_size.y) / 2 + 10)
+				var start_x = floori((renderer.size.x - float(total_w)) / 2.0)
+				var start_y = floori((renderer.size.y - float(map_grid_h) * renderer._char_size.y) / 2.0 + 10.0)
 				
 				var map_w = world_gen.world_width
 				var map_h = world_gen.world_depth
