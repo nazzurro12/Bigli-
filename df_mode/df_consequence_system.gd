@@ -54,8 +54,19 @@ func get_event_report(event_id: int) -> Dictionary:
 		if int(event.get("id", -1)) != event_id:
 			continue
 		var report: Dictionary = event.duplicate(true)
-		report["headline"] = str(event.get("summary", "Acción sin descripción"))
-		report["observation"] = "Presenciada por %s." % ", ".join(event.get("witness_names", [])) if not event.get("witness_names", []).is_empty() else "Nadie presenció la acción."
+		var focus_event: Dictionary = event
+		var parent_id: int = int(event.get("caused_by_event_id", -1))
+		if parent_id >= 0:
+			var parent_event: Dictionary = _event_by_id(parent_id)
+			if not parent_event.is_empty():
+				focus_event = parent_event
+		report["action"] = focus_event.duplicate(true)
+		report["headline"] = str(focus_event.get("summary", "Acción sin descripción"))
+		report["witness_names"] = focus_event.get("witness_names", []).duplicate()
+		report["interpretations"] = focus_event.get("interpretations", []).duplicate(true)
+		report["immediate_results"] = focus_event.get("immediate_results", []).duplicate(true)
+		report["future_hooks"] = focus_event.get("future_hooks", []).duplicate(true)
+		report["observation"] = "Presenciada por %s." % ", ".join(focus_event.get("witness_names", [])) if not focus_event.get("witness_names", []).is_empty() else "Nadie presenció la acción."
 		report["causal_chain"] = _build_causal_chain(event)
 		return report
 	return {}
