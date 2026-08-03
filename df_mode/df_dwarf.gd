@@ -1909,7 +1909,7 @@ func _work_on_job(world) -> void:
 				material_candidates.append({"item": material_item, "distance": material_distance})
 			# Si el material guardado desapareció, permitir seleccionar uno nuevo.
 			if material_candidates.is_empty() and requested_material_id >= 0:
-				current_job.erase_meta("construction_material_id")
+				current_job.remove_meta("construction_material_id")
 				requested_material_id = -1
 				for fallback_material in world.items:
 					if fallback_material is DFItem and fallback_material.item_type in ["stone", "wood"] and not fallback_material.is_decayed and not fallback_material.is_inside_container and fallback_material.carried_by_id < 0 and not fallback_material.is_reserved_for_other(id, current_tick):
@@ -1947,7 +1947,7 @@ func _work_on_job(world) -> void:
 			selected_material.carried_by_id = id
 			world.remove_entity(selected_material)
 			inventory.append(selected_material)
-			current_job.erase_meta("construction_material_id")
+			current_job.remove_meta("construction_material_id")
 			needs_display_update = true
 			current_task = "Material cargado para %s" % current_job.get_description().to_lower()
 			return
@@ -5275,8 +5275,8 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 	_put_item_in_container_at(world, carried_item, target_drop_pos)
 	world.add_entity(carried_item)
 	inventory.erase(carried_item)
-	current_job.erase_meta("carried_item_id")
-	current_job.erase_meta("drop_pos")
+	current_job.remove_meta("carried_item_id")
+	current_job.remove_meta("drop_pos")
 	add_thought("Almacenó %s." % carried_item.name, 0.04)
 	current_task = "Recolección completada"
 	needs_display_update = true
