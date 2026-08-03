@@ -30,11 +30,17 @@ func record_action(actor: Object, action_type: String, data: Dictionary = {}) ->
 		"position": [position.x, position.y, position.z],
 		"target_ids": data.get("target_ids", []).duplicate(),
 		"witness_ids": witnesses.map(func(person): return person.id),
+		"witness_names": witnesses.map(func(person): return str(person.name)),
 		"tags": data.get("tags", []).duplicate(),
 		"severity": clampf(float(data.get("severity", 0.25)), 0.0, 1.0),
 		"summary": str(data.get("summary", _default_summary(actor, action_type))),
+		"interpretations": data.get("interpretations", []).duplicate(true),
+		"immediate_results": data.get("immediate_results", []).duplicate(true),
+		"future_hooks": data.get("future_hooks", []).duplicate(true),
+		"caused_by_event_id": int(data.get("caused_by_event_id", -1)),
 		"possession_origin": bool(data.get("possession_origin", actor.is_possessed)),
-		"time": Time.get_ticks_msec()
+		"world_minute": _world_minute(),
+		"status": "observed" if not witnesses.is_empty() else "private"
 	}
 	next_event_id += 1
 	events.append(event)
@@ -42,6 +48,48 @@ func record_action(actor: Object, action_type: String, data: Dictionary = {}) ->
 		events.pop_front()
 	_apply_consequences(actor, witnesses, event)
 	return event
+
+func get_event_report(event_id: int) -> Dictionary:
+	for event: Dictionary in events:
+		if int(event.get("id", -1)) != event_id:
+			continue
+		var report: Dictionary = event.duplicate(true)
+		report["headline"] = str(event.get("summary", "Acción sin descripción"))
+		report["observation"] = "Presenciada por %s." % ", ".join(event.get("witness_names", [])) if not event.get("witness_names", []).is_empty() else "Nadie presenció la acción."
+		report["causal_chain"] = _build_causal_chain(event)
+		return report
+	return {}
+
+func _build_causal_chain(event: Dictionary) -> Array:
+	var chain: Array = []
+	var cursor: Dictionary = event
+	var visited: Dictionary = {}
+	while not cursor.is_empty() and not visited.has(int(cursor.get("id", -1))):
+		var cursor_id: int = int(cursor.get("id", -1))
+		visited[cursor_id] = true
+		chain.push_front({
+			"id": cursor_id,
+			"summary": str(cursor.get("summary", "")),
+			"world_minute": int(cursor.get("world_minute", 0))
+		})
+		var parent_id: int = int(cursor.get("caused_by_event_id", -1))
+		if parent_id < 0:
+			break
+		cursor = _event_by_id(parent_id)
+	return chain
+
+func _event_by_id(event_id: int) -> Dictionary:
+	for event: Dictionary in events:
+		if int(event.get("id", -1)) == event_id:
+			return event
+	return {}
+
+func _world_minute() -> int:
+	if world == null:
+		return 0
+	if world.has_meta("simulation_minute"):
+		return int(world.get_meta("simulation_minute", 0))
+	return int(world.get_meta("simulation_tick_total", 0)) / 25
 
 func tick_social_simulation(absolute_minute: int) -> Array:
 	var results: Array = []
@@ -200,7 +248,7 @@ func _add_rumor(person, event: Dictionary, confidence: float, source_id: int) ->
 		"tags": event.get("tags", []).duplicate(),
 		"confidence": confidence,
 		"source_id": source_id,
-		"heard_at": event.get("time", 0)
+		"heard_at": event.get("world_minute", _world_minute())
 	})
 	if person.rumors.size() > MAX_RUMORS_PER_PERSON:
 		person.rumors.pop_front()
