@@ -4084,7 +4084,7 @@ func tick_autonomous_survival(world) -> void:
 			if "Axe" in inv_item.name:
 				has_axe = true
 				break
-	if has_axe:
+	if profession == Profession.WOODCUTTER and has_axe:
 		var nearest_tree = _find_nearest_tree(world)
 		if nearest_tree.x >= 0:
 			var dist_tree = abs(tile_pos.x - nearest_tree.x) + abs(tile_pos.z - nearest_tree.z)
@@ -4105,7 +4105,7 @@ func tick_autonomous_survival(world) -> void:
 			if "Pickaxe" in inv_item_2843.name:
 				has_pickaxe = true
 				break
-	if has_pickaxe:
+	if profession in [Profession.MINER, Profession.MASON] and has_pickaxe:
 		var nearest_wall = _find_nearest_mineable_wall(world)
 		if nearest_wall.x >= 0:
 			var dist_wall = abs(tile_pos.x - nearest_wall.x) + abs(tile_pos.z - nearest_wall.z)
@@ -4235,35 +4235,36 @@ func _find_nearest_item_on_ground_matching(world, item_substring: String):
 	return nearest_item
 
 
-func _find_nearest_tree(world) -> Vector3i:
-	var nearest = Vector3i(-1, -1, -1)
-	var nearest_dist = 15.0
+func _find_nearest_reachable_resource_tile(world, accepted_tiles: Array) -> Vector3i:
+	var candidates: Array = []
 	for dz in range(-15, 16):
 		for dx in range(-15, 16):
-			var check_pos = tile_pos + Vector3i(dx, 0, dz)
-			if check_pos.x < 0 or check_pos.x >= world.width or check_pos.z < 0 or check_pos.z >= world.depth: continue
-			var tile_type = world.get_tile(check_pos)
-			if tile_type == DFWorld.TileType.TREE:
-				var d = abs(dx) + abs(dz)
-				if d < nearest_dist:
-					nearest_dist = d
-					nearest = check_pos
-	return nearest
+			var check_pos := tile_pos + Vector3i(dx, 0, dz)
+			if check_pos.x < 0 or check_pos.x >= world.width or check_pos.z < 0 or check_pos.z >= world.depth:
+				continue
+			if world.get_tile(check_pos) in accepted_tiles:
+				candidates.append({"pos": check_pos, "distance": abs(dx) + abs(dz)})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a["distance"]) < int(b["distance"])
+	)
+	for candidate_index in range(mini(8, candidates.size())):
+		var candidate_pos: Vector3i = candidates[candidate_index]["pos"]
+		if tile_pos.y == candidate_pos.y and _plan_distance(tile_pos, candidate_pos) <= 1:
+			return candidate_pos
+		var candidate_path: Array = DFPathfinding.find_adjacent_path(world, tile_pos, candidate_pos, true)
+		if not candidate_path.is_empty():
+			return candidate_pos
+	return Vector3i(-1, -1, -1)
+
+
+func _find_nearest_tree(world) -> Vector3i:
+	return _find_nearest_reachable_resource_tile(world, [DFWorld.TileType.TREE])
 
 func _find_nearest_mineable_wall(world) -> Vector3i:
-	var nearest = Vector3i(-1, -1, -1)
-	var nearest_dist = 15.0
-	for dz in range(-15, 16):
-		for dx in range(-15, 16):
-			var check_pos = tile_pos + Vector3i(dx, 0, dz)
-			if check_pos.x < 0 or check_pos.x >= world.width or check_pos.z < 0 or check_pos.z >= world.depth: continue
-			var tile_type = world.get_tile(check_pos)
-			if tile_type == DFWorld.TileType.WALL or tile_type == DFWorld.TileType.CAVE_WALL:
-				var d = abs(dx) + abs(dz)
-				if d < nearest_dist:
-					nearest_dist = d
-					nearest = check_pos
-	return nearest
+	return _find_nearest_reachable_resource_tile(
+		world,
+		[DFWorld.TileType.WALL, DFWorld.TileType.CAVE_WALL]
+	)
 
 func _find_nearest_item_matching_type(world, it_type: String):
 	var nearest = null
