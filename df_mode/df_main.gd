@@ -2653,28 +2653,16 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 			biome = world_gen.biome_map[gz][gx]
 		audio.play_ambient(biome)
 		
-	if has_meta("adventure_mode_pending") and get_meta("adventure_mode_pending") == true:
-		remove_meta("adventure_mode_pending")
-		for ent in world.dwarves:
-			if ent.get("is_alive") == true:
-				_possess_dwarf(ent.id)
-				break
-		add_message("========================================")
-		add_message("  *** MODO AVENTURA (ROGUELIKE) INICIADO! ***")
-		add_message("  Controlas a tu héroe con WASD / Flechas.")
-		add_message("  T: Hablar con NPCs  |  V: Viaje Rápido  |  Q: Salir")
-		add_message("========================================")
-	else:
-		var alive_count = 0
-		for counted_survivor in world.dwarves:
-			if counted_survivor.get("is_alive") != false:
-				alive_count += 1
-		add_message("========================================")
-		add_message("  NUEVO EMBARQUE EN %s!" % world_name.to_upper())
-		add_message("  Colonia: %d supervivientes tras %d años de historia." % [alive_count, gen_max_years])
-		add_message("  Presiona ESPACIO para pausar, 1-6 para designar.")
-		add_message("========================================")
-		
+	var alive_count: int = 0
+	for counted_survivor in world.dwarves:
+		if counted_survivor.get("is_alive") != false:
+			alive_count += 1
+	add_message("========================================")
+	add_message("  MODO DIOS · %s" % world_name.to_upper())
+	add_message("  Sociedad autónoma: %d habitantes tras %d años de historia." % [alive_count, gen_max_years])
+	add_message("  Observa libremente o posee a cualquier habitante con P.")
+	add_message("========================================")
+	
 	load_progress = 1.0
 	_loading_in_progress = false
 
