@@ -48,6 +48,18 @@ class ColonyLifeContracts(unittest.TestCase):
         self.assertIn("legend_btn.visible = false", RENDERER)
         self.assertIn("const UI_CONTENT_TOP: int = 24", RENDERER)
 
+    def test_renderer_keeps_required_input_and_theme_helpers(self):
+        required = [
+            "_apply_classic_control_theme",
+            "_dispatch_main_key",
+            "_on_classic_popup_id_pressed",
+            "_on_classic_menu_pressed",
+            "_on_classic_window_button",
+            "_make_classic_style",
+        ]
+        for function_name in required:
+            self.assertIn(f"func {function_name}", RENDERER)
+
 
 if __name__ == "__main__":
     unittest.main()
