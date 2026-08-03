@@ -579,6 +579,111 @@ func _create_functional_classic_chrome() -> void:
 		menu_x += menu.size.x
 
 
+func _on_classic_popup_id_pressed(item_id: int, popup: PopupMenu) -> void:
+	_on_classic_menu_pressed(int(popup.get_meta("classic_menu_index", -1)), item_id)
+
+func _on_classic_menu_pressed(menu_index: int, item_id: int) -> void:
+	match menu_index:
+		0:
+			if item_id == 0:
+				_dispatch_main_key(KEY_F5)
+			elif item_id == 1:
+				load_confirmation.popup_centered()
+			elif item_id == 2:
+				quit_confirmation.popup_centered()
+		1:
+			if item_id == 0:
+				legend_panel.visible = not legend_panel.visible
+			elif item_id == 1:
+				_dispatch_main_key(KEY_H)
+			elif item_id == 2:
+				performance_overlay_enabled = not performance_overlay_enabled
+		2:
+			var main_node = get_parent()
+			if item_id == 0:
+				_dispatch_main_key(KEY_SPACE)
+			elif main_node != null and "tick_interval" in main_node:
+				main_node.tick_interval = 0.20 if item_id == 1 else 0.10 if item_id == 2 else 0.05
+		3:
+			if item_id <= 4:
+				_open_management_tab(item_id)
+			else:
+				_dispatch_main_key(KEY_J if item_id == 10 else KEY_L if item_id == 11 else KEY_T)
+		4:
+			if item_id == 0:
+				_dispatch_main_key(KEY_H)
+			else:
+				legend_panel.visible = true
+	queue_redraw()
+
+func _dispatch_main_key(keycode: Key) -> void:
+	var main_node = get_parent()
+	if main_node == null or not main_node.has_method("_handle_key"):
+		return
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.pressed = true
+	main_node._handle_key(event)
+
+func _on_classic_window_button(action_id: int) -> void:
+	if action_id == 0:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MINIMIZED)
+	elif action_id == 1:
+		var current_mode := DisplayServer.window_get_mode()
+		DisplayServer.window_set_mode(
+			DisplayServer.WINDOW_MODE_WINDOWED
+			if current_mode == DisplayServer.WINDOW_MODE_MAXIMIZED
+			else DisplayServer.WINDOW_MODE_MAXIMIZED
+		)
+	else:
+		quit_confirmation.popup_centered()
+
+func _apply_classic_control_theme() -> void:
+	var classic_theme := Theme.new()
+	var panel_box := _make_classic_style(UI_CLASSIC_FACE, 2, false)
+	var button_box := _make_classic_style(UI_CLASSIC_FACE, 2, false)
+	var button_hover := _make_classic_style(Color("#F5F3E8"), 2, false)
+	var button_pressed := _make_classic_style(Color("#D6D2C7"), 2, true)
+	classic_theme.set_stylebox("panel", "Panel", panel_box)
+	classic_theme.set_stylebox("panel", "PanelContainer", panel_box)
+	classic_theme.set_stylebox("panel", "PopupMenu", panel_box)
+	classic_theme.set_stylebox("panel", "Tree", _make_classic_style(Color.WHITE, 2, true))
+	classic_theme.set_stylebox("normal", "RichTextLabel", _make_classic_style(Color.WHITE, 2, true))
+	classic_theme.set_stylebox("panel", "TabContainer", _make_classic_style(UI_CLASSIC_FACE, 2, true))
+	classic_theme.set_stylebox("tab_unselected", "TabBar", button_box)
+	classic_theme.set_stylebox("tab_hovered", "TabBar", button_hover)
+	classic_theme.set_stylebox("tab_selected", "TabBar", button_pressed)
+	classic_theme.set_stylebox("normal", "Button", button_box)
+	classic_theme.set_stylebox("hover", "Button", button_hover)
+	classic_theme.set_stylebox("pressed", "Button", button_pressed)
+	classic_theme.set_stylebox("focus", "Button", _make_classic_style(Color.TRANSPARENT, 1, true))
+	classic_theme.set_color("font_color", "Button", UI_CLASSIC_TEXT)
+	classic_theme.set_color("font_hover_color", "Button", Color.BLACK)
+	classic_theme.set_color("font_pressed_color", "Button", Color.BLACK)
+	classic_theme.set_color("font_color", "Label", UI_CLASSIC_TEXT)
+	classic_theme.set_color("default_color", "RichTextLabel", UI_CLASSIC_TEXT)
+	classic_theme.set_color("font_selected_color", "TabBar", UI_CLASSIC_TEXT)
+	classic_theme.set_color("font_unselected_color", "TabBar", UI_CLASSIC_TEXT)
+	theme = classic_theme
+
+func _make_classic_style(fill: Color, border_width: int, pressed: bool) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = fill
+	var top_left: Color = UI_CLASSIC_SHADOW if pressed else UI_CLASSIC_LIGHT
+	var bottom_right: Color = UI_CLASSIC_LIGHT if pressed else UI_CLASSIC_SHADOW
+	box.border_width_left = border_width
+	box.border_width_top = border_width
+	box.border_width_right = border_width
+	box.border_width_bottom = border_width
+	box.border_color = bottom_right
+	box.corner_radius_top_left = 0
+	box.corner_radius_top_right = 0
+	box.corner_radius_bottom_left = 0
+	box.corner_radius_bottom_right = 0
+	box.shadow_color = top_left
+	box.shadow_size = 1
+	return box
+
 func _draw_classic_bevel(rect: Rect2, fill: Color = UI_CLASSIC_FACE, sunken: bool = false) -> void:
 	draw_rect(rect, fill, true)
 	var top_left: Color = UI_CLASSIC_SHADOW if sunken else UI_CLASSIC_LIGHT
