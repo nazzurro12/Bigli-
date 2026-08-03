@@ -3330,25 +3330,25 @@ func _find_open_colony_project_job(project_id: String) -> DFJob:
 			return project_job
 	return null
 
-func _autonomous_workshop_site_is_clear(tile_position: Vector3i) -> bool:
+func _autonomous_workshop_site_is_clear(workshop_origin: Vector3i) -> bool:
 	if world == null:
 		return false
 	for local_z: int in range(-1, 2):
 		for local_x: int in range(-1, 2):
-			var tile_position: Vector3i = tile_position + Vector3i(local_x, 0, local_z)
-			if tile_position.x < 2 or tile_position.x >= world.width - 2 or tile_position.z < 2 or tile_position.z >= world.depth - 2:
+			var candidate_tile: Vector3i = workshop_origin + Vector3i(local_x, 0, local_z)
+			if candidate_tile.x < 2 or candidate_tile.x >= world.width - 2 or candidate_tile.z < 2 or candidate_tile.z >= world.depth - 2:
 				return false
-			if world.get_surface_height(tile_position.x, tile_position.z) != tile_position.y:
+			if world.get_surface_height(candidate_tile.x, candidate_tile.z) != candidate_tile.y:
 				return false
-			if world.is_water(tile_position) or world.is_blocked(tile_position):
+			if world.is_water(candidate_tile) or world.is_blocked(candidate_tile):
 				return false
-			if world.get_tile(tile_position) == DFWorld.TileType.FARM_SOIL:
+			if world.get_tile(candidate_tile) == DFWorld.TileType.FARM_SOIL:
 				return false
 			for stockpile_value: Variant in world.stockpiles:
-				if stockpile_value.has_tile(tile_position):
+				if stockpile_value.has_tile(candidate_tile):
 					return false
 			for building_value: Variant in world.buildings:
-				if building_value is DFBuilding and building_value.is_inside(tile_position):
+				if building_value is DFBuilding and building_value.is_inside(candidate_tile):
 					return false
 	return true
 
