@@ -909,10 +909,6 @@ func _draw() -> void:
 				_draw_generating_screen()
 				_draw_fullscreen_desktop_shell("Bigli - Generador de mundos", "Procesando simulación histórica...")
 				return
-			2: # GameState.MODE_SELECT
-				_draw_mode_select_menu()
-				_draw_fullscreen_desktop_shell("Bigli - Seleccionar modo", "Seleccione una opción para continuar")
-				return
 			3: # GameState.EMBARK_MAP_SELECT
 				_draw_embark_map_select()
 				_draw_fullscreen_desktop_shell("Bigli - Ubicación de expedición", "Seleccione una región del mapa")
@@ -2713,77 +2709,6 @@ func _format_world_region_count(region_count: int) -> String:
 	if region_count >= 1000:
 		return "%.1f mil" % (float(region_count) / 1000.0)
 	return str(region_count)
-
-func _draw_mode_select_menu() -> void:
-	# Deep space background (matches title screen)
-	draw_rect(Rect2(0, 0, size.x, size.y), Color(0.01, 0.01, 0.03), true)
-
-	var main_node = get_parent()
-	if main_node == null: return
-
-	var line_h = int(_char_size.y)
-	var center_x = size.x / 2
-
-	var box_w = 460
-	var box_h = 265
-	var box_x = center_x - box_w / 2
-	var box_y = (size.y - box_h) / 2 - 30
-	
-	_draw_rounded_rect(Rect2(box_x - 2, box_y - 2, box_w + 4, box_h + 4), Color(0.0, 0.0, 0.0, 0.2), 8)
-	_draw_rounded_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.04, 0.03, 0.10), 8)
-	_draw_rounded_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.55, 0.40, 0.90), 8, false, 2.0)
-	draw_rect(Rect2(box_x, box_y + 2, box_w, 3), Color(0.55, 0.40, 0.90, 0.6), true)
-
-	var y = box_y + 35
-	draw_string(_font, Vector2(center_x, y), "=== MUNDO GENERADO CON ÉXITO ===", HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.GOLD)
-	y += int(line_h * 2.2)
-
-	var options = [
-		"Jugar Modo Fortaleza (Gestión)",
-		"Jugar Modo Aventura (Roguelike)",
-		"Explorar Modo Leyendas (Crónica)"
-	]
-
-	for i in range(options.size()):
-		var is_sel = (main_node.setting_selected_index == i)
-		var color = Color(0.95, 0.85, 1.0) if is_sel else Color(0.60, 0.55, 0.70)
-		var prefix = "▸  [ " if is_sel else "   [ "
-		var suffix = " ]"
-		
-		if is_sel:
-			_draw_rounded_rect(Rect2(box_x + 20, y - 10, box_w - 40, 24), Color(0.20, 0.14, 0.38, 0.6), 4)
-			_draw_rounded_rect(Rect2(box_x + 20, y - 10, box_w - 40, 24), Color(0.45, 0.30, 0.80, 0.8), 4, false, 1.0)
-
-		draw_string(_font, Vector2(center_x, y + 6), prefix + options[i] + suffix, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, color)
-		y += int(line_h * 2.0)
-
-	y = box_y + box_h - 30
-	draw_string(_font, Vector2(center_x, y), "↑↓ o Click: Seleccionar  |  ENTER o Doble Click: Confirmar", HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.45, 0.40, 0.55))
-
-	# ---- DESCRIPTION TOOLTIP CARD ----
-	var desc_y = box_y + box_h + 20
-	var desc_w = 460
-	var desc_h = 75
-	var desc_x = center_x - desc_w / 2
-	
-	_draw_rounded_rect(Rect2(desc_x, desc_y, desc_w, desc_h), Color(0.02, 0.02, 0.06, 0.85), 6)
-	_draw_rounded_rect(Rect2(desc_x, desc_y, desc_w, desc_h), Color(0.25, 0.30, 0.55, 0.7), 6, false, 1.5)
-	draw_rect(Rect2(desc_x, desc_y + 2, desc_w, 3), Color(0.25, 0.30, 0.55, 0.5), true)
-	
-	var desc_text = ""
-	match main_node.setting_selected_index:
-		0:
-			desc_text = "MODO FORTALEZA:\nLidera a un grupo de 7 enanos para excavar, forjar, cultivar, comerciar y construir defensas contra invasiones y peligros subterráneos en modo simulación."
-		1:
-			desc_text = "MODO AVENTURA:\nPosesión de un héroe en tercera persona. Explora el mundo persistente, entabla diálogos con NPCs, viaja por biomas y recluta aliados en modo Roguelike."
-		2:
-			desc_text = "MODO LEYENDAS:\nConsulta el compendio histórico generado por la simulación de historia: civilizaciones, guerras, héroes, megabestias y reliquias perdidas del mundo."
-	
-	var desc_lines = _wrap_text(desc_text, 50)
-	var dy = desc_y + 18
-	for line in desc_lines:
-		draw_string(_font, Vector2(center_x, dy), line, HORIZONTAL_ALIGNMENT_CENTER, desc_w - 20, 9, Color(0.75, 0.72, 0.85))
-		dy += int(line_h * 1.15)
 
 func _draw_embark_map_select() -> void:
 	_draw_premium_background(size)
