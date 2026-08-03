@@ -1,34 +1,8 @@
 extends Control
 class_name DFMain
 
-const DFWorld = preload("res://df_mode/df_world.gd")
-const DFWorldGen = preload("res://df_mode/df_world_gen.gd")
-const DFWorldHistory = preload("res://df_mode/df_world_history.gd")
-const DFRenderer = preload("res://df_mode/df_renderer.gd")
-const DFDesignation = preload("res://df_mode/df_designation.gd")
-const DFLore = preload("res://df_mode/df_lore.gd")
-const DFCombat = preload("res://df_mode/df_combat.gd")
-const DFInvasion = preload("res://df_mode/df_invasion.gd")
-const DFMilitary = preload("res://df_mode/df_military.gd")
-const DFLegends = preload("res://df_mode/df_legends.gd")
-const DFAudio = preload("res://df_mode/df_audio.gd")
-const DFCaravan = preload("res://df_mode/df_caravan.gd")
-const DFItem = preload("res://df_mode/df_item.gd")
-const DFData = preload("res://df_mode/df_data.gd")
-const DFDwarf = preload("res://df_mode/df_dwarf.gd")
-const DFCreature = preload("res://df_mode/df_creature.gd")
-const DFJob = preload("res://df_mode/df_job.gd")
-const DFStockpile = preload("res://df_mode/df_stockpile.gd")
-const DFWorkshop = preload("res://df_mode/df_workshop.gd")
-const DFPathfinding = preload("res://df_mode/df_pathfinding.gd")
-const DFDialogue = preload("res://df_mode/df_dialogue.gd")
-const DFFastTravel = preload("res://df_mode/df_fast_travel.gd")
 const DFQuestSystem = preload("res://df_mode/df_quest.gd")
-const DFSaveLoad = preload("res://df_mode/df_save_load.gd")
-const DFPlanetRegions = preload("res://df_mode/df_planet_regions.gd")
-const DFStoryDirector = preload("res://df_mode/df_story_director.gd")
 const DFWorldSimulationScript = preload("res://df_mode/core/simulation/world_simulation.gd")
-const WorldGenerationSettings = preload("res://world/world_generation_settings.gd")
 
 var world = null
 var world_simulation: DFWorldSimulation = null
@@ -158,7 +132,6 @@ const HOUSE_TEMPLATES = [
 ]
 
 var camera_pos: Vector3i = Vector3i(64, 3, 64)
-var _mouse_tile_pos: Vector3i = Vector3i(-1, -1, -1)
 var settings_menu: Control = null
 var possessed_dwarf: Object = null
 var last_possessed_dwarf: Object = null
@@ -234,7 +207,6 @@ var config_dwarf_weapons: Array = ["pickaxe", "axe", "none", "none", "none", "no
 ## Prioridades de labores por enano (Dictionary vacío = por defecto segun profesión)
 var config_dwarf_priorities: Array = [{}, {}, {}, {}, {}, {}, {}]
 
-var _generation_phase: int = 0
 var _generating: bool = false
 var _biome_creature_index: Dictionary = {}
 var _simulation_tick_clock: int = 0
@@ -488,7 +460,7 @@ func _place_dwarves_and_setup() -> void:
 	world.military_system = DFMilitary.new(generation_seed)
 
 	# Encontrar punto de partida sólido en la superficie
-	var center_raw = Vector3i(int(world.width / 2.0), 3, int(world.depth / 2.0))
+	var center_raw = Vector3i(floori(float(world.width) / 2.0), 3, floori(float(world.depth) / 2.0))
 	var center = _fix_surface(center_raw)
 
 	# === FASE 1: EXCAVAR UN REFUGIO INICIAL (sala 7x5 en ladera) ===
@@ -567,7 +539,7 @@ func _place_dwarves_and_setup() -> void:
 		var fpos = _fix_surface(Vector3i(
 			clampi(store_x + (fi % 6), 2, world.width - 3),
 			center.y,
-			clampi(store_z + int(fi / 6), 2, world.depth - 3)))
+			clampi(store_z + floori(float(fi) / 6.0), 2, world.depth - 3)))
 		world._spawn_item(fpos, fdata[0], "food", 0, "%", fdata[1])
 
 	# 30 bebidas variadas
@@ -581,7 +553,7 @@ func _place_dwarves_and_setup() -> void:
 		var dpos2 = _fix_surface(Vector3i(
 			clampi(store_x + (di % 6), 2, world.width - 3),
 			center.y,
-			clampi(store_z - 1 - int(di / 6), 2, world.depth - 3)))
+			clampi(store_z - 1 - floori(float(di) / 6.0), 2, world.depth - 3)))
 		world._spawn_item(dpos2, ddata[0], "drink", 0, "~", ddata[1])
 
 	# 20 materiales de construcción (piedra y madera)
@@ -589,7 +561,7 @@ func _place_dwarves_and_setup() -> void:
 		var bpos = _fix_surface(Vector3i(
 			clampi(center.x + (bi % 5) - 2, 2, world.width - 3),
 			center.y,
-			clampi(center.z + 4 + int(bi / 5), 2, world.depth - 3)))
+			clampi(center.z + 4 + floori(float(bi) / 5.0), 2, world.depth - 3)))
 		if bi < 12:
 			world._spawn_item(bpos, "Roca de Granito", "stone", DFWorld.MatType.GRANITE, "*", Color("#888888"))
 		else:
@@ -1381,7 +1353,7 @@ func _run_world_generation_loop() -> void:
 	lore = DFLore.new(generation_seed, world_name)
 	legends = DFLegends.new(generation_seed, world_name)
 	legends.load_from_history(world_gen, history_gen)
-	embark_cursor = Vector2i(world_gen.world_width / 2, world_gen.world_depth / 2)
+	embark_cursor = Vector2i(floori(float(world_gen.world_width) / 2.0), floori(float(world_gen.world_depth) / 2.0))
 	
 	embark_cursor = _resolve_habitable_embark_region(embark_cursor)
 	if has_meta("quick_start_pending") and get_meta("quick_start_pending") == true:
@@ -1547,7 +1519,7 @@ func _tick() -> void:
 			if workshop_result.get("completed", false):
 				var recipe: Dictionary = workshop_result.get("recipe", {})
 				var quality_bonus: int = int(recipe.get("quality_bonus", 0))
-				var quality_level: int = clampi(quality_bonus / 15, 0, 4)
+				var quality_level: int = clampi(floori(float(quality_bonus) / 15.0), 0, 4)
 				if not _consume_recipe_inputs(world, workshop, recipe):
 					workshop.production_queue.push_front(recipe)
 					add_message("Producción detenida: los insumos reservados ya no existen.")
@@ -2266,10 +2238,10 @@ func _camera_region_limits() -> Rect2i:
 		return Rect2i(0, 0, 1, 1)
 	var visible_width: int = maxi(1, renderer.view_width if renderer != null else 80)
 	var visible_depth: int = maxi(1, renderer.view_height if renderer != null else 25)
-	var min_x: int = mini(world.width / 2, visible_width / 2)
-	var min_z: int = mini(world.depth / 2, visible_depth / 2)
-	var max_x: int = maxi(min_x, world.width - (visible_width - visible_width / 2))
-	var max_z: int = maxi(min_z, world.depth - (visible_depth - visible_depth / 2))
+	var min_x: int = mini(floori(float(world.width) / 2.0), floori(float(visible_width) / 2.0))
+	var min_z: int = mini(floori(float(world.depth) / 2.0), floori(float(visible_depth) / 2.0))
+	var max_x: int = maxi(min_x, world.width - (visible_width - floori(float(visible_width) / 2.0)))
+	var max_z: int = maxi(min_z, world.depth - (visible_depth - floori(float(visible_depth) / 2.0)))
 	return Rect2i(min_x, min_z, max_x - min_x, max_z - min_z)
 
 func _clamp_camera_to_region_view() -> void:
@@ -3358,15 +3330,15 @@ func _find_open_colony_project_job(project_id: String) -> DFJob:
 			return project_job
 	return null
 
-func _autonomous_workshop_site_is_clear(position: Vector3i) -> bool:
+func _autonomous_workshop_site_is_clear(tile_position: Vector3i) -> bool:
 	if world == null:
 		return false
 	for local_z: int in range(-1, 2):
 		for local_x: int in range(-1, 2):
-			var tile_position: Vector3i = position + Vector3i(local_x, 0, local_z)
+			var tile_position: Vector3i = tile_position + Vector3i(local_x, 0, local_z)
 			if tile_position.x < 2 or tile_position.x >= world.width - 2 or tile_position.z < 2 or tile_position.z >= world.depth - 2:
 				return false
-			if world.get_surface_height(tile_position.x, tile_position.z) != position.y:
+			if world.get_surface_height(tile_position.x, tile_position.z) != tile_position.y:
 				return false
 			if world.is_water(tile_position) or world.is_blocked(tile_position):
 				return false
@@ -3648,7 +3620,7 @@ func _queue_sanitation_jobs(alive_dwarves: int) -> void:
 		return
 
 	# La limpieza no puede apropiarse de toda la mano de obra.
-	var clean_limit: int = clampi(1 + alive_dwarves / 5, 1, 4)
+	var clean_limit: int = clampi(1 + floori(float(alive_dwarves) / 5.0), 1, 4)
 	var open_clean: int = _count_open_jobs(DFJob.JobType.CLEAN)
 	if open_clean < clean_limit:
 		for dirty_position_value: Variant in world.splatters.keys():
@@ -3675,7 +3647,7 @@ func _queue_sanitation_jobs(alive_dwarves: int) -> void:
 				open_clean += 1
 
 	var open_empty: int = _count_open_jobs(DFJob.JobType.EMPTY_LATRINE)
-	var empty_limit: int = clampi(1 + alive_dwarves / 8, 1, 3)
+	var empty_limit: int = clampi(1 + floori(float(alive_dwarves) / 8.0), 1, 3)
 	if open_empty >= empty_limit:
 		return
 	var disposal_position: Vector3i = _find_sanitary_disposal_position()
@@ -3891,13 +3863,13 @@ func _find_world_item_by_id(item_id: int) -> DFItem:
 				return item
 	return null
 
-func _find_bed_at_position(position: Vector3i) -> DFItem:
+func _find_bed_at_position(tile_position: Vector3i) -> DFItem:
 	if world == null:
 		return null
 	for entity_value: Variant in world.entities:
 		if entity_value is DFItem:
 			var item: DFItem = entity_value
-			if item.tile_pos == position and (item.is_bed or "cama" in item.name.to_lower()):
+			if item.tile_pos == tile_position and (item.is_bed or "cama" in item.name.to_lower()):
 				return item
 	return null
 
@@ -4764,13 +4736,13 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 		GameState.SETTINGS_MENU:
 			if bt == MOUSE_BUTTON_LEFT:
 				# Check if clicked inside the Quick Start Box
-				var center_x = renderer.size.x / 2
+				var center_x = renderer.size.x / 2.0
 				var line_h = renderer._char_size.y
 				var logo_y = 30 + int(line_h * 1.1) * 6 + 4 + int(line_h * 0.9)
 				var qs_y = logo_y + int(line_h * 1.2) + 14
 				var qs_w = 380
 				var qs_h = 64
-				var qs_x = center_x - qs_w / 2
+				var qs_x = center_x - floori(float(qs_w) / 2.0)
 				if pos.x >= qs_x and pos.x <= qs_x + qs_w and pos.y >= qs_y and pos.y <= qs_y + qs_h:
 					_handle_menu_key(KEY_Q)
 					return
@@ -4779,7 +4751,7 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 				var cfg_y = qs_y + qs_h + 18 + int(line_h * 1.4)
 				var box_w = 520
 				var box_h = 145
-				var box_x = center_x - box_w / 2
+				var box_x = center_x - floori(float(box_w) / 2.0)
 				if pos.x >= box_x and pos.x <= box_x + box_w and pos.y >= cfg_y and pos.y <= cfg_y + box_h:
 					var relative_y = pos.y - cfg_y - 10
 					var clicked_row = int(relative_y / (line_h * 1.25))
@@ -4813,8 +4785,8 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 				
 				var map_w = world_gen.world_width
 				var map_h = world_gen.world_depth
-				var offset_x = embark_cursor.x - map_grid_w / 2
-				var offset_y = embark_cursor.y - map_grid_h / 2
+				var offset_x = embark_cursor.x - floori(float(map_grid_w) / 2.0)
+				var offset_y = embark_cursor.y - floori(float(map_grid_h) / 2.0)
 				
 				var click_gx = int((pos.x - start_x) / renderer._char_size.x)
 				var click_gz = int((pos.y - start_y) / renderer._char_size.y)
@@ -4830,7 +4802,7 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 				# Check click in Mini-map
 				var panel_x = start_x + map_grid_w * renderer._char_size.x + spacing
 				var minimap_size: int = 120
-				var minimap_x: int = panel_x + int((panel_w - minimap_size) / 2)
+				var minimap_x: int = panel_x + int((panel_w - minimap_size) / 2.0)
 				var minimap_y: int = start_y + int(map_grid_h * renderer._char_size.y) - minimap_size - 8
 				
 				if pos.x >= minimap_x and pos.x <= minimap_x + minimap_size and pos.y >= minimap_y and pos.y <= minimap_y + minimap_size:
@@ -4846,7 +4818,7 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 				# Check if clicked confirm / back footer
 				var foot_y_map = start_y + map_grid_h * renderer._char_size.y + 24
 				if pos.y >= foot_y_map - 12 and pos.y <= foot_y_map + 12:
-					if pos.x < renderer.size.x / 2:
+					if pos.x < renderer.size.x / 2.0:
 						_handle_menu_key(KEY_ESCAPE)
 					else:
 						_handle_menu_key(KEY_ENTER)
@@ -4854,13 +4826,13 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 		
 		GameState.EMBARK_PREPARE:
 			if bt == MOUSE_BUTTON_LEFT:
-				var center_x_prep = renderer.size.x / 2
+				var center_x_prep = renderer.size.x / 2.0
 				var line_h_prep = renderer._char_size.y
 				if embark_prepare_step == 0:
 					var box_w_prep = 440
 					var box_h_prep = 240
-					var box_x_prep = center_x_prep - box_w_prep / 2
-					var box_y_prep = (renderer.size.y - box_h_prep) / 2
+					var box_x_prep = center_x_prep - float(box_w_prep) / 2.0
+					var box_y_prep = (renderer.size.y - box_h_prep) / 2.0
 					var y_start = box_y_prep + 35 + int(line_h_prep * 2.2)
 					
 					if pos.x >= box_x_prep + 20 and pos.x <= box_x_prep + box_w_prep - 20:
@@ -4876,9 +4848,9 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 				elif embark_prepare_step == 1:
 					var box2_w = 780
 					var box2_h = 440
-					var box2_x = center_x_prep - box2_w / 2
-					var box2_y = (renderer.size.y - box2_h) / 2 + 15
-					var col_w = box2_w / 2 - 40
+					var box2_x = center_x_prep - float(box2_w) / 2.0
+					var box2_y = (renderer.size.y - box2_h) / 2.0 + 15
+					var col_w = floori(float(box2_w) / 2.0) - 40
 					var y_start_prep2 = box2_y + 70 + int(line_h_prep * 1.3)
 					
 					var skill_keys = embark_custom_skills.keys()
@@ -4889,7 +4861,7 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 						var clicked_idx_prep_skills = int(relative_y_prep_skills / (line_h_prep * 1.4))
 						if clicked_idx_prep_skills >= 0 and clicked_idx_prep_skills < skill_keys.size():
 							if setting_selected_index == clicked_idx_prep_skills:
-								var col_center = box2_x + 20 + col_w / 2
+								var col_center = box2_x + 20 + floori(float(col_w) / 2.0)
 								if pos.x > col_center:
 									_handle_menu_key(KEY_RIGHT)
 								else:
@@ -4898,13 +4870,13 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 								setting_selected_index = clicked_idx_prep_skills
 								renderer.queue_redraw()
 							return
-					elif pos.x >= box2_x + box2_w / 2 + 10 and pos.x <= box2_x + box2_w / 2 + 10 + col_w:
+					elif pos.x >= box2_x + float(box2_w) / 2.0 + 10 and pos.x <= box2_x + float(box2_w) / 2.0 + 10 + col_w:
 						var relative_y_prep_items = pos.y - y_start_prep2
 						var clicked_idx_prep_items = int(relative_y_prep_items / (line_h_prep * 1.4))
 						if clicked_idx_prep_items >= 0 and clicked_idx_prep_items < item_keys.size():
 							var target_idx = clicked_idx_prep_items + skill_keys.size()
 							if setting_selected_index == target_idx:
-								var col_center_items = box2_x + box2_w / 2 + 10 + col_w / 2
+								var col_center_items = box2_x + float(box2_w) / 2.0 + 10 + floori(float(col_w) / 2.0)
 								if pos.x > col_center_items:
 									_handle_menu_key(KEY_RIGHT)
 								else:
