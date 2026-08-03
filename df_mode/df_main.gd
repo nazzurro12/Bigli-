@@ -1126,7 +1126,7 @@ func _process(delta: float) -> void:
 			_run_world_generation_loop()
 		renderer.queue_redraw()
 		return
-	if current_state in [GameState.SETTINGS_MENU, GameState.MODE_SELECT, GameState.EMBARK_MAP_SELECT, GameState.EMBARK_PREPARE]:
+	if current_state in [GameState.SETTINGS_MENU, GameState.EMBARK_MAP_SELECT, GameState.EMBARK_PREPARE]:
 		if current_state == GameState.EMBARK_MAP_SELECT:
 			embark_flash_timer += delta
 		renderer.queue_redraw()
@@ -1383,11 +1383,15 @@ func _run_world_generation_loop() -> void:
 	legends.load_from_history(world_gen, history_gen)
 	embark_cursor = Vector2i(world_gen.world_width / 2, world_gen.world_depth / 2)
 	
+	embark_cursor = _resolve_habitable_embark_region(embark_cursor)
 	if has_meta("quick_start_pending") and get_meta("quick_start_pending") == true:
 		remove_meta("quick_start_pending")
 		_finalize_embark_and_land(true)
 	else:
-		current_state = GameState.MODE_SELECT
+		# Bigliworld tiene un único modo: Dios. La creación continúa directamente
+		# hacia el desembarco; observar y poseer son facultades del mismo modo.
+		current_state = GameState.EMBARK_MAP_SELECT
+		setting_selected_index = 0
 		
 	_world_gen_in_progress = false
 
@@ -2103,7 +2107,8 @@ func _resolve_habitable_embark_region(requested: Vector2i) -> Vector2i:
 	var normalized := DFPlanetRegions.normalize_region(requested, planet_size.x, planet_size.y)
 	if _region_is_habitable(normalized):
 		return normalized
-	for radius in range(1, 97):
+	var max_radius: int = maxi(planet_size.x, planet_size.y)
+	for radius in range(1, max_radius + 1):
 		for offset_z in range(-radius, radius + 1):
 			for offset_x in range(-radius, radius + 1):
 				if abs(offset_x) != radius and abs(offset_z) != radius:
@@ -2115,7 +2120,8 @@ func _resolve_habitable_embark_region(requested: Vector2i) -> Vector2i:
 				)
 				if _region_is_habitable(candidate):
 					return candidate
-	return normalized
+	push_error("El mundo generado no contiene una región habitable para desembarcar.")
+	return Vector2i(-1, -1)
 
 func _request_planet_transition(direction: Vector2i) -> void:
 	if _planet_transition_in_progress or world == null or world_gen == null:
@@ -2350,23 +2356,6 @@ func _handle_menu_key(kc: int) -> void:
 		GameState.GENERATING_WORLD:
 			if kc == KEY_ENTER:
 				gen_max_years = gen_year
-		GameState.MODE_SELECT:
-			match kc:
-				KEY_UP, KEY_DOWN: setting_selected_index = posmod(setting_selected_index + (1 if kc == KEY_DOWN else -1), 3)
-				KEY_ENTER:
-					if setting_selected_index == 0:
-						current_state = GameState.EMBARK_MAP_SELECT
-						setting_selected_index = 0
-						embark_cursor = Vector2i(world_gen.world_width / 2, world_gen.world_depth / 2)
-					elif setting_selected_index == 1:
-						set_meta("adventure_mode_pending", true)
-						add_message("=== MODO AVENTURA: generando expedición... ===")
-						_finalize_embark_and_land(true)
-					else:
-						legends_mode = true
-						add_message("=== MODO LEYENDAS: generando mundo... ===")
-						_finalize_embark_and_land(true)
-						legends.switch_mode(DFLegends.ViewMode.OVERVIEW)
 		GameState.EMBARK_MAP_SELECT:
 			var world_navigation_step: int = 16 if Input.is_key_pressed(KEY_SHIFT) else 1
 			match kc:
@@ -2374,7 +2363,7 @@ func _handle_menu_key(kc: int) -> void:
 				KEY_DOWN: embark_cursor.y = clampi(embark_cursor.y + world_navigation_step, 0, world_gen.world_depth - 1)
 				KEY_LEFT: embark_cursor.x = clampi(embark_cursor.x - world_navigation_step, 0, world_gen.world_width - 1)
 				KEY_RIGHT: embark_cursor.x = clampi(embark_cursor.x + world_navigation_step, 0, world_gen.world_width - 1)
-				KEY_ESCAPE: current_state = GameState.MODE_SELECT; setting_selected_index = 0
+				KEY_ESCAPE: current_state = GameState.SETTINGS_MENU; setting_selected_index = 0
 				KEY_ENTER: current_state = GameState.EMBARK_PREPARE; embark_prepare_step = 0; setting_selected_index = 0; embark_prepare_points = 100
 		GameState.EMBARK_PREPARE:
 			if embark_prepare_step == 0:
@@ -2485,6 +2474,12 @@ func _run_loading_playing_loop(play_now: bool) -> void:
 	world_gen.generate_local_map(world, embark_cursor)
 	# El centro debe calcularse después de crear el terreno. Antes podía quedar dentro del agua.
 	local_center_surface = _find_safe_settlement_center(Vector2i(128, 128))
+	if local_center_surface.x < 0 or world.is_water(local_center_surface) or world.is_blocked(local_center_surface):
+		_loading_in_progress = false
+		current_state = GameState.SETTINGS_MENU
+		load_status = "Error: no se encontró terreno firme para iniciar"
+		push_error(load_status)
+		return
 	settlement_center = local_center_surface
 	world.set_meta("settlement_center", settlement_center)
 	load_progress = 0.3
@@ -3262,7 +3257,16 @@ func _find_safe_settlement_center(preferred: Vector2i) -> Vector3i:
 					best = center_pos
 				if water_count == 0 and blocked_count == 0 and height_error <= 4:
 					return center_pos
-	return best if best.x >= 0 else _fix_surface(Vector3i(preferred.x, 3, preferred.y))
+	if best.x >= 0:
+		return best
+	for fallback_z in range(2, world.depth - 2):
+		for fallback_x in range(2, world.width - 2):
+			var fallback_y: int = world.get_surface_height(fallback_x, fallback_z)
+			var fallback_pos := Vector3i(fallback_x, fallback_y, fallback_z)
+			if not world.is_water(fallback_pos) and not world.is_blocked(fallback_pos):
+				return fallback_pos
+	push_error("La región local no contiene una sola casilla seca y transitable.")
+	return Vector3i(-1, -1, -1)
 
 func _house_footprint_positions(origin: Vector3i, template: Dictionary) -> Array:
 	var positions: Array = []
@@ -4808,27 +4812,6 @@ func _handle_mouse(event: InputEventMouseButton) -> void:
 					_handle_menu_key(KEY_ENTER)
 					return
 					
-		GameState.MODE_SELECT:
-			if bt == MOUSE_BUTTON_LEFT:
-				var center_x_mode = renderer.size.x / 2
-				var line_h_mode = renderer._char_size.y
-				var box_w_mode = 460
-				var box_h_mode = 265
-				var box_x_mode = center_x_mode - box_w_mode / 2
-				var box_y_mode = (renderer.size.y - box_h_mode) / 2 - 30
-				var options_start_y = box_y_mode + 35 + int(line_h_mode * 2.2)
-				
-				if pos.x >= box_x_mode + 20 and pos.x <= box_x_mode + box_w_mode - 20:
-					var relative_y_mode = pos.y - options_start_y
-					var clicked_idx = int(relative_y_mode / (line_h_mode * 2.0))
-					if clicked_idx >= 0 and clicked_idx < 3:
-						if setting_selected_index == clicked_idx:
-							_handle_menu_key(KEY_ENTER)
-						else:
-							setting_selected_index = clicked_idx
-							renderer.queue_redraw()
-						return
-
 		GameState.EMBARK_MAP_SELECT:
 			if bt == MOUSE_BUTTON_LEFT:
 				# Find click in map grid
