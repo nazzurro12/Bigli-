@@ -1817,6 +1817,9 @@ func assign_job(job) -> void:
 	current_job = job
 	current_task = job.get_description()
 	task_progress = 0.0
+	path.clear()
+	path_index = 0
+	path_replan_count = 0
 	job.state = DFJob.JobState.ASSIGNED
 	job.assigned_dwarf_id = id
 
@@ -1841,6 +1844,24 @@ func _cancel_current_job(reason: String) -> void:
 	current_job = null
 	task_progress = 0.0
 	current_task = "Trabajo cancelado: %s" % reason
+	needs_display_update = true
+
+func _release_current_job(world, reason: String, base_retry_ticks: int = 120) -> void:
+	if current_job == null:
+		return
+	var released_job = current_job
+	released_job.path_failure_count += 1
+	released_job.last_path_failure = reason
+	released_job.retry_after_tick = int(world.get_meta("simulation_tick_total", 0)) + mini(1200, base_retry_ticks * released_job.path_failure_count)
+	released_job.state = DFJob.JobState.UNASSIGNED
+	released_job.assigned_dwarf_id = -1
+	released_job.approach_pos = Vector3i(-1, -1, -1)
+	current_job = null
+	task_progress = 0.0
+	path.clear()
+	path_index = 0
+	path_replan_count = 0
+	current_task = "Tarea aplazada: %s" % reason
 	needs_display_update = true
 
 func _work_on_job(world) -> void:
@@ -1920,7 +1941,17 @@ func _work_on_job(world) -> void:
 		if task_progress >= 1.0:
 			_execute_job(world)
 	else:
-		_move_toward(world, current_job.tile_pos)
+		var navigation_target: Vector3i = current_job.approach_pos
+		if navigation_target.x < 0:
+			var recovery_path: Array = DFPathfinding.find_adjacent_path(world, tile_pos, current_job.tile_pos, true)
+			if recovery_path.is_empty():
+				_release_current_job(world, "no existe una casilla de trabajo accesible")
+				return
+			navigation_target = recovery_path.back()
+			current_job.approach_pos = navigation_target
+			path = recovery_path
+			path_index = 0
+		_move_toward(world, navigation_target)
 
 func move_manual(world, dir: Vector3i) -> Array:
 	var logs = []
@@ -3096,6 +3127,10 @@ func _execute_job(world) -> void:
 	if success:
 		add_skill_xp(job_skill, 5)
 		if current_job != null:
+			current_job.path_failure_count = 0
+			current_job.retry_after_tick = 0
+			current_job.last_path_failure = ""
+		if current_job != null:
 			current_job.state = DFJob.JobState.COMPLETED
 			current_job = null
 		needs_display_update = true
@@ -3127,92 +3162,83 @@ func _execute_empty_latrine_job(world: Object) -> bool:
 	add_thought("Mantuvo utilizable una instalación sanitaria.", 0.03)
 	return true
 
+func _profession_can_do_job(job_type: int) -> bool:
+	match job_type:
+		DFJob.JobType.DIG, DFJob.JobType.COLLECT_STONE:
+			return profession in [Profession.MINER, Profession.MASON]
+		DFJob.JobType.CHOP_TREE, DFJob.JobType.COLLECT_WOOD:
+			return profession == Profession.WOODCUTTER
+		DFJob.JobType.BUILD_WALL, DFJob.JobType.BUILD_FLOOR, DFJob.JobType.SMOOTH:
+			return profession in [Profession.MASON, Profession.CARPENTER, Profession.ARCHITECT]
+		DFJob.JobType.BUILD_WORKSHOP, DFJob.JobType.CONSTRUCT_BUILDING:
+			return profession in [Profession.CARPENTER, Profession.MASON, Profession.ARCHITECT]
+		DFJob.JobType.FARM_PLANT, DFJob.JobType.FARM_HARVEST, DFJob.JobType.PROCESS_PLANT:
+			return profession == Profession.FARMER
+		DFJob.JobType.COOK_FOOD:
+			return profession == Profession.COOK
+		DFJob.JobType.BREW_DRINK:
+			return profession in [Profession.BREWER, Profession.COOK]
+		DFJob.JobType.FISH:
+			return profession == Profession.FISHER
+		DFJob.JobType.HUNT:
+			return profession == Profession.HUNTER
+		DFJob.JobType.SMELT_ORE:
+			return profession == Profession.SMITH
+		DFJob.JobType.MAKE_CHARCOAL:
+			return profession in [Profession.SMITH, Profession.WOODCUTTER]
+		DFJob.JobType.TAN_HIDE:
+			return profession in [Profession.HUNTER, Profession.CRAFTSMAN]
+		DFJob.JobType.SPIN_THREAD:
+			return profession in [Profession.FARMER, Profession.CRAFTSMAN]
+		DFJob.JobType.TEND_WOUNDS, DFJob.JobType.DIAGNOSE, DFJob.JobType.SURGERY:
+			return profession in [Profession.DOCTOR, Profession.CHIEF_MEDICAL_DWARF]
+		_:
+			# Transporte, limpieza, almacenamiento y emergencias son labores comunes.
+			return true
+
+
 func _pick_up_job(world, jobs: Array) -> void:
-	var best_job: DFJob = null
-	var best_score = -9999
-	var best_dist = 9999
+	var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
+	var ranked_jobs: Array = []
+	for job_candidate in jobs:
+		if job_candidate.state != DFJob.JobState.UNASSIGNED:
+			continue
+		if int(job_candidate.retry_after_tick) > current_tick:
+			continue
+		if not _profession_can_do_job(job_candidate.job_type):
+			continue
+		if not job_candidate.can_dwarf_perform(self):
+			continue
+		if not _has_tool_for_job(job_candidate.job_type):
+			continue
+		var distance: int = abs(tile_pos.x - job_candidate.tile_pos.x) + abs(tile_pos.z - job_candidate.tile_pos.z) + abs(tile_pos.y - job_candidate.tile_pos.y) * 2
+		var skill_level: int = get_skill_level(job_candidate.get_required_skill())
+		var score: int = int(job_candidate.priority) * 20 + skill_level * 5 - distance
+		ranked_jobs.append({"job": job_candidate, "score": score})
+	ranked_jobs.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a["score"]) > int(b["score"])
+	)
 
-	# Priorizar talar antes de recoger madera si hay árboles marcados cerca (distancia <= 15)
-	var has_nearby_chop = false
-	if profession == Profession.WOODCUTTER:
-		for pj in jobs:
-			if pj.state == DFJob.JobState.UNASSIGNED and pj.job_type == DFJob.JobType.CHOP_TREE:
-				var d_chop = abs(tile_pos.x - pj.tile_pos.x) + abs(tile_pos.z - pj.tile_pos.z) + abs(tile_pos.y - pj.tile_pos.y) * 2
-				if d_chop <= 15:
-					has_nearby_chop = true
-					break
+	# Probar varias tareas evita que una sola designación encerrada bloquee la cola.
+	var attempts: int = mini(8, ranked_jobs.size())
+	for candidate_index in range(attempts):
+		var selected_job = ranked_jobs[candidate_index]["job"]
+		var approach_path: Array = DFPathfinding.find_adjacent_path(world, tile_pos, selected_job.tile_pos, true)
+		var already_adjacent: bool = tile_pos.y == selected_job.tile_pos.y and _plan_distance(tile_pos, selected_job.tile_pos) <= 1
+		if approach_path.is_empty() and not already_adjacent:
+			selected_job.path_failure_count += 1
+			selected_job.last_path_failure = "sin acceso desde la red caminable"
+			selected_job.retry_after_tick = current_tick + mini(1200, 120 * selected_job.path_failure_count)
+			continue
+		selected_job.approach_pos = tile_pos if already_adjacent else approach_path.back()
+		assign_job(selected_job)
+		path = approach_path.duplicate()
+		path_index = 0
+		current_task = selected_job.get_description()
+		return
 
-	for j in jobs:
-		if j.state != DFJob.JobState.UNASSIGNED:
-			continue
-			
-		# Restricción estricta de profesión
-		if j.job_type == DFJob.JobType.CHOP_TREE and profession != Profession.WOODCUTTER:
-			continue
-		# Recoger madera es parte del oficio del leñador. Antes quedaba como
-		# transporte genérico y cualquier profesión, incluso un minero, la tomaba.
-		if j.job_type == DFJob.JobType.COLLECT_WOOD and profession != Profession.WOODCUTTER:
-			continue
-		if j.job_type == DFJob.JobType.COLLECT_STONE and profession != Profession.MINER and profession != Profession.MASON:
-			continue
-		if j.job_type == DFJob.JobType.DIG and profession != Profession.MINER:
-			continue
-		if j.job_type == DFJob.JobType.HUNT and profession != Profession.HUNTER:
-			continue
-		if j.job_type == DFJob.JobType.FISH and profession != Profession.FISHER and profession != Profession.COOK and profession != Profession.FARMER and profession != Profession.HUNTER:
-			continue
-		if j.job_type == DFJob.JobType.COOK_FOOD and profession != Profession.COOK:
-			continue
-		if j.job_type == DFJob.JobType.BREW_DRINK and profession != Profession.COOK and profession != Profession.BREWER:
-			continue
-		if j.job_type == DFJob.JobType.SMELT_ORE and profession != Profession.SMITH:
-			continue
-		if j.job_type == DFJob.JobType.MAKE_CHARCOAL and profession != Profession.SMITH and profession != Profession.WOODCUTTER:
-			continue
-		if j.job_type == DFJob.JobType.PROCESS_PLANT and profession != Profession.FARMER:
-			continue
-		if j.job_type == DFJob.JobType.TAN_HIDE and profession != Profession.HUNTER and profession != Profession.COOK and profession != Profession.CARPENTER:
-			continue
-		if j.job_type == DFJob.JobType.SPIN_THREAD and profession != Profession.FARMER and profession != Profession.CRAFTSMAN:
-			continue
-		if j.job_type == DFJob.JobType.STORE_IN_CONTAINER:
-			pass  # Todos pueden guardar comida en almacenes
-			
-		# Si hay árboles cerca para cortar, ignorar otros tipos de trabajo
-		if has_nearby_chop and j.job_type != DFJob.JobType.CHOP_TREE:
-			continue
-
-		# Verificar si tenemos la herramienta requerida para el trabajo
-		if not _has_tool_for_job(j.job_type):
-			var tool_substring = "Pickaxe" if j.job_type == DFJob.JobType.DIG else "Axe" if j.job_type == DFJob.JobType.CHOP_TREE else "Caña" if j.job_type == DFJob.JobType.FISH else "Sword"
-			var target_tool = _find_nearest_item_on_ground_matching(world, tool_substring)
-			if target_tool != null:
-				# Ir a recoger la herramienta primero
-				_move_toward(world, target_tool.tile_pos)
-				current_task = "Buscando herramienta: " + target_tool.name
-				var dist_to_tool = abs(tile_pos.x - target_tool.tile_pos.x) + abs(tile_pos.z - target_tool.tile_pos.z)
-				if dist_to_tool <= 1:
-					inventory.append(target_tool)
-					world.remove_entity(target_tool)
-					add_thought("Recogió un " + target_tool.name + " para empezar a trabajar.", 0.01)
-				return
-			else:
-				# Si no hay herramienta ni en inventario ni en el suelo, ignorar el trabajo
-				continue
-				
-		var dist = abs(tile_pos.x - j.tile_pos.x) + abs(tile_pos.z - j.tile_pos.z) + abs(tile_pos.y - j.tile_pos.y) * 2
-		var skill_level = get_skill_level(j.get_required_skill())
-		var skill_bonus = skill_level * 5
-		var dist_penalty = int(dist)
-		var score = skill_bonus - dist_penalty
-		if score > best_score:
-			best_score = score
-			best_job = j
-			best_dist = dist
-
-	if best_job != null:
-		assign_job(best_job)
-		current_task = best_job.get_description()
+	if not ranked_jobs.is_empty():
+		current_task = "Sin tareas accesibles; revisando otras labores"
 
 func _path_request_slot_is_due(world) -> bool:
 	if is_possessed:
@@ -3272,7 +3298,7 @@ func _move_toward(world, target: Vector3i) -> void:
 		var abandoned_workshop: bool = operating_workshop != null
 		var abandoned_plan: bool = not autonomous_plan.is_empty()
 		if abandoned_job:
-			_cancel_current_job("destino inaccesible después de dos intentos")
+			_release_current_job(world, "destino inaccesible después de dos intentos")
 		if abandoned_workshop:
 			operating_workshop.unassign_dwarf()
 			operating_workshop = null
@@ -3294,7 +3320,7 @@ func _move_toward(world, target: Vector3i) -> void:
 				return
 			path_replan_count = 0
 			if current_job != null:
-				_cancel_current_job("destino inaccesible")
+				_release_current_job(world, "destino inaccesible")
 			elif operating_workshop != null:
 				operating_workshop.unassign_dwarf()
 				operating_workshop = null
@@ -3305,6 +3331,15 @@ func _move_toward(world, target: Vector3i) -> void:
 			else:
 				current_task = "Destino inaccesible"
 			return
+
+	# Las rutas antiguas o cacheadas pueden incluir la posición de origen.
+	# Consumir esos nodos impide intentar caminar hacia uno mismo.
+	while path_index < path.size() and path[path_index] == tile_pos:
+		path_index += 1
+	if path_index >= path.size():
+		path.clear()
+		path_index = 0
+		return
 
 	# Path smoothing: skip unnecessary intermediate steps
 	while path_index < path.size() - 1:
