@@ -238,7 +238,7 @@ func _ready() -> void:
 	renderer.offset_right = 0
 	renderer.offset_bottom = 0
 	renderer.show_sidebar = true
-	renderer.sidebar_width = 32
+	renderer.sidebar_width = 26
 	renderer.paused = true
 	renderer.show_help = false
 	add_child(renderer)
@@ -2767,6 +2767,25 @@ func _build_initial_settlement(center: Vector3i) -> void:
 				world.set_material(farm_fp, DFWorld.MatType.SOIL)
 				world.tile_data[farm_fp] = world.tile_data.get(farm_fp, {})
 				world.tile_data[farm_fp]["farm_quality"] = 1.0
+
+	# --- Comedor común visible junto a la plaza ---
+	# Las banderas convierten estos objetos en mobiliario funcional, no decoración.
+	var dining_center := _fix_surface(Vector3i(hx + 2, sy, hz + 2))
+	var table_offsets: Array[Vector2i] = [Vector2i(0, 0), Vector2i(2, 0)]
+	for table_offset: Vector2i in table_offsets:
+		var table_pos := _fix_surface(Vector3i(dining_center.x + table_offset.x, dining_center.y, dining_center.z + table_offset.y))
+		if not world.is_water(table_pos) and not world.is_blocked(table_pos):
+			var table_item = world._spawn_item(table_pos, "Mesa de Madera", "furniture", DFWorld.MatType.WOOD, "T", Color("#A8783C"))
+			if table_item != null:
+				table_item.is_table = true
+			for chair_delta: Vector2i in [Vector2i(0, -1), Vector2i(0, 1)]:
+				var chair_pos := _fix_surface(Vector3i(table_pos.x + chair_delta.x, table_pos.y, table_pos.z + chair_delta.y))
+				if not world.is_water(chair_pos) and not world.is_blocked(chair_pos):
+					var chair_item = world._spawn_item(chair_pos, "Silla de Madera", "furniture", DFWorld.MatType.WOOD, "h", Color("#8B6914"))
+					if chair_item != null:
+						chair_item.is_chair = true
+	var dining_hall = DFBuilding.new(DFBuilding.BuildingType.DINING_HALL, dining_center)
+	world.buildings.append(dining_hall)
 
 	# Plantillas compactas para colocar servicios completos únicamente en suelo seco y plano.
 	var utility_floors: Array = []
