@@ -3781,9 +3781,7 @@ func _prepare_workshop_inputs(world, recipe: Dictionary) -> bool:
 			if inventory_index in selected_indices:
 				continue
 			var inventory_item = inventory[inventory_index]
-			if not inventory_item is DFItem:
-				continue
-			if _workshop_item_matches(inventory_item, requirement):
+			if inventory_item is DFItem and _workshop_item_matches(inventory_item, requirement):
 				selected_indices.append(inventory_index)
 				matched_count += 1
 				if matched_count >= required_count:
@@ -3793,31 +3791,48 @@ func _prepare_workshop_inputs(world, recipe: Dictionary) -> bool:
 			break
 
 	if not missing_requirement.is_empty():
-		var nearest_item: DFItem = null
-		var nearest_distance: int = 999999
+		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
+		var input_candidates: Array = []
 		for ground_item in world.items:
-			if ground_item.carried_by_id >= 0:
+			if not ground_item is DFItem or ground_item.carried_by_id >= 0:
 				continue
 			if not _workshop_item_matches(ground_item, missing_requirement):
 				continue
-			if ground_item.is_reserved_for_other(id, simulation_minute):
+			if ground_item.is_reserved_for_other(id, current_tick):
 				continue
 			var ground_distance: int = abs(ground_item.tile_pos.x - tile_pos.x) + abs(ground_item.tile_pos.z - tile_pos.z) + abs(ground_item.tile_pos.y - tile_pos.y) * 2
-			if ground_distance < nearest_distance:
-				nearest_distance = ground_distance
-				nearest_item = ground_item
+			input_candidates.append({"item": ground_item, "distance": ground_distance})
+		input_candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			return int(a["distance"]) < int(b["distance"])
+		)
+
+		var nearest_item: DFItem = null
+		var item_path: Array = []
+		for candidate_index in range(mini(8, input_candidates.size())):
+			var candidate_item: DFItem = input_candidates[candidate_index]["item"]
+			var already_adjacent: bool = candidate_item.tile_pos.y == tile_pos.y and _plan_distance(tile_pos, candidate_item.tile_pos) <= 1
+			var candidate_path: Array = [] if already_adjacent else DFPathfinding.find_adjacent_path(world, tile_pos, candidate_item.tile_pos, true)
+			if already_adjacent or not candidate_path.is_empty():
+				nearest_item = candidate_item
+				item_path = candidate_path
+				break
 		if nearest_item == null:
-			current_task = "Esperando insumos para %s" % str(recipe.get("name", "el taller"))
+			current_task = "Sin insumos alcanzables para %s" % str(recipe.get("name", "el taller"))
 			return false
-		nearest_item.reserve_for(id, simulation_minute + 30)
-		if nearest_distance <= 1:
+
+		nearest_item.reserve_for(id, current_tick + 180)
+		var nearest_is_adjacent: bool = nearest_item.tile_pos.y == tile_pos.y and _plan_distance(tile_pos, nearest_item.tile_pos) <= 1
+		if nearest_is_adjacent:
 			nearest_item.release_reservation(id)
 			nearest_item.carried_by_id = id
 			world.remove_entity(nearest_item)
 			inventory.append(nearest_item)
-			current_task = "Llevando insumo a %s" % operating_workshop.name
+			current_task = "Cargando insumo para %s" % operating_workshop.name
 		else:
-			current_task = "Recogiendo insumo para %s" % operating_workshop.name
+			if path.is_empty() or path_index >= path.size():
+				path = item_path.duplicate()
+				path_index = 0
+			current_task = "Yendo por insumo para %s" % operating_workshop.name
 			_move_toward(world, nearest_item.tile_pos)
 		return false
 
