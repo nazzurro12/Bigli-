@@ -187,6 +187,19 @@ var preferences: Dictionary = {}
 var memories: Array = []
 var recent_events: Array = []
 
+# Estado social persistente usado por DFConsequenceSystem. Estas colecciones
+# pertenecen al habitante: no deben almacenarse como metadata paralela.
+var life_history: Array = []
+var reputation: Dictionary = {}
+var known_reputations: Dictionary = {}
+var rumors: Array = []
+var legal_record: Array = []
+var career_offers: Array = []
+var life_decisions: Array = []
+var social_roles: Array = []
+var possession_count: int = 0
+var last_possession_event_id: int = -1
+
 var prayer_counter: int = 0
 var meditation_counter: int = 0
 var artistic_inspiration: float = 0.0
