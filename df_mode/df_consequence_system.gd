@@ -120,12 +120,19 @@ func record_possession_started(actor: Object) -> Dictionary:
 	})
 
 func record_possession_ended(actor: Object) -> Dictionary:
+	var caused_by_event_id: int = -1
+	for recent_index: int in range(actor.recent_events.size() - 1, -1, -1):
+		var recent_event: Dictionary = actor.recent_events[recent_index]
+		if bool(recent_event.get("possession_origin", false)) and str(recent_event.get("type", "")) not in ["possession_started", "possession_ended"]:
+			caused_by_event_id = int(recent_event.get("id", -1))
+			break
 	var event: Dictionary = record_action(actor, "possession_ended", {
 		"tags": ["possession", "identity", "continuity"],
 		"severity": 0.2,
 		"witness_ids": [],
 		"detect_witnesses": false,
 		"summary": "%s recuperó su autonomía con una historia cambiada." % actor.name,
+		"caused_by_event_id": caused_by_event_id,
 		"possession_origin": true
 	})
 	actor.last_possession_event_id = int(event.get("id", -1))
