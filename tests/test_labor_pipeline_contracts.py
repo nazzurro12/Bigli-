@@ -96,6 +96,18 @@ class LaborPipelineContracts(unittest.TestCase):
         self.assertIn("No existe almacén de comida alcanzable", DWARF)
         self.assertIn("best_fs_path", DWARF)
 
+    def test_construction_material_is_exact_reserved_and_reachable(self):
+        self.assertIn('"construction_material_id"', DWARF)
+        self.assertIn("selected_material.reserve_for", DWARF)
+        self.assertIn("selected_material_path", DWARF)
+        self.assertIn("no hay piedra o madera alcanzable", DWARF)
+
+    def test_tables_and_chairs_drive_meal_behavior(self):
+        self.assertIn("func _find_reachable_dining_chair", DWARF)
+        self.assertIn("func _chair_has_nearby_table", DWARF)
+        self.assertIn("Yendo al comedor con su comida", DWARF)
+        self.assertIn("Comiendo sentado en el comedor", DWARF)
+
 
 if __name__ == "__main__":
     unittest.main()
