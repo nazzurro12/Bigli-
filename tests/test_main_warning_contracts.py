@@ -30,6 +30,22 @@ class MainWarningContracts(unittest.TestCase):
     def test_control_position_is_not_shadowed(self):
         self.assertNotRegex(self.main, r"func\s+\w+\([^)]*\bposition\s*:")
 
+    def test_function_parameters_are_not_redeclared_locally(self):
+        functions = re.finditer(
+            r"^func\\s+(\\w+)\\(([^)]*)\\).*?(?=^func\\s+|\\Z)",
+            self.main,
+            re.M | re.S,
+        )
+        duplicates = []
+        for function in functions:
+            parameters = set(
+                re.findall(r"(\\w+)\\s*(?::[^,=]+)?(?:=[^,]+)?(?:,|$)", function.group(2))
+            )
+            locals_ = set(re.findall(r"^\\s*var\\s+(\\w+)\\b", function.group(0), re.M))
+            for duplicate in parameters & locals_:
+                duplicates.append((function.group(1), duplicate))
+        self.assertEqual([], duplicates)
+
     def test_removed_empty_tile_constant_does_not_return(self):
         self.assertNotIn("TileType.EMPTY", self.executor)
 
