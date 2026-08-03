@@ -164,6 +164,7 @@ var cancel_reason: String = ""
 var path_failure_count: int = 0
 var retry_after_tick: int = 0
 var last_path_failure: String = ""
+var approach_pos: Vector3i = Vector3i(-1, -1, -1)
 var disposal_pos: Vector3i = Vector3i(-1, -1, -1)
 
 func _init(type: int, pos: Vector3i, prio: int = 5):
