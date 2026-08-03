@@ -4972,10 +4972,19 @@ func _execute_store_in_container_job(world) -> bool:
 			target_food.reserve_for(id, current_tick + 600)
 	if carried_food == null and target_food != null:
 		var dist = abs(tile_pos.x - target_food.tile_pos.x) + abs(tile_pos.z - target_food.tile_pos.z)
-		if dist > 1:
+		if dist > 1 or target_food.tile_pos.y != tile_pos.y:
+			var food_path: Array = DFPathfinding.find_adjacent_path(world, tile_pos, target_food.tile_pos, true)
+			if food_path.is_empty():
+				target_food.release_reservation(id)
+				_release_current_job(world, "la provisión no es alcanzable", 60)
+				return false
+			if path.is_empty() or path_index >= path.size():
+				path = food_path
+				path_index = 0
 			_move_toward(world, target_food.tile_pos)
 			current_task = "Yendo a recoger comida"
-			if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
+			if current_job != null:
+				current_job.state = DFJob.JobState.IN_PROGRESS
 			return false
 		_detach_item_from_container(world, target_food)
 		inventory.append(target_food)
@@ -4987,25 +4996,36 @@ func _execute_store_in_container_job(world) -> bool:
 		return false
 	if carried_food == null:
 		return false
-	var best_fs_pos = Vector3i(-1, -1, -1)
-	var best_fs_dist = 999999
+	var best_fs_pos := Vector3i(-1, -1, -1)
+	var best_fs_path: Array = []
+	var best_fs_cost: int = 2147483647
 	for b in world.buildings:
-		if b.type == DFBuilding.BuildingType.FOOD_STORE:
-			var container = _find_container_at(world, b.tile_pos)
-			if container == null or not container.has_container_space(carried_food):
-				continue
-			var d_3722 = abs(b.tile_pos.x - tile_pos.x) + abs(b.tile_pos.z - tile_pos.z)
-			if d_3722 < best_fs_dist:
-				best_fs_dist = d_3722
-				best_fs_pos = b.tile_pos
+		if b.type != DFBuilding.BuildingType.FOOD_STORE:
+			continue
+		var container = _find_container_at(world, b.tile_pos)
+		if container == null or not container.has_container_space(carried_food):
+			continue
+		var already_at_store: bool = b.tile_pos.y == tile_pos.y and _plan_distance(tile_pos, b.tile_pos) <= 1
+		var store_path: Array = [] if already_at_store else DFPathfinding.find_adjacent_path(world, tile_pos, b.tile_pos, true)
+		if store_path.is_empty() and not already_at_store:
+			continue
+		var store_cost: int = 0 if already_at_store else store_path.size()
+		if store_cost < best_fs_cost:
+			best_fs_cost = store_cost
+			best_fs_pos = b.tile_pos
+			best_fs_path = store_path
 	if best_fs_pos.y == -1:
-		current_task = "Esperando espacio de almacenamiento"
+		current_task = "No existe almacén de comida alcanzable"
 		return false
-	var dist_to_fs = abs(tile_pos.x - best_fs_pos.x) + abs(tile_pos.z - best_fs_pos.z)
-	if dist_to_fs > 1:
+	var ready_at_food_store: bool = best_fs_pos.y == tile_pos.y and _plan_distance(tile_pos, best_fs_pos) <= 1
+	if not ready_at_food_store:
+		if path.is_empty() or path_index >= path.size():
+			path = best_fs_path
+			path_index = 0
 		_move_toward(world, best_fs_pos)
 		current_task = "Llevando comida al almacén"
-		if current_job != null: current_job.state = DFJob.JobState.IN_PROGRESS
+		if current_job != null:
+			current_job.state = DFJob.JobState.IN_PROGRESS
 		return false
 	carried_food.tile_pos = best_fs_pos
 	carried_food.is_in_stockpile = true
