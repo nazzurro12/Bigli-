@@ -75,6 +75,27 @@ class LaborPipelineContracts(unittest.TestCase):
         self.assertIn("world.add_entity(carried_item)", DWARF)
         self.assertIn("inventory.erase(carried_item)", DWARF)
 
+    def test_loaded_resources_choose_reachable_stockpile_tiles(self):
+        self.assertIn(
+            "get_candidate_tiles(world, carried_item.item_type, 8)",
+            DWARF,
+        )
+        self.assertIn('"drop_pos"', DWARF)
+        self.assertIn("No existe almacén alcanzable", DWARF)
+
+    def test_workshop_inputs_use_world_tick_and_reachable_paths(self):
+        self.assertIn(
+            'var current_tick: int = int(world.get_meta("simulation_tick_total", 0))',
+            DWARF,
+        )
+        self.assertIn("Sin insumos alcanzables", DWARF)
+        self.assertIn("item_path.duplicate()", DWARF)
+
+    def test_food_hauling_checks_both_pickup_and_storage_routes(self):
+        self.assertIn("la provisión no es alcanzable", DWARF)
+        self.assertIn("No existe almacén de comida alcanzable", DWARF)
+        self.assertIn("best_fs_path", DWARF)
+
 
 if __name__ == "__main__":
     unittest.main()
