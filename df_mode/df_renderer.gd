@@ -16,7 +16,7 @@ const UI_CLASSIC_TITLE := Color("#0A246A")
 const UI_CLASSIC_TITLE_LIGHT := Color("#3A6EA5")
 const UI_CLASSIC_TEXT := Color("#1A1A1A")
 const UI_CLASSIC_WORKSPACE := Color("#1B2430")
-const UI_CONTENT_TOP: int = 44
+const UI_CONTENT_TOP: int = 24
 const SUBSTANCE_COLORS: Dictionary = {
 	"blood":    Color(0.55, 0.0,  0.0,  1.0),
 	"beer":     Color(0.70, 0.55, 0.05, 1.0),
@@ -33,7 +33,7 @@ var camera_pos: Vector3i = Vector3i(64, 3, 64)
 var view_width: int = 80
 var view_height: int = 25
 var show_sidebar: bool = true
-var sidebar_width: int = 32
+var sidebar_width: int = 26
 var follow_dwarf: int = -1
 var paused: bool = false
 var designation: DFDesignation = null
@@ -355,6 +355,9 @@ La estación limita el clima posible; la nieve requiere suficiente frío.""")
 	legend_btn.offset_right = 88
 	legend_btn.offset_bottom = 14
 	legend_btn.pressed.connect(func(): legend_panel.visible = not legend_panel.visible)
+	# La referencia ya vive en Ver > Leyenda. El botón flotante tapaba el mapa y
+	# duplicaba la navegación principal.
+	legend_btn.visible = false
 	add_child(legend_btn)
 
 func _add_reference_tab(tab_name: String, contents: String) -> void:
@@ -537,13 +540,10 @@ J             misiones
 L             crónicas"""
 
 func _create_functional_classic_chrome() -> void:
+	# Godot/Windows ya dibuja el título y los botones de ventana. Mantener una
+	# segunda copia dentro del juego robaba altura y parecía una ventana rota.
 	classic_title_label = Label.new()
-	classic_title_label.name = "ClassicTitle"
-	classic_title_label.text = "Bigli - Simulador de mundo"
-	classic_title_label.position = Vector2(11, 5)
-	classic_title_label.size = Vector2(600, 22)
-	classic_title_label.add_theme_color_override("font_color", Color.WHITE)
-	classic_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	classic_title_label.visible = false
 	add_child(classic_title_label)
 
 	var menu_specs: Array = [
@@ -560,7 +560,7 @@ func _create_functional_classic_chrome() -> void:
 		menu.name = "ClassicMenu%d" % menu_index
 		menu.text = str(spec[0])
 		menu.flat = true
-		menu.position = Vector2(menu_x, 29)
+		menu.position = Vector2(menu_x, 2)
 		menu.size = Vector2(105 if menu_index in [2, 3] else 78, 19)
 		menu.add_theme_font_size_override("font_size", 10)
 		var popup := menu.get_popup()
@@ -578,125 +578,6 @@ func _create_functional_classic_chrome() -> void:
 		classic_menu_buttons.append(menu)
 		menu_x += menu.size.x
 
-	var window_specs: Array = [["_", 0], ["□", 1], ["×", 2]]
-	for window_index in range(window_specs.size()):
-		var window_button := Button.new()
-		window_button.name = "ClassicWindowButton%d" % window_index
-		window_button.text = str(window_specs[window_index][0])
-		window_button.anchor_left = 1.0
-		window_button.anchor_right = 1.0
-		window_button.offset_left = -70 + window_index * 22
-		window_button.offset_right = -49 + window_index * 22
-		window_button.offset_top = 6
-		window_button.offset_bottom = 25
-		window_button.pressed.connect(_on_classic_window_button.bind(int(window_specs[window_index][1])))
-		add_child(window_button)
-		classic_window_buttons.append(window_button)
-
-func _on_classic_popup_id_pressed(item_id: int, popup: PopupMenu) -> void:
-	_on_classic_menu_pressed(int(popup.get_meta("classic_menu_index", -1)), item_id)
-
-func _on_classic_menu_pressed(menu_index: int, item_id: int) -> void:
-	match menu_index:
-		0:
-			if item_id == 0:
-				_dispatch_main_key(KEY_F5)
-			elif item_id == 1:
-				load_confirmation.popup_centered()
-			elif item_id == 2:
-				quit_confirmation.popup_centered()
-		1:
-			if item_id == 0:
-				legend_panel.visible = not legend_panel.visible
-			elif item_id == 1:
-				_dispatch_main_key(KEY_H)
-			elif item_id == 2:
-				performance_overlay_enabled = not performance_overlay_enabled
-		2:
-			var main_node = get_parent()
-			if item_id == 0:
-				_dispatch_main_key(KEY_SPACE)
-			elif main_node != null and "tick_interval" in main_node:
-				main_node.tick_interval = 0.20 if item_id == 1 else 0.10 if item_id == 2 else 0.05
-		3:
-			if item_id <= 4:
-				_open_management_tab(item_id)
-			else:
-				_dispatch_main_key(KEY_J if item_id == 10 else KEY_L if item_id == 11 else KEY_T)
-		4:
-			if item_id == 0:
-				_dispatch_main_key(KEY_H)
-			else:
-				legend_panel.visible = true
-	queue_redraw()
-
-func _dispatch_main_key(keycode: Key) -> void:
-	var main_node = get_parent()
-	if main_node == null or not main_node.has_method("_handle_key"):
-		return
-	var event := InputEventKey.new()
-	event.keycode = keycode
-	event.pressed = true
-	main_node._handle_key(event)
-
-func _on_classic_window_button(action_id: int) -> void:
-	if action_id == 0:
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MINIMIZED)
-	elif action_id == 1:
-		var current_mode := DisplayServer.window_get_mode()
-		DisplayServer.window_set_mode(
-			DisplayServer.WINDOW_MODE_WINDOWED
-			if current_mode == DisplayServer.WINDOW_MODE_MAXIMIZED
-			else DisplayServer.WINDOW_MODE_MAXIMIZED
-		)
-	else:
-		quit_confirmation.popup_centered()
-
-func _apply_classic_control_theme() -> void:
-	var classic_theme := Theme.new()
-	var panel_box := _make_classic_style(UI_CLASSIC_FACE, 2, false)
-	var button_box := _make_classic_style(UI_CLASSIC_FACE, 2, false)
-	var button_hover := _make_classic_style(Color("#F5F3E8"), 2, false)
-	var button_pressed := _make_classic_style(Color("#D6D2C7"), 2, true)
-	classic_theme.set_stylebox("panel", "Panel", panel_box)
-	classic_theme.set_stylebox("panel", "PanelContainer", panel_box)
-	classic_theme.set_stylebox("panel", "PopupMenu", panel_box)
-	classic_theme.set_stylebox("panel", "Tree", _make_classic_style(Color.WHITE, 2, true))
-	classic_theme.set_stylebox("normal", "RichTextLabel", _make_classic_style(Color.WHITE, 2, true))
-	classic_theme.set_stylebox("panel", "TabContainer", _make_classic_style(UI_CLASSIC_FACE, 2, true))
-	classic_theme.set_stylebox("tab_unselected", "TabBar", button_box)
-	classic_theme.set_stylebox("tab_hovered", "TabBar", button_hover)
-	classic_theme.set_stylebox("tab_selected", "TabBar", button_pressed)
-	classic_theme.set_stylebox("normal", "Button", button_box)
-	classic_theme.set_stylebox("hover", "Button", button_hover)
-	classic_theme.set_stylebox("pressed", "Button", button_pressed)
-	classic_theme.set_stylebox("focus", "Button", _make_classic_style(Color.TRANSPARENT, 1, true))
-	classic_theme.set_color("font_color", "Button", UI_CLASSIC_TEXT)
-	classic_theme.set_color("font_hover_color", "Button", Color.BLACK)
-	classic_theme.set_color("font_pressed_color", "Button", Color.BLACK)
-	classic_theme.set_color("font_color", "Label", UI_CLASSIC_TEXT)
-	classic_theme.set_color("default_color", "RichTextLabel", UI_CLASSIC_TEXT)
-	classic_theme.set_color("font_selected_color", "TabBar", UI_CLASSIC_TEXT)
-	classic_theme.set_color("font_unselected_color", "TabBar", UI_CLASSIC_TEXT)
-	theme = classic_theme
-
-func _make_classic_style(fill: Color, border_width: int, pressed: bool) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = fill
-	var top_left: Color = UI_CLASSIC_SHADOW if pressed else UI_CLASSIC_LIGHT
-	var bottom_right: Color = UI_CLASSIC_LIGHT if pressed else UI_CLASSIC_SHADOW
-	box.border_width_left = border_width
-	box.border_width_top = border_width
-	box.border_width_right = border_width
-	box.border_width_bottom = border_width
-	box.border_color = bottom_right
-	box.corner_radius_top_left = 0
-	box.corner_radius_top_right = 0
-	box.corner_radius_bottom_left = 0
-	box.corner_radius_bottom_right = 0
-	box.shadow_color = top_left
-	box.shadow_size = 1
-	return box
 
 func _draw_classic_bevel(rect: Rect2, fill: Color = UI_CLASSIC_FACE, sunken: bool = false) -> void:
 	draw_rect(rect, fill, true)
@@ -1324,9 +1205,10 @@ func _draw_sidebar(side_x: int) -> void:
 	var y   = UI_CONTENT_TOP + 27
 	var sh = size.y
 	_draw_classic_bevel(Rect2(x - 3, UI_CONTENT_TOP, mw + 3, sh - UI_CONTENT_TOP), UI_CLASSIC_FACE, false)
-	_draw_classic_titlebar(Rect2(x, UI_CONTENT_TOP + 3, mw - 3, 21), "Propiedades de la colonia")
+	draw_rect(Rect2(x, UI_CONTENT_TOP + 3, mw - 3, 21), Color("#243244"), true)
+	draw_string(_font, Vector2(x + 8, UI_CONTENT_TOP + 18), "COLONIA", HORIZONTAL_ALIGNMENT_LEFT, mw - 16, 10, Color("#DCE7F2"))
 	draw_rect(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), UI_CLASSIC_WORKSPACE, true)
-	_draw_classic_bevel(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), Color.TRANSPARENT, true)
+	draw_rect(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), Color("#34485E"), false, 1.0)
 
 	# ── helper: draw section header with underline ──────────────────────────
 	# (GDScript closures can't modify outer y; we handle y inline after each call)
@@ -1927,7 +1809,8 @@ func _draw_message_log(start_y: int) -> void:
 	_draw_classic_bevel(log_rect, UI_CLASSIC_FACE, false)
 	_draw_classic_titlebar(Rect2(bx + 2, start_y - 20, mw - 4, 18), "Registro de sucesos", false)
 	var output_rect := Rect2(bx + 5, start_y + 1, mw - 10, msg_h - 7)
-	_draw_classic_bevel(output_rect, Color("#FFFFFF"), true)
+	draw_rect(output_rect, Color("#121A24"), true)
+	draw_rect(output_rect, Color("#34485E"), false, 1.0)
 
 	var y = start_y
 	for i in range(num):
@@ -1939,9 +1822,9 @@ func _draw_message_log(start_y: int) -> void:
 			msg = msg.substr(0, max_chars - 3) + "..."
 		# Older messages fade, newest is fully bright
 		var alpha = 0.45 + 0.55 * float(i + 1) / float(num)
-		var col = Color(0.20, 0.20, 0.20, alpha)
+		var col = Color(0.68, 0.74, 0.80, alpha)
 		if i == num - 1:
-			col = Color(0.0, 0.12, 0.35, 1.0)
+			col = Color(0.88, 0.93, 1.0, 1.0)
 		draw_string(_font, Vector2(bx + 9, y + lh), msg,
 			HORIZONTAL_ALIGNMENT_LEFT, mw - 18, 10, col)
 		y += int(lh * 1.18)
