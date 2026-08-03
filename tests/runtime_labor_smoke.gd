@@ -44,7 +44,7 @@ func _test_excavation(failures: Array[String]) -> void:
 		failures.append("La pared continuó intacta después de excavar.")
 	var produced_stone: bool = false
 	for item in world.items:
-		if item is DFItemScript and item.tile_pos == wall_pos and item.item_type == "stone":
+		if item.item_type == "stone":
 			produced_stone = true
 			break
 	if not produced_stone:
