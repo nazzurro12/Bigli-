@@ -3729,6 +3729,8 @@ func _queue_resource_collection_jobs(item_type: String, job_type: int, max_jobs:
 		for legacy_worker in world.dwarves:
 			if legacy_worker.current_job == legacy_job:
 				legacy_worker.current_job = null
+				legacy_worker.path.clear()
+				legacy_worker.path_index = 0
 				legacy_worker.current_task = "Buscando una tarea real"
 	var open_jobs: int = _count_open_jobs(job_type)
 	if open_jobs >= max_jobs:
