@@ -3827,6 +3827,7 @@ func _prepare_workshop_inputs(world, recipe: Dictionary) -> bool:
 	return true
 
 func _produce_workshop_outputs(world, recipe: Dictionary) -> void:
+	var produced_count: int = 0
 	for output in recipe.get("outputs", []):
 		if bool(output.get("optional", false)):
 			continue
@@ -3836,14 +3837,27 @@ func _produce_workshop_outputs(world, recipe: Dictionary) -> void:
 				operating_workshop.tile_pos,
 				str(output.get("name", "Producto")),
 				str(output.get("type", "craft")),
-				0,
+				DFWorld.MatType.WOOD if str(output.get("furniture", "")) != "" else 0,
 				"*",
 				Color("#FFD27F")
 			)
+			if produced == null:
+				continue
+			var furniture_kind: String = str(output.get("furniture", ""))
+			produced.is_bed = furniture_kind == "bed"
+			produced.is_table = furniture_kind == "table"
+			produced.is_chair = furniture_kind == "chair"
+			if produced.is_bed:
+				produced.glyph = "="
+			elif produced.is_table:
+				produced.glyph = "T"
+			elif produced.is_chair:
+				produced.glyph = "h"
 			produced.created_by_entity_id = id
 			produced.production_recipe_id = str(recipe.get("id", ""))
 			produced.production_site = operating_workshop.tile_pos
-	stats_tracker["items_crafted"] = int(stats_tracker.get("items_crafted", 0)) + 1
+			produced_count += 1
+	stats_tracker["items_crafted"] = int(stats_tracker.get("items_crafted", 0)) + produced_count
 	add_thought("Fabricó %s usando insumos reales." % str(recipe.get("name", "un objeto")), 0.04)
 
 func _workshop_skill_from_recipe(recipe: Dictionary) -> int:
@@ -3900,22 +3914,82 @@ func _operate_workshop(world) -> void:
 			operating_workshop = null
 			current_task = "idle"
 
+func _queue_needed_colony_furniture(world) -> void:
+	var living_count: int = 0
+	for resident in world.dwarves:
+		if resident.is_alive:
+			living_count += 1
+	if living_count <= 0:
+		return
+
+	var bed_count: int = 0
+	var table_count: int = 0
+	var chair_count: int = 0
+	for furniture_item in world.items:
+		if not furniture_item is DFItem or furniture_item.is_broken:
+			continue
+		bed_count += 1 if furniture_item.is_bed else 0
+		table_count += 1 if furniture_item.is_table else 0
+		chair_count += 1 if furniture_item.is_chair else 0
+
+	var queued: Dictionary = {"bed": 0, "wood_table": 0, "wood_chair": 0}
+	for workshop_candidate in world.workshops:
+		for queued_recipe in workshop_candidate.production_queue:
+			var queued_id: String = str(queued_recipe.get("id", ""))
+			if queued.has(queued_id):
+				queued[queued_id] = int(queued[queued_id]) + 1
+
+	var bed_target: int = living_count
+	var table_target: int = ceili(float(living_count) / 4.0)
+	var chair_target: int = living_count
+	for carpentry in world.workshops:
+		if carpentry.workshop_type != DFWorkshop.WorkshopType.CARPENTRY:
+			continue
+		if not carpentry.production_queue.is_empty():
+			continue
+		if bed_count + int(queued["bed"]) < bed_target:
+			if carpentry.queue_recipe("bed"):
+				queued["bed"] = int(queued["bed"]) + 1
+			continue
+		if table_count + int(queued["wood_table"]) < table_target:
+			if carpentry.queue_recipe("wood_table"):
+				queued["wood_table"] = int(queued["wood_table"]) + 1
+			continue
+		if chair_count + int(queued["wood_chair"]) < chair_target:
+			if carpentry.queue_recipe("wood_chair"):
+				queued["wood_chair"] = int(queued["wood_chair"]) + 1
+
+
 func _check_workshops(world) -> void:
 	if is_possessed or operating_workshop != null:
 		return
+	_queue_needed_colony_furniture(world)
 	var best_w = null
 	var best_dist = 9999
 	for w in world.workshops:
 		if w.dwarf_assigned < 0 and not w.production_queue.is_empty():
-			var d = abs(tile_pos.x - w.tile_pos.x) + abs(tile_pos.z - w.tile_pos.z) + abs(tile_pos.y - w.tile_pos.y) * 2
-			if d < best_dist:
-				best_dist = d
+			# Cada taller elige operadores por la habilidad real de su receta.
+			var recipe: Dictionary = w.production_queue[0]
+			var required_skill: int = _workshop_skill_from_recipe(recipe)
+			var operator_level: int = get_skill_level(required_skill)
+			var d: int = abs(tile_pos.x - w.tile_pos.x) + abs(tile_pos.z - w.tile_pos.z) + abs(tile_pos.y - w.tile_pos.y) * 2
+			var score_distance: int = d - operator_level * 3
+			if score_distance < best_dist:
+				best_dist = score_distance
 				best_w = w
 
 	if best_w != null:
+		var workshop_path: Array = DFPathfinding.find_adjacent_path(world, tile_pos, best_w.tile_pos, true)
+		var already_adjacent: bool = tile_pos.y == best_w.tile_pos.y and _plan_distance(tile_pos, best_w.tile_pos) <= 1
+		if workshop_path.is_empty() and not already_adjacent:
+			current_task = "Taller sin acceso"
+			return
 		operating_workshop = best_w
-		var ws_skill = get_skill_level(Skill.SMITHING)
+		var selected_recipe: Dictionary = best_w.production_queue[0]
+		var ws_skill: int = get_skill_level(_workshop_skill_from_recipe(selected_recipe))
 		best_w.assign_dwarf(id, ws_skill)
+		path = workshop_path
+		path_index = 0
 		current_task = "Yendo a " + best_w.name
 
 func _consume_inventory_material(kw: String) -> void:
