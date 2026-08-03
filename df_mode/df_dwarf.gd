@@ -1856,6 +1856,9 @@ func _release_current_job(world, reason: String, base_retry_ticks: int = 120) ->
 	released_job.state = DFJob.JobState.UNASSIGNED
 	released_job.assigned_dwarf_id = -1
 	released_job.approach_pos = Vector3i(-1, -1, -1)
+	for reserved_item in world.items:
+		if reserved_item is DFItem and reserved_item.reserved_by_id == id:
+			reserved_item.release_reservation(id)
 	current_job = null
 	task_progress = 0.0
 	path.clear()
@@ -5039,72 +5042,84 @@ func _put_item_in_container_at(world: Object, item: DFItem, pos: Vector3i) -> bo
 	item.put_in_container(container)
 	return true
 
+func _find_collection_target_by_id(world, target_id: int, expected_type: String):
+	if target_id < 0:
+		return null
+	for candidate in world.items:
+		if candidate is DFItem and candidate.id == target_id and candidate.item_type == expected_type:
+			return candidate
+	return null
+
+
 func _execute_collect_job(world, item_type_to_collect: String) -> bool:
+	if current_job == null:
+		return false
+	var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
 	var carried_item: DFItem = null
+	var carried_id: int = int(current_job.get_meta("carried_item_id", -1))
 	for inventory_item in inventory:
-		if inventory_item is DFItem and inventory_item.item_type == item_type_to_collect:
+		if not inventory_item is DFItem or inventory_item.item_type != item_type_to_collect:
+			continue
+		if carried_id < 0 or inventory_item.id == carried_id:
 			carried_item = inventory_item
 			break
 
 	if carried_item == null:
-		var has_storage_space: bool = false
-		for capacity_stockpile in world.stockpiles:
-			if capacity_stockpile.get_free_tile(world, item_type_to_collect).y != -1:
-				has_storage_space = true
-				break
-		if not has_storage_space:
-			_cancel_current_job("no hay espacio en ningún almacén")
-			return false
-
-		var target_item: DFItem = null
-		var best_distance: int = 999999
-		var current_tick: int = int(world.get_meta("simulation_tick_total", 0))
-		for world_item in world.items:
-			if not world_item is DFItem:
-				continue
-			if world_item.item_type != item_type_to_collect or world_item.is_inside_container:
-				continue
-			if world_item.is_decayed or world_item.carried_by_id >= 0:
-				continue
-			if world_item.is_reserved_for_other(id, current_tick):
-				continue
-			var already_stored: bool = false
-			for occupied_stockpile in world.stockpiles:
-				if occupied_stockpile.has_tile(world_item.tile_pos) and world_item.is_in_stockpile:
-					already_stored = true
-					break
-			if already_stored:
-				continue
-			var item_distance: int = abs(world_item.tile_pos.x - tile_pos.x) + abs(world_item.tile_pos.z - tile_pos.z) + abs(world_item.tile_pos.y - tile_pos.y) * 2
-			if item_distance < best_distance:
-				best_distance = item_distance
-				target_item = world_item
+		var target_id: int = int(current_job.get_meta("target_item_id", -1))
+		var target_item: DFItem = _find_collection_target_by_id(world, target_id, item_type_to_collect)
+		# Compatibilidad con partidas antiguas: enlazar una sola vez el trabajo
+		# legado al recurso real más cercano y conservar desde entonces su ID.
+		if target_item == null and target_id < 0:
+			var best_distance: int = 2147483647
+			for loose_item in world.items:
+				if not loose_item is DFItem or loose_item.item_type != item_type_to_collect:
+					continue
+				if loose_item.is_in_stockpile or loose_item.is_inside_container or loose_item.is_decayed or loose_item.carried_by_id >= 0:
+					continue
+				if loose_item.is_reserved_for_other(id, current_tick):
+					continue
+				var loose_distance: int = abs(loose_item.tile_pos.x - tile_pos.x) + abs(loose_item.tile_pos.z - tile_pos.z) + abs(loose_item.tile_pos.y - tile_pos.y) * 2
+				if loose_distance < best_distance:
+					best_distance = loose_distance
+					target_item = loose_item
+			if target_item != null:
+				current_job.set_meta("target_item_id", target_item.id)
+				current_job.tile_pos = target_item.tile_pos
+				current_job.approach_pos = Vector3i(-1, -1, -1)
 
 		if target_item == null:
-			_cancel_current_job("ya no queda %s suelta para recoger" % item_type_to_collect)
+			_cancel_current_job("el recurso objetivo ya no existe")
+			return false
+		if target_item.is_in_stockpile or target_item.is_inside_container or target_item.carried_by_id >= 0:
+			_cancel_current_job("el recurso objetivo ya fue recogido")
+			return false
+		if target_item.is_reserved_for_other(id, current_tick):
+			_release_current_job(world, "otro trabajador reservó el recurso", 30)
 			return false
 
-		target_item.reserve_for(id, current_tick + 600)
-		if best_distance > 1 or target_item.tile_pos.y != tile_pos.y:
+		target_item.reserve_for(id, current_tick + 180)
+		current_job.tile_pos = target_item.tile_pos
+		var distance_to_item: int = abs(target_item.tile_pos.x - tile_pos.x) + abs(target_item.tile_pos.z - tile_pos.z) + abs(target_item.tile_pos.y - tile_pos.y) * 2
+		if distance_to_item > 1 or target_item.tile_pos.y != tile_pos.y:
+			current_task = "Yendo por %s" % target_item.name
 			_move_toward(world, target_item.tile_pos)
-			current_task = "Yendo a recoger " + target_item.name
-			if current_job != null:
-				current_job.state = DFJob.JobState.IN_PROGRESS
 			return false
 
 		target_item.release_reservation(id)
 		target_item.carried_by_id = id
 		target_item.is_in_stockpile = false
+		target_item.is_inside_container = false
+		target_item.container_id = -1
 		world.remove_entity(target_item)
 		inventory.append(target_item)
-		add_thought("Recogió %s para almacenarlo." % target_item.name, 0.02)
-		current_task = "Transportando " + target_item.name
+		current_job.set_meta("carried_item_id", target_item.id)
+		carried_item = target_item
+		current_task = "Cargando %s" % target_item.name
 		needs_display_update = true
-		return false
 
 	var target_stockpile = null
-	var target_drop_pos: Vector3i = Vector3i(-1, -1, -1)
-	var best_stockpile_distance: int = 999999
+	var target_drop_pos := Vector3i(-1, -1, -1)
+	var best_stockpile_distance: int = 2147483647
 	for candidate_stockpile in world.stockpiles:
 		var candidate_pos: Vector3i = candidate_stockpile.get_free_tile(world, carried_item.item_type)
 		if candidate_pos.y == -1:
@@ -5116,28 +5131,23 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 			target_stockpile = candidate_stockpile
 
 	if target_stockpile == null:
-		current_task = "Esperando espacio para guardar " + carried_item.name
+		current_task = "Sin espacio para guardar %s" % carried_item.name
 		return false
-
 	if best_stockpile_distance > 1 or target_drop_pos.y != tile_pos.y:
+		current_task = "Llevando %s al almacén" % carried_item.name
 		_move_toward(world, target_drop_pos)
-		current_task = "Llevando " + carried_item.name + " al almacén"
-		if current_job != null:
-			current_job.state = DFJob.JobState.IN_PROGRESS
 		return false
 
 	carried_item.tile_pos = target_drop_pos
 	carried_item.carried_by_id = -1
 	carried_item.is_in_stockpile = true
 	carried_item.release_reservation(id)
-	var stored_in_container: bool = _put_item_in_container_at(world, carried_item, target_drop_pos)
+	_put_item_in_container_at(world, carried_item, target_drop_pos)
 	world.add_entity(carried_item)
 	inventory.erase(carried_item)
-	if stored_in_container:
-		add_thought("Guardó %s dentro de un cofre." % carried_item.name, 0.05)
-	else:
-		add_thought("Apiló %s en el almacén." % carried_item.name, 0.03)
-	current_task = "idle"
+	current_job.erase_meta("carried_item_id")
+	add_thought("Almacenó %s." % carried_item.name, 0.04)
+	current_task = "Recolección completada"
 	needs_display_update = true
 	return true
 
