@@ -5119,21 +5119,30 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 
 	var target_stockpile = null
 	var target_drop_pos := Vector3i(-1, -1, -1)
-	var best_stockpile_distance: int = 2147483647
+	var best_drop_path: Array = []
+	var best_path_cost: int = 2147483647
 	for candidate_stockpile in world.stockpiles:
-		var candidate_pos: Vector3i = candidate_stockpile.get_free_tile(world, carried_item.item_type)
-		if candidate_pos.y == -1:
-			continue
-		var candidate_distance: int = abs(candidate_pos.x - tile_pos.x) + abs(candidate_pos.z - tile_pos.z) + abs(candidate_pos.y - tile_pos.y) * 2
-		if candidate_distance < best_stockpile_distance:
-			best_stockpile_distance = candidate_distance
-			target_drop_pos = candidate_pos
-			target_stockpile = candidate_stockpile
+		for candidate_pos: Vector3i in candidate_stockpile.get_candidate_tiles(world, carried_item.item_type, 8):
+			var already_at_drop: bool = candidate_pos.y == tile_pos.y and _plan_distance(tile_pos, candidate_pos) <= 1
+			var candidate_path: Array = [] if already_at_drop else DFPathfinding.find_adjacent_path(world, tile_pos, candidate_pos, true)
+			if candidate_path.is_empty() and not already_at_drop:
+				continue
+			var candidate_cost: int = 0 if already_at_drop else candidate_path.size()
+			if candidate_cost < best_path_cost:
+				best_path_cost = candidate_cost
+				best_drop_path = candidate_path
+				target_drop_pos = candidate_pos
+				target_stockpile = candidate_stockpile
 
 	if target_stockpile == null:
-		current_task = "Sin espacio para guardar %s" % carried_item.name
+		current_task = "No existe almacén alcanzable para %s" % carried_item.name
 		return false
-	if best_stockpile_distance > 1 or target_drop_pos.y != tile_pos.y:
+	current_job.set_meta("drop_pos", target_drop_pos)
+	var ready_to_drop: bool = target_drop_pos.y == tile_pos.y and _plan_distance(tile_pos, target_drop_pos) <= 1
+	if not ready_to_drop:
+		if path.is_empty() or path_index >= path.size():
+			path = best_drop_path.duplicate()
+			path_index = 0
 		current_task = "Llevando %s al almacén" % carried_item.name
 		_move_toward(world, target_drop_pos)
 		return false
@@ -5146,6 +5155,7 @@ func _execute_collect_job(world, item_type_to_collect: String) -> bool:
 	world.add_entity(carried_item)
 	inventory.erase(carried_item)
 	current_job.erase_meta("carried_item_id")
+	current_job.erase_meta("drop_pos")
 	add_thought("Almacenó %s." % carried_item.name, 0.04)
 	current_task = "Recolección completada"
 	needs_display_update = true
