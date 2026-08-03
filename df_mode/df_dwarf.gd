@@ -3149,6 +3149,12 @@ func _pick_up_job(world, jobs: Array) -> void:
 		# Restricción estricta de profesión
 		if j.job_type == DFJob.JobType.CHOP_TREE and profession != Profession.WOODCUTTER:
 			continue
+		# Recoger madera es parte del oficio del leñador. Antes quedaba como
+		# transporte genérico y cualquier profesión, incluso un minero, la tomaba.
+		if j.job_type == DFJob.JobType.COLLECT_WOOD and profession != Profession.WOODCUTTER:
+			continue
+		if j.job_type == DFJob.JobType.COLLECT_STONE and profession != Profession.MINER and profession != Profession.MASON:
+			continue
 		if j.job_type == DFJob.JobType.DIG and profession != Profession.MINER:
 			continue
 		if j.job_type == DFJob.JobType.HUNT and profession != Profession.HUNTER:
@@ -3252,8 +3258,8 @@ func _move_toward(world, target: Vector3i) -> void:
 		path_index = 0
 		stuck_counter = 0
 		path_replan_count += 1
-		if path_replan_count < 3:
-			current_task = "Buscando una ruta alternativa"
+		if path_replan_count < 2:
+			current_task = "Recalculando ruta (1/2)"
 			return
 		path_replan_count = 0
 		if preferred_bed.x >= 0 and target == preferred_bed:
@@ -3266,12 +3272,12 @@ func _move_toward(world, target: Vector3i) -> void:
 		var abandoned_workshop: bool = operating_workshop != null
 		var abandoned_plan: bool = not autonomous_plan.is_empty()
 		if abandoned_job:
-			_cancel_current_job("ruta bloqueada después de tres intentos")
+			_cancel_current_job("destino inaccesible después de dos intentos")
 		if abandoned_workshop:
 			operating_workshop.unassign_dwarf()
 			operating_workshop = null
 		if abandoned_plan:
-			DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada después de tres intentos")
+			DFAutonomousPlan.fail_step(autonomous_plan, "Destino inaccesible después de dos intentos")
 		if not abandoned_job and not abandoned_workshop and not abandoned_plan:
 			current_task = "Sin ruta accesible"
 		return
@@ -3280,8 +3286,24 @@ func _move_toward(world, target: Vector3i) -> void:
 		path = DFPathfinding.find_path(world, tile_pos, target, true)
 		path_index = 0
 		if path.is_empty():
-			# No cancelar el trabajo al primer fallo de pathfinding.
-			# stuck_counter (>5) se encargara si el enano lleva mucho tiempo atascado.
+			# Una búsqueda sin ruta también es un intento fallido. Antes no sumaba
+			# nada y el actor podía mostrar "ruta alternativa" durante minutos.
+			path_replan_count += 1
+			if path_replan_count < 2:
+				current_task = "Recalculando ruta (1/2)"
+				return
+			path_replan_count = 0
+			if current_job != null:
+				_cancel_current_job("destino inaccesible")
+			elif operating_workshop != null:
+				operating_workshop.unassign_dwarf()
+				operating_workshop = null
+				current_task = "Taller inaccesible"
+			elif not autonomous_plan.is_empty():
+				DFAutonomousPlan.fail_step(autonomous_plan, "Destino inaccesible")
+				current_task = "Meta inaccesible"
+			else:
+				current_task = "Destino inaccesible"
 			return
 
 	# Path smoothing: skip unnecessary intermediate steps
@@ -4058,38 +4080,9 @@ func tick_autonomous_survival(world) -> void:
 						_move_toward(world, target_food.tile_pos)
 					return
 
-	# Si no hay nada que hacer, estudiar o buscar maestros (Curiosidad) antes de merodear
-	var is_sleep_time_survival = game_hour >= 22.0 or game_hour < 5.0
-	if not is_sleep_time_survival:
-		if preferred_study_skill < 0:
-			preferred_study_skill = randi() % 7
-			
-		var master = _find_nearby_master_for_skill(world, preferred_study_skill)
-		if master != null:
-			var dist_2939 = abs(tile_pos.x - master.tile_pos.x) + abs(tile_pos.z - master.tile_pos.z)
-			if dist_2939 > 1:
-				_move_toward(world, master.tile_pos)
-				current_task = "Siguiendo a %s (Aprendiz)" % master.name
-			else:
-				current_task = "Estudiando de %s" % master.name
-				add_skill_xp(preferred_study_skill, 5)
-				if randf() < 0.02:
-					add_thought("Aprendió técnicas avanzadas observando a %s." % master.name, 0.02)
-					if get_skill_level(preferred_study_skill) >= master.get_skill_level(preferred_study_skill):
-						preferred_study_skill = -1
-			return
-		else:
-			# Estudiar de forma autodidacta en su cabaña
-			if preferred_bed.x >= 0:
-				var dist_2954 = abs(tile_pos.x - preferred_bed.x) + abs(tile_pos.z - preferred_bed.z)
-				if dist_2954 > 0:
-					_move_toward(world, preferred_bed)
-					current_task = "Yendo a su cabaña a estudiar"
-				else:
-					current_task = "Estudiando de forma autodidacta"
-					add_skill_xp(preferred_study_skill, 1)
-				return
-
+	# La educación tiene una única autoridad: DFEducationSystem. Este actor no
+	# inventa maestros ni recibe experiencia por mostrar una etiqueta de estudio.
+	# Si no hay trabajo, necesidad o lección real, descansa/merodea.
 	# Si no se puede hacer nada de lo anterior, merodear libremente
 	_idle_wander(world)
 
