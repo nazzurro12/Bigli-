@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PATHFINDING = (ROOT / "df_mode" / "df_pathfinding.gd").read_text(encoding="utf-8")
 DWARF = (ROOT / "df_mode" / "df_dwarf.gd").read_text(encoding="utf-8")
 JOB = (ROOT / "df_mode" / "df_job.gd").read_text(encoding="utf-8")
+MAIN = (ROOT / "df_mode" / "df_main.gd").read_text(encoding="utf-8")
 WORKSHOP = (ROOT / "df_mode" / "df_workshop.gd").read_text(encoding="utf-8")
 
 
@@ -61,6 +62,18 @@ class LaborPipelineContracts(unittest.TestCase):
         self.assertIn("var bed_target: int = living_count", DWARF)
         self.assertIn("var chair_target: int = living_count", DWARF)
         self.assertIn('carpentry.queue_recipe("wood_table")', DWARF)
+
+    def test_initial_collection_jobs_never_use_random_coordinates(self):
+        self.assertNotIn("var haul_pos = Vector3i", MAIN)
+        self.assertIn('_queue_resource_collection_jobs("wood"', MAIN)
+        self.assertIn('_queue_resource_collection_jobs("stone"', MAIN)
+
+    def test_collection_follows_the_exact_target_item_id(self):
+        self.assertIn("func _find_collection_target_by_id", DWARF)
+        self.assertIn('current_job.get_meta("target_item_id", -1)', DWARF)
+        self.assertIn('current_job.set_meta("carried_item_id", target_item.id)', DWARF)
+        self.assertIn("world.add_entity(carried_item)", DWARF)
+        self.assertIn("inventory.erase(carried_item)", DWARF)
 
 
 if __name__ == "__main__":
