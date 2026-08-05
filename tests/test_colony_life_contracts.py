@@ -12,13 +12,13 @@ RENDERER = (ROOT / "df_mode" / "df_renderer.gd").read_text(encoding="utf-8")
 class ColonyLifeContracts(unittest.TestCase):
     def test_wood_collection_is_restricted_to_woodcutters(self):
         self.assertIn(
-            "j.job_type == DFJob.JobType.COLLECT_WOOD and profession != Profession.WOODCUTTER",
+            "DFJob.JobType.CHOP_TREE, DFJob.JobType.COLLECT_WOOD:",
             DWARF,
         )
 
     def test_unreachable_paths_have_a_bounded_retry(self):
         self.assertIn('current_task = "Recalculando ruta (1/2)"', DWARF)
-        self.assertIn('_cancel_current_job("destino inaccesible")', DWARF)
+        self.assertIn('_release_current_job(world, "destino inaccesible")', DWARF)
         self.assertNotIn('current_task = "Buscando una ruta alternativa"', DWARF)
 
     def test_dwarf_idle_fallback_does_not_grant_fake_study_xp(self):
