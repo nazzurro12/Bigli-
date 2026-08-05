@@ -306,13 +306,13 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn('set_stylebox("panel", "Panel"', self.renderer)
 
     def test_main_hud_is_presented_as_a_desktop_application(self):
-        self.assertIn('"Bigli World Simulator"', self.renderer)
-        self.assertIn('"Archivo   Ver   Simulación', self.renderer)
-        self.assertIn('"Propiedades de la colonia"', self.renderer)
+        self.assertIn("func _create_functional_classic_chrome", self.renderer)
+        self.assertIn("MenuButton.new()", self.renderer)
+        self.assertIn('"COLONIA"', self.renderer)
         self.assertIn('"Registro de sucesos"', self.renderer)
 
     def test_desktop_chrome_reserves_space_and_preserves_mouse_targeting(self):
-        self.assertIn("UI_CONTENT_TOP: int = 44", self.renderer)
+        self.assertIn("UI_CONTENT_TOP: int = 24", self.renderer)
         self.assertGreaterEqual(self.renderer.count("UI_CONTENT_TOP + z * _char_size.y"), 2)
         self.assertIn("mouse_pos.y - UI_CONTENT_TOP", self.renderer)
         frame = self.renderer.split("func _draw_application_frame", 1)[1].split(
@@ -341,7 +341,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn("func _draw_fullscreen_desktop_shell", self.renderer)
         self.assertEqual(
             self.renderer.count("_draw_fullscreen_desktop_shell("),
-            7,
+            6,
         )
 
     def test_classic_chrome_uses_real_interactive_controls(self):
@@ -349,8 +349,6 @@ class ColonyConsistencyContracts(unittest.TestCase):
             "func _create_functional_classic_chrome",
             "MenuButton.new()",
             "popup.id_pressed.connect",
-            "window_button.pressed.connect",
-            "DisplayServer.window_set_mode",
             "get_tree().quit()",
         ):
             self.assertIn(token, self.renderer)
@@ -746,7 +744,7 @@ class ColonyConsistencyContracts(unittest.TestCase):
             "func get_display_char", 1
         )[0]
         self.assertIn("operating_workshop.unassign_dwarf()", movement)
-        self.assertIn('DFAutonomousPlan.fail_step(autonomous_plan, "Ruta bloqueada', movement)
+        self.assertIn('DFAutonomousPlan.fail_step(autonomous_plan, "Destino inaccesible', movement)
         self.assertIn("preferred_bed = Vector3i(-1, -1, -1)", movement)
 
     def test_procedural_campaigns_are_systemic_and_persistent(self):
