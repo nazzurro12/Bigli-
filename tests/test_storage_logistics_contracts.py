@@ -32,24 +32,24 @@ class StorageLogisticsContracts(unittest.TestCase):
 
     def test_collectors_reserve_one_physical_item(self):
         collect = self.dwarf.split("func _execute_collect_job", 1)[1].split("\nfunc ", 1)[0]
-        self.assertIn("world_item.is_reserved_for_other(id, current_tick)", collect)
-        self.assertIn("target_item.reserve_for(id, current_tick + 600)", collect)
+        self.assertIn("loose_item.is_reserved_for_other(id, current_tick)", collect)
+        self.assertIn("target_item.reserve_for(id, current_tick + 180)", collect)
         self.assertIn("target_item.release_reservation(id)", collect)
         self.assertIn("target_item.carried_by_id = id", collect)
         self.assertLess(collect.index("world.remove_entity(target_item)"), collect.index("inventory.append(target_item)"))
 
     def test_collectors_do_not_start_without_storage(self):
         collect = self.dwarf.split("func _execute_collect_job", 1)[1].split("\nfunc ", 1)[0]
-        self.assertIn('get_free_tile(world, item_type_to_collect)', collect)
-        self.assertIn('_cancel_current_job("no hay espacio en ningún almacén")', collect)
+        self.assertIn('candidate_stockpile.get_candidate_tiles(world, carried_item.item_type, 8)', collect)
+        self.assertIn('current_task = "No existe almacén alcanzable para %s"', collect)
         self.assertNotIn("por falta de espacio", collect)
         self.assertNotIn("Dejo " , collect)
 
     def test_collection_deposit_reports_container_or_stockpile(self):
         collect = self.dwarf.split("func _execute_collect_job", 1)[1].split("\nfunc ", 1)[0]
-        self.assertIn("stored_in_container: bool = _put_item_in_container_at", collect)
-        self.assertIn("dentro de un cofre", collect)
-        self.assertIn("Apiló %s en el almacén", collect)
+        self.assertIn("_put_item_in_container_at(world, carried_item, target_drop_pos)", collect)
+        self.assertIn("carried_item.is_in_stockpile = true", collect)
+        self.assertIn("add_thought("Almacenó %s."", collect)
 
     def test_food_is_not_dropped_when_a_chest_fills_during_transit(self):
         store = self.dwarf.split("func _execute_store_in_container_job", 1)[1].split("\nfunc ", 1)[0]
