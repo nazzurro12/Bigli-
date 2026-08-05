@@ -27,7 +27,7 @@ class PossessionConsequenceContracts(unittest.TestCase):
             "last_possession_event_id",
         )
         for field in required_fields:
-            self.assertRegex(self.dwarf, rf"var\\s+{field}\\s*:")
+            self.assertRegex(self.dwarf, rf"var\s+{field}\s*:")
 
     def test_events_use_persistent_world_time(self):
         self.assertIn('"world_minute": _world_minute()', self.source)
