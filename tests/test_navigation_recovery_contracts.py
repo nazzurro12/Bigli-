@@ -13,11 +13,11 @@ class NavigationRecoveryContracts(unittest.TestCase):
     def test_short_traffic_jams_replan_before_abandoning_work(self):
         move = self.dwarf.split("func _move_toward", 1)[1].split("\nfunc ", 1)[0]
         self.assertIn("path_replan_count += 1", move)
-        self.assertIn("if path_replan_count < 3:", move)
-        self.assertIn('current_task = "Buscando una ruta alternativa"', move)
+        self.assertIn("if path_replan_count < 2:", move)
+        self.assertIn('current_task = "Recalculando ruta (1/2)"', move)
         self.assertLess(
-            move.index("if path_replan_count < 3:"),
-            move.index('_cancel_current_job("ruta bloqueada después de tres intentos")'),
+            move.index("if path_replan_count < 2:"),
+            move.index('_release_current_job(world, "destino inaccesible después de dos intentos")'),
         )
 
     def test_successful_movement_resets_replan_failures(self):
@@ -28,7 +28,7 @@ class NavigationRecoveryContracts(unittest.TestCase):
     def test_impossible_job_keeps_a_visible_failure_reason(self):
         move = self.dwarf.split("func _move_toward", 1)[1].split("\nfunc ", 1)[0]
         self.assertIn("var abandoned_job: bool = current_job != null", move)
-        self.assertIn('_cancel_current_job("ruta bloqueada después de tres intentos")', move)
+        self.assertIn('_release_current_job(world, "destino inaccesible después de dos intentos")', move)
         final_fallback = move.split("if not abandoned_job and not abandoned_workshop and not abandoned_plan:", 1)[1]
         self.assertIn('current_task = "Sin ruta accesible"', final_fallback)
 
