@@ -49,7 +49,7 @@ class StorageLogisticsContracts(unittest.TestCase):
         collect = self.dwarf.split("func _execute_collect_job", 1)[1].split("\nfunc ", 1)[0]
         self.assertIn("_put_item_in_container_at(world, carried_item, target_drop_pos)", collect)
         self.assertIn("carried_item.is_in_stockpile = true", collect)
-        self.assertIn("add_thought("Almacenó %s."", collect)
+        self.assertIn('add_thought("Almacenó %s."', collect)
 
     def test_food_is_not_dropped_when_a_chest_fills_during_transit(self):
         store = self.dwarf.split("func _execute_store_in_container_job", 1)[1].split("\nfunc ", 1)[0]
