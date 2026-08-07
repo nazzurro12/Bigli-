@@ -3749,10 +3749,11 @@ func _marry(partner) -> void:
 	partner.marriage_counter = 0
 	needs[Need.FAMILY] = 0.0
 	partner.needs[Need.FAMILY] = 0.0
-	if preferred_bed.x < 0 and partner.preferred_bed.x >= 0:
-		preferred_bed = partner.preferred_bed
-	elif partner.preferred_bed.x < 0 and preferred_bed.x >= 0:
-		partner.preferred_bed = preferred_bed
+	# Una pareja comparte hogar, nunca la misma cama física. Dos camas
+	# adyacentes representan la unidad matrimonial y conservan ocupación 1:1.
+	var shared_household: int = household_id if household_id >= 0 else id
+	household_id = shared_household
+	partner.household_id = shared_household
 
 func _try_conceive(world) -> void:
 	if gender != "Female":

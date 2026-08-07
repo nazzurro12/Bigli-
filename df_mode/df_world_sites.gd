@@ -404,14 +404,21 @@ static func _materialize_site(world: Object, world_gen: Object, site: Dictionary
 	var structure_positions: Dictionary = {}
 	var home_positions: Dictionary = {}
 	var bed_positions: Dictionary = {}
+	var residents_per_home: Dictionary = {}
+	for resident_variant in site.get("residents", []):
+		if resident_variant is Dictionary:
+			var resident_home_id: int = int(resident_variant.get("home_structure_id", -1))
+			residents_per_home[resident_home_id] = int(residents_per_home.get(resident_home_id, 0)) + 1
 	for structure_variant in structures:
 		if not structure_variant is Dictionary:
 			continue
 		var structure: Dictionary = structure_variant
+		structure = structure.duplicate(true)
 		var offset_variant: Variant = structure.get("offset", [0, 0])
 		var offset_data: Array = offset_variant if offset_variant is Array else [0, 0]
 		var origin := center + Vector2i(int(offset_data[0]), int(offset_data[1]))
 		var structure_id: int = int(structure.get("structure_id", -1))
+		structure["resident_capacity"] = int(residents_per_home.get(structure_id, 1))
 		var structure_type: String = str(structure.get("type", "house"))
 		var result: Dictionary = {}
 		match structure_type:
@@ -431,8 +438,10 @@ static func _materialize_site(world: Object, world_gen: Object, site: Dictionary
 			structure_positions[structure_id] = result["center"]
 		if result.has("home"):
 			home_positions[structure_id] = result["home"]
-		if result.has("bed"):
-			bed_positions[structure_id] = result["bed"]
+		if result.has("beds"):
+			bed_positions[structure_id] = result["beds"]
+		elif result.has("bed"):
+			bed_positions[structure_id] = [result["bed"]]
 
 	if is_capital:
 		_build_perimeter_wall(world, center, 44, is_ruin, rng, site_id)
@@ -550,23 +559,36 @@ static func _build_house_from_blueprint(world: Object, site_id: int, structure: 
 	var door_variant: Variant = shell.get("door", _surface_pos(world, origin.x + int(width / 2), origin.y + depth - 1))
 	var door_pos: Vector3i = door_variant if door_variant is Vector3i else _surface_pos(world, origin.x + int(width / 2), origin.y + depth - 1)
 	var bed_pos := _surface_pos(world, origin.x + 2, origin.y + 2)
+	var bed_count: int = maxi(1, int(structure.get("resident_capacity", 1)))
+	var beds: Array[Vector3i] = []
 	var home_variant: Variant = shell.get("center", _surface_pos(world, origin.x + int(width / 2), origin.y + int(depth / 2)))
 	var home_pos: Vector3i = home_variant if home_variant is Vector3i else _surface_pos(world, origin.x + int(width / 2), origin.y + int(depth / 2))
 	if not ruined:
-		var bedroom := DFBuilding.new(DFBuilding.BuildingType.BEDROOM, bed_pos)
-		bedroom.name = "Dormitorio familiar"
-		world.buildings.append(bedroom)
-		var bed_item: Variant = world._spawn_item(bed_pos, "Cama de Madera", "furniture", DFWorld.MatType.WOOD, "b", Color("#8B6914"))
-		if bed_item is DFItem:
-			bed_item.is_bed = true
-			bed_item.set_meta("owner_family_id", owner_family_id)
+		for bed_index in range(bed_count):
+			# Orden por filas: las dos primeras camas quedan juntas y forman la
+			# unidad matrimonial sin compartir una misma casilla ni una misma cama.
+			var interior_width: int = maxi(1, width - 4)
+			var local_x: int = 2 + (bed_index % interior_width)
+			var local_z: int = 2 + int(bed_index / interior_width)
+			if local_z >= depth - 2:
+				break
+			var resident_bed_pos := _surface_pos(world, origin.x + local_x, origin.y + local_z)
+			var bedroom := DFBuilding.new(DFBuilding.BuildingType.BEDROOM, resident_bed_pos)
+			bedroom.name = "Dormitorio familiar" if bed_count > 1 else "Dormitorio individual"
+			world.buildings.append(bedroom)
+			var bed_item: Variant = world._spawn_item(resident_bed_pos, "Cama de Madera", "furniture", DFWorld.MatType.WOOD, "b", Color("#8B6914"))
+			if bed_item is DFItem:
+				bed_item.is_bed = true
+				bed_item.set_meta("owner_family_id", owner_family_id)
+				bed_item.set_meta("bed_slot", bed_index)
+			beds.append(resident_bed_pos)
 		var chest_pos := _surface_pos(world, origin.x + width - 3, origin.y + 2)
 		var chest := DFBuilding.new(DFBuilding.BuildingType.FOOD_STORE, chest_pos)
 		chest.name = "Baúl familiar"
 		world.buildings.append(chest)
 		world._spawn_item(_surface_pos(world, origin.x + 2, origin.y + depth - 3), "Mesa de Madera", "furniture", DFWorld.MatType.WOOD, "T", Color("#9A7042"))
 		world._spawn_item(door_pos, "Puerta de Madera", "door", DFWorld.MatType.WOOD, "+", Color("#8B5A2B"))
-	return {"center": home_pos, "home": home_pos, "bed": bed_pos, "door": door_pos}
+	return {"center": home_pos, "home": home_pos, "bed": bed_pos, "beds": beds, "door": door_pos}
 
 static func _build_public_structure(world: Object, site_id: int, structure: Dictionary, origin: Vector2i, ruined: bool, rng: RandomNumberGenerator) -> Dictionary:
 	var structure_type: String = str(structure.get("type", "public"))
@@ -760,6 +782,7 @@ static func _spawn_site_residents(
 			var family_data: Dictionary = family_variant
 			families_by_id[int(family_data.get("family_id", -1))] = family_data
 	var created_by_id: Dictionary = {}
+	var next_bed_by_home: Dictionary = {}
 	var leisure_pos := _surface_pos(world, plaza_center.x, plaza_center.y)
 	# Todos los habitantes del plano local se materializan como agentes persistentes.
 	# El rendimiento se controla distribuyendo sus ticks, no eliminando personas.
@@ -772,7 +795,13 @@ static func _spawn_site_residents(
 		var resident_id: int = int(resident_data.get("resident_id", -1))
 		var home_structure: int = int(resident_data.get("home_structure_id", -1))
 		var work_structure: int = int(resident_data.get("work_structure_id", -1))
-		var spawn_variant: Variant = home_positions.get(home_structure, leisure_pos)
+		var home_beds_variant: Variant = bed_positions.get(home_structure, [])
+		var home_beds: Array = home_beds_variant if home_beds_variant is Array else []
+		var next_bed_index: int = int(next_bed_by_home.get(home_structure, 0))
+		var assigned_bed: Vector3i = home_beds[next_bed_index] if next_bed_index < home_beds.size() else Vector3i(-1, -1, -1)
+		if assigned_bed.x >= 0:
+			next_bed_by_home[home_structure] = next_bed_index + 1
+		var spawn_variant: Variant = assigned_bed if assigned_bed.x >= 0 else home_positions.get(home_structure, leisure_pos)
 		var spawn_pos: Vector3i = spawn_variant if spawn_variant is Vector3i else leisure_pos
 		var resident := DFDwarf.new(spawn_pos, str(resident_data.get("name", "Habitante")))
 		resident.id = resident_id
@@ -798,9 +827,12 @@ static func _spawn_site_residents(
 		resident.settlement_leisure_position = leisure_pos
 		resident.settlement_work_label = _work_label(str(resident_data.get("profession", "citizen")))
 		resident.territory_home = resident.settlement_home_position
-		var bed_variant: Variant = bed_positions.get(home_structure, resident.settlement_home_position)
-		resident.preferred_bed = bed_variant if bed_variant is Vector3i else resident.settlement_home_position
-		resident.claimed_bed = resident.preferred_bed
+		resident.preferred_bed = assigned_bed
+		resident.claimed_bed = assigned_bed
+		resident.household_id = resident.settlement_family_id if resident.settlement_family_id >= 0 else resident.id
+		if assigned_bed.x < 0:
+			resident.needs[DFDwarf.Need.SHELTER] = 1.0
+			resident.current_task = "Sin vivienda: buscando una cama libre"
 		resident.family["spouse"] = -1
 		resident.family["children"] = []
 		resident.worships = "La tradición de %s" % str(site.get("name", "su pueblo"))

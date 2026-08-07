@@ -2743,8 +2743,17 @@ func _build_initial_settlement(center: Vector3i) -> void:
 		if i < settlement_dwarves.size():
 			var assigned_resident = settlement_dwarves[i]
 			assigned_resident.preferred_bed = bed_offset_pos
-			if world.is_water(assigned_resident.tile_pos) or world.is_blocked(assigned_resident.tile_pos):
-				assigned_resident.tile_pos = bed_offset_pos
+			assigned_resident.claimed_bed = bed_offset_pos
+			assigned_resident.settlement_home_position = bed_offset_pos
+			assigned_resident.territory_home = bed_offset_pos
+			assigned_resident.household_id = assigned_resident.id
+			assigned_resident.path.clear()
+			assigned_resident.path_index = 0
+			assigned_resident.current_task = "Comenzando el día en su hogar"
+			# Las casas se construyen después de crear la población. Trasladar siempre
+			# al residente evita el antiguo montón inmóvil de la plaza y mantiene
+			# sincronizado el índice espacial del mundo.
+			world.move_entity(assigned_resident, bed_offset_pos)
 			
 		var door_offset_pos = bpos + Vector3i(template.door.x, 0, template.door.y)
 		world._spawn_item(door_offset_pos, "Puerta de Madera", "door", 0, "p", Color("#8B5A2B"))
