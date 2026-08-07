@@ -74,7 +74,10 @@ class RuntimePerformanceContracts(unittest.TestCase):
         ):
             body = self.dwarf.split("func " + method, 1)[1].split("\nfunc ", 1)[0]
             self.assertNotIn("in world.entities:", body, method)
-            self.assertIn("world.dwarves", body, method)
+            if method in ("_find_nearby_master_for_skill", "_try_socialize", "tick_social"):
+                self.assertIn("world.get_dwarves_near", body, method)
+            else:
+                self.assertIn("world.dwarves", body, method)
 
     def test_hunting_uses_creature_and_item_collections(self):
         hunt = self.dwarf.split("func _execute_hunt_job", 1)[1].split("\nfunc ", 1)[0]

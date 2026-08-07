@@ -55,7 +55,8 @@ const SEASON_ENUM_MAP = {"Spring": DFWorld.Season.SPRING, "Summer": DFWorld.Seas
 # entre varios ticks para evitar picos, sin convertirlos en estadísticas abstractas.
 # Los residentes de ciudades lejanas conservan toda su lógica, pero se distribuyen
 # en fases para que una ciudad poblada no congele un fotograma completo.
-const SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 12
+# Limita el lote lejano a ~25 agentes con una población de 10 000.
+const SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 384
 
 const HOUSE_TEMPLATES = [
 	# Casa 0: Cabaña Estándar Cuadrada (3x3)

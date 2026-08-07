@@ -1,4 +1,5 @@
 import pathlib
+import re
 import unittest
 
 
@@ -387,7 +388,9 @@ class ColonyConsistencyContracts(unittest.TestCase):
         self.assertIn('set_meta("settlement_minute_pending", true)', tick)
         self.assertIn("resident_minute_due", tick)
         self.assertNotIn("if minute_ticked or posmod(_absolute_simulation_tick", tick)
-        self.assertIn("SETTLEMENT_RESIDENT_TICK_BUCKETS: int = 12", self.main)
+        buckets = re.search(r"SETTLEMENT_RESIDENT_TICK_BUCKETS: int = (\d+)", self.main)
+        self.assertIsNotNone(buckets)
+        self.assertGreaterEqual(int(buckets.group(1)), 256)
 
     def test_planet_frontier_uses_unbounded_signed_regions(self):
         self.assertIn("return region + direction", self.planet)

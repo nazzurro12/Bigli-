@@ -411,6 +411,23 @@ func get_dwarf_by_id(dwarf_id: int):
 			return e
 	return null
 
+func get_dwarves_near(pos: Vector3i, radius: int = 1, exclude = null) -> Array:
+	# Consulta la cuadrícula física; no recorre toda la población del planeta.
+	_rebuild_grid_if_needed()
+	var nearby: Array = []
+	for dz in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			if abs(dx) + abs(dz) > radius:
+				continue
+			var candidate_pos := Vector3i(pos.x + dx, pos.y, pos.z + dz)
+			var key := "%d,%d,%d" % [candidate_pos.x, candidate_pos.y, candidate_pos.z]
+			for entity_value: Variant in _entity_grid.get(key, []):
+				if entity_value == exclude or not (entity_value is DFDwarf):
+					continue
+				if entity_value.is_alive:
+					nearby.append(entity_value)
+	return nearby
+
 func get_hostile_entities_at(pos: Vector3i, exclude_id: int = -1) -> Array:
 	_rebuild_grid_if_needed()
 	var result = []

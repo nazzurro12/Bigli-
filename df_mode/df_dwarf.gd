@@ -1687,16 +1687,13 @@ func _find_nearby_master_for_skill(world, skill_id: int):
 	var best_master = null
 	var best_level = my_level
 	var nearest_dist = 15.0
-	for e in world.dwarves:
-		var is_dwarf = e.get("creature_type") == "dwarf"
-		var is_alive_check = e.get("is_alive")
-		if is_dwarf and e != self and (is_alive_check == null or is_alive_check == true):
-			var lvl = e.get_skill_level(skill_id) if e.has_method("get_skill_level") else 0
-			if lvl > best_level:
-				var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
-				if d < nearest_dist:
-					nearest_dist = d
-					best_master = e
+	for e in world.get_dwarves_near(tile_pos, 14, self):
+		var lvl = e.get_skill_level(skill_id) if e.has_method("get_skill_level") else 0
+		if lvl > best_level:
+			var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
+			if d < nearest_dist:
+				nearest_dist = d
+				best_master = e
 	return best_master
 
 func _find_nearby_building_type(world, b_type: int) -> Vector3i:
@@ -1716,14 +1713,9 @@ func _find_nearby_building_type(world, b_type: int) -> Vector3i:
 
 func _try_socialize(world) -> bool:
 	var target = null
-	for e in world.dwarves:
-		var is_dwarf = e.get("creature_type") == "dwarf"
-		var is_alive_check = e.get("is_alive")
-		if is_dwarf and e != self and (is_alive_check == null or is_alive_check == true):
-			var d = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
-			if d <= 2:
-				target = e
-				break
+	for e in world.get_dwarves_near(tile_pos, 2, self):
+		target = e
+		break
 
 	if target != null:
 		var relation = get_relationship_value(target.id)
@@ -2478,13 +2470,8 @@ func tick_social(world) -> void:
 	_decay_social_beliefs()
 	if current_task != "idle": return
 	if randi() % 30 != 0: return
-	for e in world.dwarves:
-		if e == self: continue
-		var is_dwarf = e.get("creature_type") == "dwarf"
-		var e_alive = e.get("is_alive")
-		if not is_dwarf or e_alive == false: continue
-		var dist = abs(e.tile_pos.x - tile_pos.x) + abs(e.tile_pos.z - tile_pos.z)
-		if dist <= 1 and e.tile_pos.y == tile_pos.y:
+	for e in world.get_dwarves_near(tile_pos, 1, self):
+		if e.tile_pos.y == tile_pos.y:
 			current_task = "Socializando"
 			needs_display_update = true
 			needs[Need.SOCIAL] = maxf(0.0, needs[Need.SOCIAL] - 0.2)
