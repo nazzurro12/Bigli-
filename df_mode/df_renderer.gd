@@ -453,7 +453,8 @@ func _refresh_management_pages() -> void:
 	var thirsty: int = 0
 	var sick: int = 0
 	var stressed: int = 0
-	var inhabitant_lines: Array[String] = ["HABITANTES"]
+	var inhabitant_lines: Array[String] = ["HABITANTES — ACCIONES COMPROBABLES"]
+	var active_lines: Array[String] = []
 	for dwarf_value in world.dwarves:
 		var dwarf = dwarf_value
 		if not dwarf.is_alive:
@@ -463,12 +464,15 @@ func _refresh_management_pages() -> void:
 		thirsty += 1 if float(dwarf.thirst) > 0.65 else 0
 		sick += 1 if int(dwarf.disease_phase) != 0 else 0
 		stressed += 1 if float(dwarf.stress) > 0.65 else 0
-		if inhabitant_lines.size() <= 24:
+		if inhabitant_lines.size() <= 25:
 			var inhabitant_name: String = str(dwarf.get_entity_name()) if dwarf.has_method("get_entity_name") else str(dwarf.get("name"))
-			var inhabitant_task: String = str(dwarf.get("current_task"))
-			inhabitant_lines.append("%-18s  %-12s  ánimo %3d%%" % [inhabitant_name, inhabitant_task, int((1.0 - float(dwarf.stress)) * 100.0)])
+			var activity: Dictionary = dwarf.get_activity_report() if dwarf.has_method("get_activity_report") else {"activity": str(dwarf.get("current_task")), "phase": "desconocida", "target": "—", "evidence": "sin telemetría", "progress": 0}
+			inhabitant_lines.append("%s — %s [%s]" % [inhabitant_name, str(activity["activity"]), str(activity["phase"])])
+			inhabitant_lines.append("  objetivo %s · %s" % [str(activity["target"]), str(activity["evidence"])])
+			if str(activity["phase"]) not in ["disponible", "descanso"] and active_lines.size() < 16:
+				active_lines.append("%s: %s → %s (%s)" % [inhabitant_name, str(activity["phase"]), str(activity["target"]), str(activity["evidence"])])
 	management_pages[0].text = "\n".join(inhabitant_lines) + "\n\nVivos: %d  Con hambre: %d  Con sed: %d" % [living, hungry, thirsty]
-	management_pages[1].text = "TRABAJOS\n\nActivos: %d\nPendientes: %d\n\nLa cola se actualiza sin recorrerla cada fotograma." % [_job_active, _job_pending]
+	management_pages[1].text = "TRABAJOS FÍSICOS\n\nActivos: %d\nPendientes: %d\n\n%s" % [_job_active, _job_pending, "\n".join(active_lines) if not active_lines.is_empty() else "Ningún trabajo físico activo."]
 	var stored_items: int = 0
 	var loose_items: int = 0
 	for item_value in world.items:
