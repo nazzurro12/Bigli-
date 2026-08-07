@@ -1184,6 +1184,12 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 	var is_sleep_time = (hour >= 22 or hour < 6)
 	var is_recreation_time = (hour >= 14 and hour < 22)
 	var is_meal_time = (hour == 12 or hour == 6 or hour == 18)
+	# Buscar trabajo implica ordenar candidatos y probar rutas. Si cientos de
+	# habitantes ociosos lo hacen en el mismo tick, la IA se convierte en una
+	# estampida de A*. La cola se consulta por turnos deterministas; una vez que
+	# alguien obtiene trabajo, movimiento y ejecución continúan en cada tick.
+	var simulation_tick: int = int(world.get_meta("simulation_tick_total", 0))
+	var job_search_due: bool = posmod(simulation_tick + id, 12) == 0
 
 	# PRIORIDAD 1: Necesidades de supervivencia críticas
 	if bladder_fill >= 0.75 or bowel_fill >= 0.75:
@@ -1217,7 +1223,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		_work_on_job(world)
 		if current_job == null and operating_workshop == null:
 			if not is_sleep_time and not is_recreation_time:
-				if not jobs.is_empty():
+				if job_search_due and not jobs.is_empty():
 					_pick_up_job(world, jobs)
 					if current_job != null:
 						_work_on_job(world)
@@ -1229,7 +1235,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 
 	# PRIORIDAD 5: Buscar trabajo disponible en horas laborales
 	if not is_sleep_time and not is_recreation_time and current_job == null and operating_workshop == null:
-		if not jobs.is_empty():
+		if job_search_due and not jobs.is_empty():
 			_pick_up_job(world, jobs)
 			if current_job != null:
 				_work_on_job(world)
@@ -1289,7 +1295,6 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		# Las necesidades críticas y los trabajos siguen respondiendo cada tick,
 		# pero las búsquedas ambientales costosas se reparten entre habitantes.
 		# Si ya existe una ruta, el movimiento continúa sin volver a decidir.
-		var simulation_tick: int = int(world.get_meta("simulation_tick_total", 0))
 		var autonomous_decision_due: bool = posmod(simulation_tick + id, 12) == 0
 		if autonomous_decision_due:
 			tick_autonomous_survival(world)
