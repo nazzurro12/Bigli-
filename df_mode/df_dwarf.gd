@@ -3789,7 +3789,6 @@ func get_task_string() -> String:
 	if current_job != null:
 		return current_job.get_description()
 	if current_task == "idle" or current_task == "":
-		var titles = ["Descansando", "Ocioso", "Disponible", "Sin tarea"]
 		var moods = {
 			MoodState.TANTRUM: " furioso", MoodState.BESERK: " berserker",
 			MoodState.MELANCHOLY: " melancólico", MoodState.STRANGE_MOOD: " inspirado",
@@ -3797,8 +3796,71 @@ func get_task_string() -> String:
 			MoodState.SECRETIVE_MOOD: " secreto"
 		}
 		var mood_suffix = moods.get(mood, "")
-		return "%s%s" % [titles[randi() % titles.size()], mood_suffix]
+		return "Disponible%s" % mood_suffix
 	return current_task.capitalize()
+
+func get_activity_report() -> Dictionary:
+	var report: Dictionary = {
+		"activity": get_task_string(),
+		"phase": "disponible",
+		"target": "—",
+		"evidence": "sin acción física activa",
+		"progress": 0,
+	}
+	if is_possessed:
+		report["phase"] = "posesión"
+		report["evidence"] = "entrada directa del jugador"
+		return report
+	if is_sleeping:
+		report["phase"] = "descanso"
+		report["target"] = _format_activity_target(preferred_bed)
+		report["evidence"] = "cama reclamada" if preferred_bed.x >= 0 else "sin cama disponible"
+		return report
+	if current_job != null:
+		report["target"] = _format_activity_target(current_job.tile_pos)
+		report["progress"] = clampi(roundi(task_progress * 100.0), 0, 100)
+		var carried_id: int = int(current_job.get_meta("carried_item_id", -1))
+		var material_id: int = int(current_job.get_meta("construction_material_id", -1))
+		if task_progress > 0.0:
+			report["phase"] = "ejecutando"
+			report["evidence"] = "progreso físico %d%%" % int(report["progress"])
+		elif carried_id >= 0:
+			report["phase"] = "transportando"
+			report["evidence"] = "objeto físico ID %d en inventario" % carried_id
+		elif material_id >= 0:
+			report["phase"] = "buscando material"
+			report["evidence"] = "material reservado ID %d" % material_id
+		elif not path.is_empty() and path_index < path.size():
+			report["phase"] = "desplazándose"
+			report["evidence"] = "ruta %d/%d" % [path_index + 1, path.size()]
+		else:
+			report["phase"] = "asignado"
+			report["evidence"] = "trabajo ID %d" % current_job.get_instance_id()
+		return report
+	if operating_workshop != null:
+		report["phase"] = "taller"
+		report["target"] = _format_activity_target(operating_workshop.tile_pos)
+		report["evidence"] = "taller físico asignado"
+		return report
+	if not autonomous_plan.is_empty():
+		report["phase"] = str(autonomous_plan.get("state", "planificando"))
+		report["evidence"] = "plan autónomo persistente"
+		return report
+	if hunger > 0.65:
+		report["phase"] = "necesidad"
+		report["evidence"] = "hambre %d%%" % roundi(hunger * 100.0)
+	elif thirst > 0.65:
+		report["phase"] = "necesidad"
+		report["evidence"] = "sed %d%%" % roundi(thirst * 100.0)
+	elif fatigue > 0.70:
+		report["phase"] = "necesidad"
+		report["evidence"] = "fatiga %d%%" % roundi(fatigue * 100.0)
+	return report
+
+func _format_activity_target(target: Vector3i) -> String:
+	if target.x < 0:
+		return "—"
+	return "%d,%d,%d" % [target.x, target.y, target.z]
 
 func get_name_and_skill() -> String:
 	var prof_name = PROFESSION_NAMES.get(profession, "Aldeano")
