@@ -30,6 +30,17 @@ class LifeModelContracts(unittest.TestCase):
         for token in ("life_drives", "aspiration_progress", "status_effects", "leader_id", "household_id", "life_history", "life_decisions"):
             self.assertGreaterEqual(SAVE.count(f'"{token}"'), 2, token)
 
+    def test_settlement_identity_used_by_save_load_is_declared(self):
+        required = (
+            "settlement_site_id", "settlement_family_id", "home_structure_id",
+            "work_structure_id", "civilization_id", "religion_id",
+            "settlement_home_position", "settlement_work_position",
+            "settlement_leisure_position", "settlement_work_label",
+        )
+        for field in required:
+            self.assertRegex(DWARF, rf"var {field}(:| =)")
+            self.assertGreaterEqual(SAVE.count(f'"{field}"'), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

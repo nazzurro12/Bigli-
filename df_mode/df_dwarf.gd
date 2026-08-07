@@ -80,6 +80,16 @@ var home_z: int = 0
 # Indica si el habitante fue materializado desde un asentamiento del mapa mundial.
 # Los habitantes normales de la colonia conservan el valor false.
 var is_world_settlement_resident: bool = false
+var settlement_site_id: int = -1
+var settlement_family_id: int = -1
+var home_structure_id: int = -1
+var work_structure_id: int = -1
+var civilization_id: int = -1
+var religion_id: int = -1
+var settlement_home_position: Vector3i = Vector3i(-1, -1, -1)
+var settlement_work_position: Vector3i = Vector3i(-1, -1, -1)
+var settlement_leisure_position: Vector3i = Vector3i(-1, -1, -1)
+var settlement_work_label: String = "Trabajando"
 var is_possessed: bool = false
 var body: Object = null
 var name: String = "Urist"
