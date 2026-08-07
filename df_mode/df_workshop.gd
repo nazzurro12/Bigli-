@@ -152,8 +152,26 @@ static func get_recipes_for(ws_type: int) -> Array:
 					"time": 20,
 					"skill": "CARPENTRY",
 					"inputs": [{"material": ["wood"], "count": 3}],
-					"outputs": [{"name": "Cama de Madera", "type": "furniture", "count": 1}],
+					"outputs": [{"name": "Cama de Madera", "type": "furniture", "count": 1, "furniture": "bed"}],
 					"value": 15
+				},
+				{
+					"name": "Mesa",
+					"id": "wood_table",
+					"time": 14,
+					"skill": "CARPENTRY",
+					"inputs": [{"material": ["wood"], "count": 2}],
+					"outputs": [{"name": "Mesa de Madera", "type": "furniture", "count": 1, "furniture": "table"}],
+					"value": 12
+				},
+				{
+					"name": "Silla",
+					"id": "wood_chair",
+					"time": 10,
+					"skill": "CARPENTRY",
+					"inputs": [{"material": ["wood"], "count": 1}],
+					"outputs": [{"name": "Silla de Madera", "type": "furniture", "count": 1, "furniture": "chair"}],
+					"value": 8
 				},
 				{
 					"name": "Hacha Primitiva",

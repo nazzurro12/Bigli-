@@ -36,12 +36,12 @@ class PhysicalJobContracts(unittest.TestCase):
 
     def test_construction_materials_are_reserved_and_not_duplicated(self):
         work = self.dwarf.split("func _work_on_job", 1)[1].split("\nfunc ", 1)[0]
-        self.assertIn("ent.is_reserved_for_other(id, simulation_minute)", work)
-        self.assertIn("ent.is_inside_container or ent.carried_by_id >= 0", work)
-        self.assertIn("best_item.reserve_for(id, simulation_minute + 30)", work)
-        self.assertIn("best_item.release_reservation(id)", work)
-        self.assertIn("best_item.carried_by_id = id", work)
-        self.assertLess(work.index("world.remove_entity(best_item)"), work.index("inventory.append(best_item)"))
+        self.assertIn("material_item.is_reserved_for_other(id, current_tick)", work)
+        self.assertIn("material_item.is_inside_container or material_item.carried_by_id >= 0", work)
+        self.assertIn("selected_material.reserve_for(id, current_tick + 180)", work)
+        self.assertIn("selected_material.release_reservation(id)", work)
+        self.assertIn("selected_material.carried_by_id = id", work)
+        self.assertLess(work.index("world.remove_entity(selected_material)"), work.index("inventory.append(selected_material)"))
 
     def test_failed_physical_jobs_explain_why_they_stopped(self):
         cancel = self.dwarf.split("func _cancel_current_job", 1)[1].split("\nfunc ", 1)[0]
@@ -49,7 +49,7 @@ class PhysicalJobContracts(unittest.TestCase):
         self.assertIn("current_job.assigned_dwarf_id = -1", cancel)
         self.assertIn('"Trabajo cancelado: %s" % reason', cancel)
         work = self.dwarf.split("func _work_on_job", 1)[1].split("\nfunc ", 1)[0]
-        self.assertIn('_cancel_current_job("no hay piedra o madera accesible")', work)
+        self.assertIn('_release_current_job(world, "no hay piedra o madera alcanzable", 300)', work)
 
     def test_completed_construction_does_not_consume_material_twice(self):
         execute = self.dwarf.split("func _execute_job", 1)[1].split("\nfunc ", 1)[0]
@@ -85,8 +85,8 @@ class PhysicalJobContracts(unittest.TestCase):
     def test_workshop_operator_collects_and_consumes_real_inputs(self):
         prepare = self.dwarf.split("func _prepare_workshop_inputs", 1)[1].split("\nfunc ", 1)[0]
         self.assertIn('recipe.get("inputs", [])', prepare)
-        self.assertIn("ground_item.is_reserved_for_other(id, simulation_minute)", prepare)
-        self.assertIn("nearest_item.reserve_for(id, simulation_minute + 30)", prepare)
+        self.assertIn("ground_item.is_reserved_for_other(id, current_tick)", prepare)
+        self.assertIn("nearest_item.reserve_for(id, current_tick + 180)", prepare)
         self.assertIn("inventory.remove_at(inventory_index)", prepare)
         self.assertIn("operating_workshop.current_recipe = recipe.duplicate(true)", prepare)
 

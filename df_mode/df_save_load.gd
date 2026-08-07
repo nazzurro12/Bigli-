@@ -340,6 +340,22 @@ static func _dwarf_to_dict(dwarf) -> Dictionary:
 		"preferences": dwarf.preferences.duplicate(),
 		"memories": dwarf.memories.duplicate(),
 		"recent_events": dwarf.recent_events.duplicate(),
+		"life_history": dwarf.life_history.duplicate(true),
+		"reputation": dwarf.reputation.duplicate(true),
+		"known_reputations": dwarf.known_reputations.duplicate(true),
+		"rumors": dwarf.rumors.duplicate(true),
+		"legal_record": dwarf.legal_record.duplicate(true),
+		"career_offers": dwarf.career_offers.duplicate(true),
+		"life_decisions": dwarf.life_decisions.duplicate(true),
+		"social_roles": dwarf.social_roles.duplicate(true),
+		"life_drives": dwarf.life_drives.duplicate(),
+		"aspiration": dwarf.aspiration,
+		"aspiration_progress": dwarf.aspiration_progress,
+		"decision_reason": dwarf.decision_reason,
+		"decision_factors": dwarf.decision_factors.duplicate(),
+		"status_effects": dwarf.status_effects.duplicate(true),
+		"leader_id": dwarf.leader_id,
+		"household_id": dwarf.household_id,
 		"prayer_counter": dwarf.prayer_counter,
 		"meditation_counter": dwarf.meditation_counter,
 		"artistic_inspiration": dwarf.artistic_inspiration,
@@ -527,6 +543,22 @@ static func _dict_to_dwarf(d: Dictionary):
 	df.preferences = d.get("preferences", {}).duplicate()
 	df.memories = d.get("memories", []).duplicate()
 	df.recent_events = d.get("recent_events", []).duplicate()
+	df.life_history = d.get("life_history", []).duplicate(true)
+	df.reputation = d.get("reputation", {}).duplicate(true)
+	df.known_reputations = d.get("known_reputations", {}).duplicate(true)
+	df.rumors = d.get("rumors", []).duplicate(true)
+	df.legal_record = d.get("legal_record", []).duplicate(true)
+	df.career_offers = d.get("career_offers", []).duplicate(true)
+	df.life_decisions = d.get("life_decisions", []).duplicate(true)
+	df.social_roles = d.get("social_roles", []).duplicate(true)
+	df.life_drives = d.get("life_drives", df.life_drives).duplicate()
+	df.aspiration = d.get("aspiration", df.aspiration)
+	df.aspiration_progress = d.get("aspiration_progress", 0.0)
+	df.decision_reason = d.get("decision_reason", "Aún no tomó una decisión")
+	df.decision_factors = d.get("decision_factors", []).duplicate()
+	df.status_effects = d.get("status_effects", {}).duplicate(true)
+	df.leader_id = d.get("leader_id", -1)
+	df.household_id = d.get("household_id", df.settlement_family_id if df.settlement_family_id >= 0 else df.id)
 	df.prayer_counter = d.get("prayer_counter", 0)
 	df.meditation_counter = d.get("meditation_counter", 0)
 	df.artistic_inspiration = d.get("artistic_inspiration", 0.0)

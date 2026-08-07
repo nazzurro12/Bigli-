@@ -16,7 +16,7 @@ const UI_CLASSIC_TITLE := Color("#0A246A")
 const UI_CLASSIC_TITLE_LIGHT := Color("#3A6EA5")
 const UI_CLASSIC_TEXT := Color("#1A1A1A")
 const UI_CLASSIC_WORKSPACE := Color("#1B2430")
-const UI_CONTENT_TOP: int = 44
+const UI_CONTENT_TOP: int = 24
 const SUBSTANCE_COLORS: Dictionary = {
 	"blood":    Color(0.55, 0.0,  0.0,  1.0),
 	"beer":     Color(0.70, 0.55, 0.05, 1.0),
@@ -33,7 +33,7 @@ var camera_pos: Vector3i = Vector3i(64, 3, 64)
 var view_width: int = 80
 var view_height: int = 25
 var show_sidebar: bool = true
-var sidebar_width: int = 32
+var sidebar_width: int = 26
 var follow_dwarf: int = -1
 var paused: bool = false
 var designation: DFDesignation = null
@@ -355,6 +355,9 @@ La estación limita el clima posible; la nieve requiere suficiente frío.""")
 	legend_btn.offset_right = 88
 	legend_btn.offset_bottom = 14
 	legend_btn.pressed.connect(func(): legend_panel.visible = not legend_panel.visible)
+	# La referencia ya vive en Ver > Leyenda. El botón flotante tapaba el mapa y
+	# duplicaba la navegación principal.
+	legend_btn.visible = false
 	add_child(legend_btn)
 
 func _add_reference_tab(tab_name: String, contents: String) -> void:
@@ -450,7 +453,8 @@ func _refresh_management_pages() -> void:
 	var thirsty: int = 0
 	var sick: int = 0
 	var stressed: int = 0
-	var inhabitant_lines: Array[String] = ["HABITANTES"]
+	var inhabitant_lines: Array[String] = ["HABITANTES — ACCIONES COMPROBABLES"]
+	var active_lines: Array[String] = []
 	for dwarf_value in world.dwarves:
 		var dwarf = dwarf_value
 		if not dwarf.is_alive:
@@ -460,12 +464,19 @@ func _refresh_management_pages() -> void:
 		thirsty += 1 if float(dwarf.thirst) > 0.65 else 0
 		sick += 1 if int(dwarf.disease_phase) != 0 else 0
 		stressed += 1 if float(dwarf.stress) > 0.65 else 0
-		if inhabitant_lines.size() <= 24:
+		if inhabitant_lines.size() <= 25:
 			var inhabitant_name: String = str(dwarf.get_entity_name()) if dwarf.has_method("get_entity_name") else str(dwarf.get("name"))
-			var inhabitant_task: String = str(dwarf.get("current_task"))
-			inhabitant_lines.append("%-18s  %-12s  ánimo %3d%%" % [inhabitant_name, inhabitant_task, int((1.0 - float(dwarf.stress)) * 100.0)])
+			var activity: Dictionary = dwarf.get_activity_report() if dwarf.has_method("get_activity_report") else {"activity": str(dwarf.get("current_task")), "phase": "desconocida", "target": "—", "evidence": "sin telemetría", "progress": 0}
+			inhabitant_lines.append("%s — %s [%s]" % [inhabitant_name, str(activity["activity"]), str(activity["phase"])])
+			inhabitant_lines.append("  objetivo %s · %s" % [str(activity["target"]), str(activity["evidence"])])
+			var reason_text: String = str(activity.get("reason", "sin motivo registrado"))
+			if reason_text.length() > 88:
+				reason_text = reason_text.substr(0, 85) + "..."
+			inhabitant_lines.append("  por qué: %s" % reason_text)
+			if str(activity["phase"]) not in ["disponible", "descanso"] and active_lines.size() < 16:
+				active_lines.append("%s: %s → %s (%s)" % [inhabitant_name, str(activity["phase"]), str(activity["target"]), str(activity["evidence"])])
 	management_pages[0].text = "\n".join(inhabitant_lines) + "\n\nVivos: %d  Con hambre: %d  Con sed: %d" % [living, hungry, thirsty]
-	management_pages[1].text = "TRABAJOS\n\nActivos: %d\nPendientes: %d\n\nLa cola se actualiza sin recorrerla cada fotograma." % [_job_active, _job_pending]
+	management_pages[1].text = "TRABAJOS FÍSICOS\n\nActivos: %d\nPendientes: %d\n\n%s" % [_job_active, _job_pending, "\n".join(active_lines) if not active_lines.is_empty() else "Ningún trabajo físico activo."]
 	var stored_items: int = 0
 	var loose_items: int = 0
 	for item_value in world.items:
@@ -537,13 +548,10 @@ J             misiones
 L             crónicas"""
 
 func _create_functional_classic_chrome() -> void:
+	# Godot/Windows ya dibuja el título y los botones de ventana. Mantener una
+	# segunda copia dentro del juego robaba altura y parecía una ventana rota.
 	classic_title_label = Label.new()
-	classic_title_label.name = "ClassicTitle"
-	classic_title_label.text = "Bigli - Simulador de mundo"
-	classic_title_label.position = Vector2(11, 5)
-	classic_title_label.size = Vector2(600, 22)
-	classic_title_label.add_theme_color_override("font_color", Color.WHITE)
-	classic_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	classic_title_label.visible = false
 	add_child(classic_title_label)
 
 	var menu_specs: Array = [
@@ -560,7 +568,7 @@ func _create_functional_classic_chrome() -> void:
 		menu.name = "ClassicMenu%d" % menu_index
 		menu.text = str(spec[0])
 		menu.flat = true
-		menu.position = Vector2(menu_x, 29)
+		menu.position = Vector2(menu_x, 2)
 		menu.size = Vector2(105 if menu_index in [2, 3] else 78, 19)
 		menu.add_theme_font_size_override("font_size", 10)
 		var popup := menu.get_popup()
@@ -578,20 +586,6 @@ func _create_functional_classic_chrome() -> void:
 		classic_menu_buttons.append(menu)
 		menu_x += menu.size.x
 
-	var window_specs: Array = [["_", 0], ["□", 1], ["×", 2]]
-	for window_index in range(window_specs.size()):
-		var window_button := Button.new()
-		window_button.name = "ClassicWindowButton%d" % window_index
-		window_button.text = str(window_specs[window_index][0])
-		window_button.anchor_left = 1.0
-		window_button.anchor_right = 1.0
-		window_button.offset_left = -70 + window_index * 22
-		window_button.offset_right = -49 + window_index * 22
-		window_button.offset_top = 6
-		window_button.offset_bottom = 25
-		window_button.pressed.connect(_on_classic_window_button.bind(int(window_specs[window_index][1])))
-		add_child(window_button)
-		classic_window_buttons.append(window_button)
 
 func _on_classic_popup_id_pressed(item_id: int, popup: PopupMenu) -> void:
 	_on_classic_menu_pressed(int(popup.get_meta("classic_menu_index", -1)), item_id)
@@ -908,10 +902,6 @@ func _draw() -> void:
 			1: # GameState.GENERATING_WORLD
 				_draw_generating_screen()
 				_draw_fullscreen_desktop_shell("Bigli - Generador de mundos", "Procesando simulación histórica...")
-				return
-			2: # GameState.MODE_SELECT
-				_draw_mode_select_menu()
-				_draw_fullscreen_desktop_shell("Bigli - Seleccionar modo", "Seleccione una opción para continuar")
 				return
 			3: # GameState.EMBARK_MAP_SELECT
 				_draw_embark_map_select()
@@ -1328,9 +1318,10 @@ func _draw_sidebar(side_x: int) -> void:
 	var y   = UI_CONTENT_TOP + 27
 	var sh = size.y
 	_draw_classic_bevel(Rect2(x - 3, UI_CONTENT_TOP, mw + 3, sh - UI_CONTENT_TOP), UI_CLASSIC_FACE, false)
-	_draw_classic_titlebar(Rect2(x, UI_CONTENT_TOP + 3, mw - 3, 21), "Propiedades de la colonia")
+	draw_rect(Rect2(x, UI_CONTENT_TOP + 3, mw - 3, 21), Color("#243244"), true)
+	draw_string(_font, Vector2(x + 8, UI_CONTENT_TOP + 18), "COLONIA", HORIZONTAL_ALIGNMENT_LEFT, mw - 16, 10, Color("#DCE7F2"))
 	draw_rect(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), UI_CLASSIC_WORKSPACE, true)
-	_draw_classic_bevel(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), Color.TRANSPARENT, true)
+	draw_rect(Rect2(x, UI_CONTENT_TOP + 25, mw - 3, sh - UI_CONTENT_TOP - 50), Color("#34485E"), false, 1.0)
 
 	# ── helper: draw section header with underline ──────────────────────────
 	# (GDScript closures can't modify outer y; we handle y inline after each call)
@@ -1931,7 +1922,8 @@ func _draw_message_log(start_y: int) -> void:
 	_draw_classic_bevel(log_rect, UI_CLASSIC_FACE, false)
 	_draw_classic_titlebar(Rect2(bx + 2, start_y - 20, mw - 4, 18), "Registro de sucesos", false)
 	var output_rect := Rect2(bx + 5, start_y + 1, mw - 10, msg_h - 7)
-	_draw_classic_bevel(output_rect, Color("#FFFFFF"), true)
+	draw_rect(output_rect, Color("#121A24"), true)
+	draw_rect(output_rect, Color("#34485E"), false, 1.0)
 
 	var y = start_y
 	for i in range(num):
@@ -1943,9 +1935,9 @@ func _draw_message_log(start_y: int) -> void:
 			msg = msg.substr(0, max_chars - 3) + "..."
 		# Older messages fade, newest is fully bright
 		var alpha = 0.45 + 0.55 * float(i + 1) / float(num)
-		var col = Color(0.20, 0.20, 0.20, alpha)
+		var col = Color(0.68, 0.74, 0.80, alpha)
 		if i == num - 1:
-			col = Color(0.0, 0.12, 0.35, 1.0)
+			col = Color(0.88, 0.93, 1.0, 1.0)
 		draw_string(_font, Vector2(bx + 9, y + lh), msg,
 			HORIZONTAL_ALIGNMENT_LEFT, mw - 18, 10, col)
 		y += int(lh * 1.18)
@@ -2713,77 +2705,6 @@ func _format_world_region_count(region_count: int) -> String:
 	if region_count >= 1000:
 		return "%.1f mil" % (float(region_count) / 1000.0)
 	return str(region_count)
-
-func _draw_mode_select_menu() -> void:
-	# Deep space background (matches title screen)
-	draw_rect(Rect2(0, 0, size.x, size.y), Color(0.01, 0.01, 0.03), true)
-
-	var main_node = get_parent()
-	if main_node == null: return
-
-	var line_h = int(_char_size.y)
-	var center_x = size.x / 2
-
-	var box_w = 460
-	var box_h = 265
-	var box_x = center_x - box_w / 2
-	var box_y = (size.y - box_h) / 2 - 30
-	
-	_draw_rounded_rect(Rect2(box_x - 2, box_y - 2, box_w + 4, box_h + 4), Color(0.0, 0.0, 0.0, 0.2), 8)
-	_draw_rounded_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.04, 0.03, 0.10), 8)
-	_draw_rounded_rect(Rect2(box_x, box_y, box_w, box_h), Color(0.55, 0.40, 0.90), 8, false, 2.0)
-	draw_rect(Rect2(box_x, box_y + 2, box_w, 3), Color(0.55, 0.40, 0.90, 0.6), true)
-
-	var y = box_y + 35
-	draw_string(_font, Vector2(center_x, y), "=== MUNDO GENERADO CON ÉXITO ===", HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.GOLD)
-	y += int(line_h * 2.2)
-
-	var options = [
-		"Jugar Modo Fortaleza (Gestión)",
-		"Jugar Modo Aventura (Roguelike)",
-		"Explorar Modo Leyendas (Crónica)"
-	]
-
-	for i in range(options.size()):
-		var is_sel = (main_node.setting_selected_index == i)
-		var color = Color(0.95, 0.85, 1.0) if is_sel else Color(0.60, 0.55, 0.70)
-		var prefix = "▸  [ " if is_sel else "   [ "
-		var suffix = " ]"
-		
-		if is_sel:
-			_draw_rounded_rect(Rect2(box_x + 20, y - 10, box_w - 40, 24), Color(0.20, 0.14, 0.38, 0.6), 4)
-			_draw_rounded_rect(Rect2(box_x + 20, y - 10, box_w - 40, 24), Color(0.45, 0.30, 0.80, 0.8), 4, false, 1.0)
-
-		draw_string(_font, Vector2(center_x, y + 6), prefix + options[i] + suffix, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, color)
-		y += int(line_h * 2.0)
-
-	y = box_y + box_h - 30
-	draw_string(_font, Vector2(center_x, y), "↑↓ o Click: Seleccionar  |  ENTER o Doble Click: Confirmar", HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(0.45, 0.40, 0.55))
-
-	# ---- DESCRIPTION TOOLTIP CARD ----
-	var desc_y = box_y + box_h + 20
-	var desc_w = 460
-	var desc_h = 75
-	var desc_x = center_x - desc_w / 2
-	
-	_draw_rounded_rect(Rect2(desc_x, desc_y, desc_w, desc_h), Color(0.02, 0.02, 0.06, 0.85), 6)
-	_draw_rounded_rect(Rect2(desc_x, desc_y, desc_w, desc_h), Color(0.25, 0.30, 0.55, 0.7), 6, false, 1.5)
-	draw_rect(Rect2(desc_x, desc_y + 2, desc_w, 3), Color(0.25, 0.30, 0.55, 0.5), true)
-	
-	var desc_text = ""
-	match main_node.setting_selected_index:
-		0:
-			desc_text = "MODO FORTALEZA:\nLidera a un grupo de 7 enanos para excavar, forjar, cultivar, comerciar y construir defensas contra invasiones y peligros subterráneos en modo simulación."
-		1:
-			desc_text = "MODO AVENTURA:\nPosesión de un héroe en tercera persona. Explora el mundo persistente, entabla diálogos con NPCs, viaja por biomas y recluta aliados en modo Roguelike."
-		2:
-			desc_text = "MODO LEYENDAS:\nConsulta el compendio histórico generado por la simulación de historia: civilizaciones, guerras, héroes, megabestias y reliquias perdidas del mundo."
-	
-	var desc_lines = _wrap_text(desc_text, 50)
-	var dy = desc_y + 18
-	for line in desc_lines:
-		draw_string(_font, Vector2(center_x, dy), line, HORIZONTAL_ALIGNMENT_CENTER, desc_w - 20, 9, Color(0.75, 0.72, 0.85))
-		dy += int(line_h * 1.15)
 
 func _draw_embark_map_select() -> void:
 	_draw_premium_background(size)

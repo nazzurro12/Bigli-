@@ -103,7 +103,7 @@ static func _mine(actor, world, target: Vector3i) -> Dictionary:
 	if _distance(actor.tile_pos, target) > 1:
 		return _result(false, "La roca está demasiado lejos")
 	var tile_type: int = world.get_tile(target)
-	if tile_type in [world.TileType.STONE_FLOOR, world.TileType.CAVE_FLOOR, world.TileType.EMPTY, world.TileType.RAMP]:
+	if tile_type in [world.TileType.STONE_FLOOR, world.TileType.CAVE_FLOOR, world.TileType.FLOOR, world.TileType.RAMP]:
 		return _result(true, "Casilla ya excavada")
 	if not world.is_wall(target):
 		return _result(false, "La casilla no es excavable")

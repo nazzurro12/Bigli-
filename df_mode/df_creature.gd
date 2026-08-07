@@ -1255,7 +1255,7 @@ func _move_toward(world, target: Vector3i) -> void:
 
 	if next_step != tile_pos:
 		# Entity collision avoidance
-		var blocked_by_entity: bool = world.is_blocked_by_entity(next_step)
+		var blocked_by_entity: bool = world.is_actor_occupied(next_step, self)
 		if blocked_by_entity:
 			var dirs = [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1),
 				Vector3i(-1, 0, -1), Vector3i(1, 0, 1), Vector3i(-1, 0, 1), Vector3i(1, 0, -1)]
@@ -1265,13 +1265,13 @@ func _move_toward(world, target: Vector3i) -> void:
 				var alt = tile_pos + d
 				if alt.x < 0 or alt.x >= world.width or alt.z < 0 or alt.z >= world.depth: continue
 				if world.is_blocked(alt): continue
-				if not world.is_blocked_by_entity(alt):
-					tile_pos = alt
+				if not world.is_actor_occupied(alt, self):
+					world.move_entity(self, alt)
 					found_alt = true
 					break
 			if not found_alt: return
 		else:
-			tile_pos = next_step
+			world.move_entity(self, next_step)
 			fatigue_level = minf(1.0, fatigue_level + 0.001)
 		path_index += 1
 
