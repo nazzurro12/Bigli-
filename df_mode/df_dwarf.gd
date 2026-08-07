@@ -123,6 +123,7 @@ var path_index: int = 0
 var last_pos: Vector3i = Vector3i(-1, -1, -1)
 var stuck_counter: int = 0
 var path_replan_count: int = 0
+var traffic_wait_ticks: int = 0
 var move_tick_counter: int = 0
 var speed: float = 1.0
 var has_moved_this_tick: bool = false
@@ -353,6 +354,8 @@ func _init(pos: Vector3i, dwarf_name: String = ""):
 	tile_pos = pos
 	id = _id_counter
 	_id_counter += 1
+	# Evita que toda la población dé el primer paso en el mismo fotograma.
+	move_tick_counter = id % 3
 	body = DFAnatomy.Body.new("humanoid")
 	genome = DFGenetics.Genome.new(1.0, 1.0, 1.0, 1.0).mutate(0.05, 0.1)
 	body_mass_kg = 70.0 * genome.size_multiplier
@@ -3460,11 +3463,24 @@ func _move_toward(world, target: Vector3i) -> void:
 		# cada paso convertía una aldea concurrida en trabajo cuadrático.
 		var blocked_by_entity: bool = world.is_actor_occupied(next_step, self)
 		if blocked_by_entity:
-			# Try to find adjacent free tile instead
+			# Una persona no salta aleatoriamente al chocar con otra. Espera un
+			# instante y, si el tráfico persiste, elige el desvío libre que más la
+			# acerque a su objetivo.
+			traffic_wait_ticks += 1
+			if traffic_wait_ticks < 2:
+				return
 			var dirs = [Vector3i(-1, 0, 0), Vector3i(1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 1),
 				Vector3i(-1, 0, -1), Vector3i(1, 0, 1), Vector3i(-1, 0, 1), Vector3i(1, 0, -1)]
 			var found_alt = false
-			dirs.shuffle()
+			dirs.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+				var pos_a: Vector3i = tile_pos + a
+				var pos_b: Vector3i = tile_pos + b
+				var score_a: int = absi(target.x - pos_a.x) + absi(target.z - pos_a.z)
+				var score_b: int = absi(target.x - pos_b.x) + absi(target.z - pos_b.z)
+				if score_a == score_b:
+					return (pos_a.x * 73856093 + pos_a.z * 19349663 + id) < (pos_b.x * 73856093 + pos_b.z * 19349663 + id)
+				return score_a < score_b
+			)
 			for d in dirs:
 				var alt = tile_pos + d
 				if alt.x < 0 or alt.x >= world.width or alt.z < 0 or alt.z >= world.depth:
@@ -3473,6 +3489,7 @@ func _move_toward(world, target: Vector3i) -> void:
 				var alt_blocked: bool = world.is_actor_occupied(alt, self)
 				if not alt_blocked:
 					world.move_entity(self, alt)
+					traffic_wait_ticks = 0
 					# El desvío cambió el origen real: la ruta anterior ya no es
 					# válida y debe recalcularse desde esta nueva casilla.
 					path.clear()
@@ -3483,9 +3500,12 @@ func _move_toward(world, target: Vector3i) -> void:
 					found_alt = true
 					break
 			if not found_alt:
+				path.clear()
+				path_index = 0
 				return
 		else:
 			world.move_entity(self, next_step)
+			traffic_wait_ticks = 0
 			# Fatigue from movement
 			fatigue_level = minf(1.0, fatigue_level + 0.002)
 		path_index += 1
