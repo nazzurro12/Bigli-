@@ -469,6 +469,10 @@ func _refresh_management_pages() -> void:
 			var activity: Dictionary = dwarf.get_activity_report() if dwarf.has_method("get_activity_report") else {"activity": str(dwarf.get("current_task")), "phase": "desconocida", "target": "—", "evidence": "sin telemetría", "progress": 0}
 			inhabitant_lines.append("%s — %s [%s]" % [inhabitant_name, str(activity["activity"]), str(activity["phase"])])
 			inhabitant_lines.append("  objetivo %s · %s" % [str(activity["target"]), str(activity["evidence"])])
+			var reason_text: String = str(activity.get("reason", "sin motivo registrado"))
+			if reason_text.length() > 88:
+				reason_text = reason_text.substr(0, 85) + "..."
+			inhabitant_lines.append("  por qué: %s" % reason_text)
 			if str(activity["phase"]) not in ["disponible", "descanso"] and active_lines.size() < 16:
 				active_lines.append("%s: %s → %s (%s)" % [inhabitant_name, str(activity["phase"]), str(activity["target"]), str(activity["evidence"])])
 	management_pages[0].text = "\n".join(inhabitant_lines) + "\n\nVivos: %d  Con hambre: %d  Con sed: %d" % [living, hungry, thirsty]

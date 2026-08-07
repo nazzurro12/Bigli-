@@ -201,6 +201,18 @@ var social_roles: Array = []
 var possession_count: int = 0
 var last_possession_event_id: int = -1
 
+# Columna vertebral de la simulación personal. Estos valores no sustituyen los
+# sistemas existentes: los conectan para que cuerpo, carácter, vínculos e
+# historia pesen sobre una misma decisión explicable y persistente.
+var life_drives: Dictionary = {}
+var aspiration: String = ""
+var aspiration_progress: float = 0.0
+var decision_reason: String = "Aún no tomó una decisión"
+var decision_factors: Array = []
+var status_effects: Dictionary = {}
+var leader_id: int = -1
+var household_id: int = -1
+
 var prayer_counter: int = 0
 var meditation_counter: int = 0
 var artistic_inspiration: float = 0.0
@@ -370,6 +382,7 @@ func _init(pos: Vector3i, dwarf_name: String = ""):
 	_init_skills()
 	_init_preferences()
 	_init_needs()
+	_init_life_model()
 	age = 20 + randi() % 40
 	birth_year = 63 - age
 
@@ -405,6 +418,55 @@ func _init_needs() -> void:
 		Need.ORDER: 0.0, Need.PERSONAL_SPACE: 0.0, Need.FAMILY: 0.0,
 		Need.LUXURY: 0.0, Need.INTELLECT: 0.0, Need.ADVENTURE: 0.0
 	}
+
+func _init_life_model() -> void:
+	life_drives = {
+		"honor": clampf((get_trait(PersonalityTrait.HONESTY) + get_trait(PersonalityTrait.PRIDE) + get_trait(PersonalityTrait.COMPASSION)) / 3.0, 0.0, 1.0),
+		"glory": clampf((get_trait(PersonalityTrait.AMBITION) + get_trait(PersonalityTrait.PRIDE) + get_trait(PersonalityTrait.BRAVERY)) / 3.0, 0.0, 1.0),
+		"belonging": clampf((get_trait(PersonalityTrait.SOCIABILITY) + get_trait(PersonalityTrait.COMPASSION)) * 0.5, 0.0, 1.0),
+		"legacy": clampf((get_trait(PersonalityTrait.AMBITION) + needs.get(Need.FAMILY, 0.0) + needs.get(Need.ESTEEM, 0.0)) / 3.0, 0.0, 1.0),
+		"autonomy": clampf((get_trait(PersonalityTrait.STUBBORNNESS) + get_trait(PersonalityTrait.CURIOSITY)) * 0.5, 0.0, 1.0),
+	}
+	var strongest: String = "honor"
+	for drive_name in life_drives:
+		if float(life_drives[drive_name]) > float(life_drives[strongest]):
+			strongest = drive_name
+	var aspiration_by_drive := {
+		"honor": "Ser respetado por servir a la colonia",
+		"glory": "Dominar su oficio y realizar una gran obra",
+		"belonging": "Fortalecer su hogar y su comunidad",
+		"legacy": "Dejar un legado que sobreviva generaciones",
+		"autonomy": "Explorar y abrir nuevas oportunidades",
+	}
+	aspiration = aspiration_by_drive.get(strongest, "Construir una vida estable")
+	household_id = settlement_family_id if settlement_family_id >= 0 else id
+
+func tick_life_model() -> void:
+	# Actualización por minuto y O(1): adecuada incluso para poblaciones grandes.
+	if settlement_family_id >= 0:
+		household_id = settlement_family_id
+	var family_count: int = family.get("children", []).size()
+	if int(family.get("spouse", -1)) >= 0:
+		family_count += 1
+	life_drives["belonging"] = clampf(float(life_drives.get("belonging", 0.5)) + (0.0004 * family_count) - (0.0008 * loneliness), 0.0, 1.0)
+	life_drives["honor"] = clampf(float(life_drives.get("honor", 0.5)) + 0.0001 * float(reputation.get("honor", 0.0)) - 0.0002 * legal_record.size(), 0.0, 1.0)
+	life_drives["glory"] = clampf(float(life_drives.get("glory", 0.0)) + 0.00005 * float(stats_tracker.get("items_crafted", 0)), 0.0, 1.0)
+	life_drives["legacy"] = clampf(float(life_drives.get("legacy", 0.0)) + 0.0001 * (family_count + creative_works.size()), 0.0, 1.0)
+	aspiration_progress = clampf((float(life_drives.get("honor", 0.0)) + float(life_drives.get("glory", 0.0)) + float(life_drives.get("belonging", 0.0)) + float(life_drives.get("legacy", 0.0))) * 0.25, 0.0, 1.0)
+	_sync_status_effects()
+
+func _sync_status_effects() -> void:
+	status_effects.clear()
+	if disease_phase != DiseasePhase.HEALTHY:
+		status_effects["disease"] = {"severity": disease_severity, "diagnosed": current_task == "Diagnosticar" or current_task == "Descanso Médico", "treatment": "reposo y atención médica"}
+	if has_infection:
+		status_effects["infection"] = {"severity": infection_chance, "diagnosed": is_resting_medical, "treatment": "limpieza y atención médica"}
+	if body != null:
+		var concerning_substances: Array = body.ingested_substances.keys().filter(func(substance): return str(substance) not in ["food", "water"])
+		if not concerning_substances.is_empty():
+			status_effects["ingested"] = {"severity": clampf(concerning_substances.size() * 0.15, 0.0, 1.0), "diagnosed": false, "treatment": "evaluación médica"}
+	if has_meta("magic_effect"):
+		status_effects["magic"] = {"severity": float(get_meta("magic_effect_severity", 0.5)), "diagnosed": bool(get_meta("magic_effect_diagnosed", false)), "treatment": str(get_meta("magic_effect_treatment", "estudio especializado"))}
 
 func get_skill_level(skill: int) -> int:
 	return skills.get(skill, 0)
@@ -990,6 +1052,7 @@ func tick(world, jobs: Array, minute_ticked: bool = false) -> void:
 		tick_hygiene(world)
 		tick_social(world)
 		tick_inspect(world)
+		tick_life_model()
 		
 		# --- EXPOSICIÓN A MIASMA ---
 		var tile_subs = world.get_splatters_at(tile_pos)
@@ -3310,8 +3373,27 @@ func _pick_up_job(world, jobs: Array) -> void:
 			continue
 		var distance: int = abs(tile_pos.x - job_candidate.tile_pos.x) + abs(tile_pos.z - job_candidate.tile_pos.z) + abs(tile_pos.y - job_candidate.tile_pos.y) * 2
 		var skill_level: int = get_skill_level(job_candidate.get_required_skill())
-		var score: int = int(job_candidate.priority) * 20 + skill_level * 5 - distance
-		ranked_jobs.append({"job": job_candidate, "score": score})
+		var priority_score: float = float(job_candidate.priority) * 20.0
+		var skill_score: float = float(skill_level) * (4.0 + get_trait(PersonalityTrait.INDUSTRY) * 3.0)
+		var distance_cost: float = float(distance) * lerpf(1.25, 0.75, get_trait(PersonalityTrait.PATIENCE))
+		var character_score: float = get_trait(PersonalityTrait.AMBITION) * float(job_candidate.priority) * 4.0
+		character_score += get_trait(PersonalityTrait.INDUSTRY) * 8.0 - get_trait(PersonalityTrait.LAZINESS) * 6.0
+		character_score += float(life_drives.get("honor", 0.5)) * float(job_candidate.priority) * 2.0
+		if current_emotion in [Emotion.DETERMINED, Emotion.EXCITED, Emotion.PROUD]:
+			character_score += emotion_intensity * 5.0
+		elif current_emotion in [Emotion.FRUSTRATED, Emotion.WORRIED, Emotion.SAD]:
+			character_score -= emotion_intensity * 4.0
+		var leader_score: float = 3.0 if leader_id >= 0 and int(job_candidate.get_meta("leader_id", -1)) == leader_id else 0.0
+		var score: float = priority_score + skill_score + character_score + leader_score - distance_cost
+		var factors: Array = [
+			"prioridad +%.1f" % priority_score,
+			"habilidad +%.1f" % skill_score,
+			"carácter %+.1f" % character_score,
+			"distancia -%.1f" % distance_cost,
+		]
+		if leader_score > 0.0:
+			factors.append("petición del líder +%.1f" % leader_score)
+		ranked_jobs.append({"job": job_candidate, "score": score, "factors": factors})
 	ranked_jobs.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return int(a["score"]) > int(b["score"])
 	)
@@ -3329,6 +3411,11 @@ func _pick_up_job(world, jobs: Array) -> void:
 			continue
 		selected_job.approach_pos = tile_pos if already_adjacent else approach_path.back()
 		assign_job(selected_job)
+		decision_factors = ranked_jobs[candidate_index]["factors"].duplicate()
+		decision_reason = "Eligió %s: %s" % [selected_job.get_description(), ", ".join(decision_factors)]
+		life_decisions.append({"minute": simulation_minute, "action": selected_job.get_description(), "reason": decision_reason, "target": _format_activity_target(selected_job.tile_pos)})
+		if life_decisions.size() > 64:
+			life_decisions.pop_front()
 		path = approach_path.duplicate()
 		path_index = 0
 		current_task = selected_job.get_description()
@@ -3831,6 +3918,9 @@ func get_activity_report() -> Dictionary:
 		"target": "—",
 		"evidence": "sin acción física activa",
 		"progress": 0,
+		"reason": decision_reason,
+		"aspiration": aspiration,
+		"effects": status_effects.keys(),
 	}
 	if is_possessed:
 		report["phase"] = "posesión"
